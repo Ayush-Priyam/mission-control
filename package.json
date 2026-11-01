@@ -1,5 +1,5 @@
 {
-  "name": "mission-control",
+  "name": "@aldefy/mission-control",
   "version": "0.1.0",
   "description": "Local dashboard for agent harness runs",
   "license": "MIT",
@@ -23,7 +23,8 @@
     "build": "vite build web --outDir ../dist --emptyOutDir",
     "dev": "vite web",
     "test": "node --test test/ && vitest run --root web",
-    "typecheck": "tsc -p web --noEmit"
+    "typecheck": "tsc -p web --noEmit",
+    "prepublishOnly": "npm run build"
   },
   "devDependencies": {
     "@base-ui/react": "^1.9.0",

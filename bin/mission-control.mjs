@@ -10,7 +10,7 @@ try { args = parseArgs(argv) } catch (e) {
   process.exit(2)
 }
 
-const rawPort = args.port ?? process.env.PORT ?? "4319"
+const rawPort = args.port ?? process.env.MISSION_CONTROL_PORT ?? "4319"
 const port = /^\d+$/.test(String(rawPort)) ? Number(rawPort) : NaN
 if (!(port >= 0 && port <= 65535)) {
   console.error("mission control: --port needs a number")

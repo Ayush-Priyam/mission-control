@@ -1,4 +1,5 @@
 import { createServer as createHttpServer } from "node:http"
+import { existsSync } from "node:fs"
 import { readFile, realpath } from "node:fs/promises"
 import { dirname, extname, join, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -100,7 +101,7 @@ async function api(adapter, req, res, url) {
       const r = await fn(id, url.searchParams)
       const status = r.status ?? 200
       if (r.type && !/json/i.test(r.type)) {
-        res.writeHead(status, { "content-type": r.type, "cache-control": "no-store" })
+        res.writeHead(status, { "content-type": r.type, "cache-control": "no-store", "x-content-type-options": "nosniff" })
         return res.end(r.body)
       }
       return json(res, r.body, status)
@@ -120,11 +121,28 @@ async function api(adapter, req, res, url) {
   return notFound(res)
 }
 
+const LOOPBACK = ["localhost", "127.0.0.1", "[::1]"]
+
 export function createServer(adapter, { port = 4319, distDir = DEFAULT_DIST } = {}) {
+  if (!existsSync(join(distDir, "index.html"))) {
+    console.error(`mission control: no built page at ${join(distDir, "index.html")} — run npm run build`)
+  }
+  // Filled once the actual port is known (port 0 picks one).
+  let hosts = new Set(), origins = new Set()
   const handler = async (req, res) => {
+    // DNS rebinding: a foreign page can reach 127.0.0.1 under its own hostname. Only loopback
+    // Host names on our own port are served, so the Origin check below cannot be fooled.
+    if (!hosts.has(req.headers.host)) return json(res, { error: "host not allowed" }, 403)
     try {
       const url = new URL(req.url, "http://localhost")
-      if (req.method === "POST") return await api(adapter, req, res, url)
+      if (req.method === "POST") {
+        // A cross-site form can only send simple content types; requiring JSON stops it.
+        const type = String(req.headers["content-type"] ?? "").split(";")[0].trim().toLowerCase()
+        if (type !== "application/json") return json(res, { error: "content-type must be application/json" }, 415)
+        const origin = req.headers.origin
+        if (origin !== undefined && !origins.has(origin)) return json(res, { error: "cross-origin request refused" }, 403)
+        return await api(adapter, req, res, url)
+      }
       if (req.method !== "GET" && req.method !== "HEAD") return json(res, { error: "not found" }, 404)
       if (url.pathname === "/api/capabilities") {
         return json(res, {
@@ -152,8 +170,11 @@ export function createServer(adapter, { port = 4319, distDir = DEFAULT_DIST } = 
     })
     v4.listen(port, "127.0.0.1", () => {
       const actual = v4.address().port
+      hosts = new Set(LOOPBACK.map((h) => `${h}:${actual}`))
+      origins = new Set(LOOPBACK.map((h) => `http://${h}:${actual}`))
       const v6 = createHttpServer(handler)
-      v6.on("error", () => {})
+      // Not fatal: 127.0.0.1 is up; browsers that try ::1 first fall back to it.
+      v6.on("error", (e) => console.error(`mission control: ::1 listener failed: ${e.code ?? e.message}`))
       v6.listen(actual, "::1")
       console.log(`mission control on http://localhost:${actual}`)
       resolveStart({

@@ -20,6 +20,7 @@ async function withServer(adapter, fn) {
   const srv = await createServer(adapter, { port: 0, distDir })
   try { await fn(`http://127.0.0.1:${srv.port}`) } finally { await srv.close() }
 }
+const JSON_TYPE = { "content-type": "application/json" }
 const native = () => createNative({ runsDir, now: () => Date.parse("2026-11-01T12:00:00Z") })
 
 test("runs, run detail, missing run", async () => {
@@ -89,14 +90,14 @@ test("actions: undeclared 404, thrown status passes through, body delivered", as
     },
   }
   const post = (base, name, body) =>
-    fetch(`${base}/api/run/20261101-0900-done/action/${name}`, { method: "POST", body: JSON.stringify(body) })
+    fetch(`${base}/api/run/20261101-0900-done/action/${name}`, { method: "POST", headers: JSON_TYPE, body: JSON.stringify(body) })
   await withServer(stub, async (base) => {
     assert.equal((await post(base, "nope", {})).status, 404)
     const r = await post(base, "sign", {})
     assert.equal(r.status, 409)
     assert.deepEqual(await r.json(), { error: "busy" })
     assert.deepEqual(await (await post(base, "say", { t: "hi" })).json(), { id: "20261101-0900-done", got: { t: "hi" } })
-    const big = await fetch(`${base}/api/run/20261101-0900-done/action/say`, { method: "POST", body: "x".repeat(70_000) })
+    const big = await fetch(`${base}/api/run/20261101-0900-done/action/say`, { method: "POST", headers: JSON_TYPE, body: "x".repeat(70_000) })
     assert.equal(big.status, 413)
   })
 })
@@ -172,7 +173,7 @@ test("raw encoded dot-dot requests never return package.json", async () => {
 
 test("actions: non-object bodies become {}, undefined result becomes {}", async () => {
   const stub = { ...native(), actions: { say: async (id, body) => (Array.isArray(body) || body === null ? { bad: true } : body.keep ? undefined : { body }) } }
-  const post = (base, text) => fetch(`${base}/api/run/20261101-0900-done/action/say`, { method: "POST", body: text })
+  const post = (base, text) => fetch(`${base}/api/run/20261101-0900-done/action/say`, { method: "POST", headers: JSON_TYPE, body: text })
   await withServer(stub, async (base) => {
     for (const t of ["null", "[1,2]", "7"]) assert.deepEqual(await (await post(base, t)).json(), { body: {} }, t)
     assert.deepEqual(await (await post(base, '{"keep":1}')).json(), {})
@@ -247,4 +248,22 @@ test("loadAdapter --adapter without --runs defaults runsDir to cwd/runs", async 
   const dir = mkdtempSync(join(tmpdir(), "mc-ext2-"))
   writeFileSync(join(dir, "ext.mjs"), "export default (o) => ({ name: 'ext', o })")
   assert.equal((await loadAdapter(["--adapter", "ext.mjs"], dir)).o.runsDir, join(dir, "runs"))
+})
+
+test("M3: the port comes from --port or MISSION_CONTROL_PORT; PORT is ignored", async () => {
+  const probe = net()
+  await new Promise((r) => probe.listen(0, "127.0.0.1", r))
+  const p = probe.address().port
+  await new Promise((r) => probe.close(r))
+  const child = spawn("node", [join(root, "bin/mission-control.mjs"), "--runs", "test/fixtures/runs", "--no-open"], {
+    cwd: root, env: { ...process.env, PORT: "not-a-port", MISSION_CONTROL_PORT: String(p) },
+  })
+  try {
+    const first = await new Promise((res, rej) => {
+      let buf = ""
+      child.stdout.on("data", (d) => { buf += d; if (buf.includes("\n")) res(buf.split("\n")[0]) })
+      child.on("exit", (code) => rej(new Error(`exited ${code}`)))
+    })
+    assert.equal(first, `mission control on http://localhost:${p}`)
+  } finally { child.kill() }
 })
