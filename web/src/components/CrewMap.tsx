@@ -2,6 +2,7 @@ import { useMemo, useState } from "react"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { StageLog } from "@/components/StageLog"
+import { SessionSheet } from "@/components/SessionSheet"
 import { cn } from "@/lib/utils"
 import { toHash } from "@/lib/route"
 import { stageEvents } from "@/lib/events"
@@ -82,6 +83,7 @@ function HopArc({ arc, w }: { arc: Arc; w: number }) {
 /** The map tab: the crew graph with flow, consult links and the hops that actually happened. Click a node for its log. */
 export function CrewMap({ runId, graph, cards, events }: { runId: string; graph: CrewGraph; cards: CrewCard[]; events: Ev[] }) {
   const [open, setOpen] = useState<string | null>(null)
+  const [session, setSession] = useState<string | null>(null)
   const byId = useMemo(() => new Map(graph.nodes.map((n) => [n.id, n])), [graph])
   const cardOf = useMemo(() => new Map(cards.map((c) => [c.node.id, c])), [cards])
   const w = nodeWidth(graph.nodes)
@@ -183,12 +185,13 @@ export function CrewMap({ runId, graph, cards, events }: { runId: string; graph:
                 </SheetDescription>
               </SheetHeader>
               <ScrollArea className="min-h-0 flex-1 px-4 pb-4">
-                <StageLog events={stageEvents(events, sel.stages)} empty="No events for this stage yet." />
+                <StageLog events={stageEvents(events, sel.stages)} empty="No events for this stage yet." onSession={setSession} />
               </ScrollArea>
             </>
           )}
         </SheetContent>
       </Sheet>
+      <SessionSheet runId={runId} name={session} onClose={() => setSession(null)} />
     </div>
   )
 }

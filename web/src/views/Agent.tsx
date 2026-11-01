@@ -3,6 +3,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
 import { SayBox } from "@/components/SayBox"
 import { StageLog } from "@/components/StageLog"
+import { SessionSheet } from "@/components/SessionSheet"
 import { useCapabilities, useRun } from "@/lib/api"
 import { short, stageEvents } from "@/lib/events"
 import { crewCards, crewGraph, currentStop, nodeOf } from "@/lib/graph"
@@ -14,6 +15,7 @@ const WORD: Record<string, string> = { running: "working now", "needs-you": "wai
 export default function Agent({ id, stage }: { id: string; stage: string }) {
   const run = useRun(id)
   const caps = useCapabilities()
+  const [session, setSession] = useState<string | null>(null)
   const [queue, setQueue] = useState<{ to: string; text: string }[]>([])
   const data = run.data
   const view = useMemo(() => {
@@ -52,7 +54,7 @@ export default function Agent({ id, stage }: { id: string; stage: string }) {
         </a>
       </header>
       <section aria-label="Log" className="rounded-xl border bg-card p-3">
-        <StageLog events={view.log} empty={`No events for ${stage} yet.`} />
+        <StageLog events={view.log} empty={`No events for ${stage} yet.`} onSession={setSession} />
       </section>
       {queue.length > 0 && (
         <section aria-label="Sent" className="flex flex-col gap-1 rounded-xl border p-3 font-mono text-xs">
@@ -77,6 +79,7 @@ export default function Agent({ id, stage }: { id: string; stage: string }) {
           }}
         />
       )}
+      <SessionSheet runId={id} name={session} onClose={() => setSession(null)} />
     </div>
   )
 }

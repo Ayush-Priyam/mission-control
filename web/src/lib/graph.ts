@@ -100,10 +100,11 @@ const FROM_STATE: Record<string, StageStatus> = {
   failed: "failed",
 }
 
-/** One stage's status: the state's word when it has one, else the stage's last lifecycle event. */
+/** One stage's status: the state's word when it has one, else the stage's last lifecycle event.
+ * Nothing runs in a run that is not live, so a leftover "running" (a crashed harness) is idle. */
 export function stageStatus(state: State, events: Ev[], live: boolean, stage: string): StageStatus {
   const s = FROM_STATE[state?.stages?.[stage]?.status]
-  if (s) return s
+  if (s) return s === "running" && !live ? "idle" : s
   let last: StageStatus = "idle"
   for (const e of events) {
     if (e.stage !== stage) continue

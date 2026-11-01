@@ -90,6 +90,11 @@ export const useCapabilities = () => useFetch<Capabilities>("/api/capabilities")
 export const useRuns = () => useFetch<RunSummary[]>("/api/runs", POLL)
 export const useRun = (id: string | null) =>
   useFetch<RunDetail>(id ? `/api/run/${encodeURIComponent(id)}` : null, POLL)
+/** A session transcript by file name (`name` null: nothing to load). */
+export const useSession = (id: string, name: string | null) =>
+  useFetch<{ text: string; truncated?: boolean }>(
+    name ? `/api/run/${encodeURIComponent(id)}/session/${encodeURIComponent(name)}` : null,
+  )
 export const useCrew = (repo?: string) =>
   useFetch<any>(`/api/crew${repo ? `?repo=${encodeURIComponent(repo)}` : ""}`)
 export function useExtra<T>(key: string, id?: string | null, query?: Record<string, string>) {

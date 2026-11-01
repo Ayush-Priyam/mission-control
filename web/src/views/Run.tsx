@@ -7,6 +7,7 @@ import { CrewMap } from "@/components/CrewMap"
 import { StageBar } from "@/components/StageBar"
 import { Thread } from "@/components/Thread"
 import { YouBanner } from "@/components/YouBanner"
+import Trace from "@/views/Trace"
 import { RunStatusBadge } from "@/views/Home"
 import { useCapabilities, useRun } from "@/lib/api"
 import { crewCards, crewGraph, currentStop, type CrewCard } from "@/lib/graph"
@@ -15,7 +16,7 @@ import { toHash, type Tab } from "@/lib/route"
 type Ev = Record<string, any>
 
 /** Tabs this view draws; the rest arrive with their own tasks and fall back to the map. */
-const BUILT: Tab[] = ["chat", "map"]
+const BUILT: Tab[] = ["chat", "map", "trace"]
 
 function footer(events: Ev[], cards: CrewCard[]) {
   let cost = 0, tokens = 0
@@ -75,12 +76,16 @@ export default function Run({ id, tab }: { id: string; tab: Tab }) {
           <TabsList>
             <TabsTrigger value="chat">Chat</TabsTrigger>
             <TabsTrigger value="map">Map</TabsTrigger>
+            <TabsTrigger value="trace">Trace</TabsTrigger>
           </TabsList>
           <TabsContent value="chat" className="pt-3">
             <Thread runId={id} idea={idea} events={events} stop={stop} cards={cards} canSay={actions.includes("say")} />
           </TabsContent>
           <TabsContent value="map" className="pt-3">
             <CrewMap runId={id} graph={graph} cards={cards} events={events} />
+          </TabsContent>
+          <TabsContent value="trace" className="pt-3">
+            <Trace runId={id} events={events} live={data.live} idea={idea} />
           </TabsContent>
         </Tabs>
         <aside className="lg:sticky lg:top-4 lg:self-start">

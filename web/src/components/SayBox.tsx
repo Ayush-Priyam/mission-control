@@ -3,10 +3,18 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { postAction } from "@/lib/api"
 
-/** "@backend use 400" → { stage: "backend", text: "use 400" }; otherwise the default stage. */
-export function parseSay(raw: string, fallback: string) {
-  const m = raw.trim().match(/^@([\w.-]+)\s+([\s\S]+)$/)
-  return m ? { stage: m[1], text: m[2].trim() } : { stage: fallback, text: raw.trim() }
+export type Say = { stage: string; text: string } | { error: string }
+
+/** "@backend use 400" → { stage: "backend", text: "use 400" }; plain text goes to the fallback stage.
+ * No stage to send to, or an @stage with nothing after it, is an error to show, never a send. */
+export function parseSay(raw: string, fallback: string): Say {
+  const t = raw.trim()
+  const m = t.match(/^@([\w.-]+)(?:\s+([\s\S]*))?$/)
+  if (m) {
+    const text = (m[2] ?? "").trim()
+    return text ? { stage: m[1], text } : { error: `Write a message after @${m[1]}` }
+  }
+  return fallback ? { stage: fallback, text: t } : { error: "Start with @stage" }
 }
 
 /** The answer box: posts the `say` action. Render it only when capabilities.actions has "say". */
@@ -32,8 +40,12 @@ export function SayBox({
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
 
   const send = async () => {
+    if (!text.trim()) return
     const m = parseSay(text, stage)
-    if (!m.text || !m.stage) return
+    if ("error" in m) {
+      setNote({ ok: false, text: m.error })
+      return
+    }
     setBusy(true)
     setNote(null)
     try {
@@ -62,7 +74,10 @@ export function SayBox({
         </span>
         <Input
           value={text}
-          onChange={(e) => set(e.target.value)}
+          onChange={(e) => {
+            set(e.target.value)
+            if (note && !note.ok) setNote(null)
+          }}
           placeholder={placeholder ?? `Answer ${stage || "the crew"}, or @stage …`}
           aria-label="Answer"
           className="font-mono text-xs"

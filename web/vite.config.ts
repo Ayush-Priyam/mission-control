@@ -6,5 +6,9 @@ import { defineConfig } from "vitest/config"
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { "@": path.resolve(import.meta.dirname, "./src") } },
-  server: { proxy: { "/api": "http://127.0.0.1:4319" } },
+  server: {
+    proxy: { "/api": "http://127.0.0.1:4319" },
+    // The trace view imports ../src/trace.mjs, shared with the server, from outside web/.
+    fs: { allow: [path.resolve(import.meta.dirname, "..")] },
+  },
 })

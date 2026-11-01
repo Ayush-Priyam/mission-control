@@ -97,4 +97,13 @@ describe("crewCards", () => {
     expect(backend.status).toBe("done")
     expect(backend.chip).toBeNull()
   })
+
+  it("shows a stage the state still marks running as idle once the run is no longer live", () => {
+    const state = { stages: { backend: { status: "running" } } }
+    const events = [{ ts: "2026-11-01T09:00:00Z", type: "stage.start", stage: "backend" }]
+    const dead = crewCards(crewGraph(state, events), state, events, false)
+    expect(dead[0].status).toBe("idle")
+    const live = crewCards(crewGraph(state, events), state, events, true)
+    expect(live[0].status).toBe("running")
+  })
 })
