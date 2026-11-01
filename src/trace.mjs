@@ -1,7 +1,7 @@
 import { isSessionName } from "./format.mjs"
 
 // Turns a run's events (runs.jsonl) into a span tree for the Trace tab: run → stage → session →
-// tool call, plus markers. Pure: no node: imports, so Node tests and the browser load the same file.
+// tool call, plus markers. Pure apart from the name check imported from format.mjs.
 // Idle stretches over `breakAfterMs` (with no session open) are compressed to `breakMs`; t0/t1/t are
 // compressed ms from the first event, realMs is the real duration. Errors are failures (non-owner
 // stops, failed checks, agent-owned blocks); waits are owner stops.
