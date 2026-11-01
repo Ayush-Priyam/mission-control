@@ -29,3 +29,11 @@ test("capText truncates at 200000 and flags it", () => {
   assert.equal(r.truncated, true)
   assert.equal("truncated" in capText(Buffer.from("hi")), false)
 })
+
+test("trace.mjs and names.mjs have no node: imports", async () => {
+  const { readFileSync } = await import("node:fs")
+  for (const f of ["../src/trace.mjs", "../src/names.mjs"]) {
+    const src = readFileSync(new URL(f, import.meta.url), "utf8")
+    assert.doesNotMatch(src, /(?:from\s+|import\s*\(?\s*)["']node:/, f)
+  }
+})

@@ -210,7 +210,7 @@ test("safeSessionName accepts transcript files and rejects traversal", () => {
   assert.equal(safeSessionName("../x.md"), false)
   assert.equal(safeSessionName("a..b.md"), true)
   assert.equal(safeSessionName("a/b.md"), false)
-assert.equal(safeSessionName("s1.jsonl"), true)
+  assert.equal(safeSessionName("s1.jsonl"), true)
   assert.equal(safeSessionName("x.png"), false)
   assert.equal(safeSessionName(undefined), false)
 })

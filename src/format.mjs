@@ -13,12 +13,4 @@ export function readJsonl(path) {
   return out
 }
 
-export const isRunId = (s) => typeof s === "string" && /^[\w-]+$/.test(s)
-export const isSessionName = (s) => typeof s === "string" && /^[\w.-]+\.(md|jsonl)$/.test(s)
-
-/** Session text, cut at `max` bytes; `truncated: true` only when cut. */
-export function capText(buf, max = 200_000) {
-  const truncated = buf.length > max
-  const text = (truncated ? buf.subarray(0, max) : buf).toString("utf8")
-  return truncated ? { text, truncated: true } : { text }
-}
+export { isRunId, isSessionName, capText } from "./names.mjs"
