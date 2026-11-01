@@ -1,0 +1,12 @@
+{"ts":"2026-11-01T09:00:00Z","type":"run.start"}
+{"ts":"2026-11-01T09:01:00Z","type":"stage.start","stage":"spec"}
+{"ts":"2026-11-01T09:03:00Z","type":"progress","stage":"spec","tool":"Write","detail":"drafting acceptance criteria"}
+{"ts":"2026-11-01T09:05:00Z","type":"stage.end","stage":"spec","ok":true,"durationMs":240000}
+{"ts":"2026-11-01T09:05:30Z","type":"stage.start","stage":"backend"}
+{"ts":"2026-11-01T09:06:30Z","type":"progress","stage":"backend","tool":"Edit","detail":"greeting handler written"}
+{"ts":"2026-11-01T09:08:00Z","type":"session","stage":"backend","model":"claude-sonnet-4-5","cost":0.42,"tokens":{"input_tokens":1200,"output_tokens":450,"cache_creation_input_tokens":300,"cache_read_input_tokens":9000},"transcript":"backend-1.md"}
+{"ts":"2026-11-01T09:09:00Z","type":"stage.end","stage":"backend","ok":true,"durationMs":210000}
+{"ts":"2026-11-01T09:09:30Z","type":"stage.start","stage":"qa"}
+{"ts":"2026-11-01T09:10:00Z","type":"issue","stage":"qa","summary":"greeting not escaped","decision":{"owner":"backend","blocks":true}}
+{"ts":"2026-11-01T09:15:00Z","type":"stage.end","stage":"qa","ok":true,"durationMs":330000}
+{"ts":"2026-11-01T09:20:00Z","type":"run.end","ok":true}

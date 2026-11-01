@@ -69,6 +69,17 @@ test("extras: 404 for native, stub body, raw non-JSON type", async () => {
   })
 })
 
+test("extras id: dotted ids accepted, traversal rejected", async () => {
+  const stub = { ...native(), name: "stub", extras: { project: async (id) => ({ body: { id } }) } }
+  await withServer(stub, async (base) => {
+    assert.deepEqual(await (await fetch(`${base}/api/x/project/my.app`)).json(), { id: "my.app" })
+    for (const bad of ["..", "%2e%2e", ".", "a%2Fb", "a%5Cb"]) {
+      const r = await fetch(`${base}/api/x/project/${bad}`)
+      assert.equal(r.status, 404, bad)
+    }
+  })
+})
+
 test("actions: undeclared 404, thrown status passes through, body delivered", async () => {
   const stub = {
     ...native(),

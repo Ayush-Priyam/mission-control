@@ -64,6 +64,9 @@ async function readBody(req) {
   try { return JSON.parse(text) } catch { throw { status: 400, message: "bad json" } }
 }
 
+// Extras ids are not always run ids (project uses a repo basename such as "my.app").
+const isExtrasId = (s) => typeof s === "string" && /^[\w.-]+$/.test(s) && s !== "." && s !== ".."
+
 const decode = (s) => { try { return decodeURIComponent(s) } catch { return null } }
 
 async function api(adapter, req, res, url) {
@@ -93,7 +96,7 @@ async function api(adapter, req, res, url) {
       const key = decode(parts[1])
       const id = parts[2] === undefined ? null : decode(parts[2])
       const fn = Object.hasOwn(adapter.extras ?? {}, key) ? adapter.extras[key] : null
-      if (!fn || (parts.length === 3 && !isRunId(id))) return notFound(res)
+      if (!fn || (parts.length === 3 && !isExtrasId(id))) return notFound(res)
       const r = await fn(id, url.searchParams)
       const status = r.status ?? 200
       if (r.type && !/json/i.test(r.type)) {
