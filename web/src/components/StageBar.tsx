@@ -5,6 +5,7 @@ const COLOR: Record<string, string> = {
   running: "bg-running",
   stopped: "bg-needs-you",
   failed: "bg-failed",
+  blocked: "bg-failed",
 }
 
 export function StageBar({ stages }: { stages: RunSummary["stages"] }) {

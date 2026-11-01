@@ -20,11 +20,11 @@ Minimum:
 {
   "runId": "20261101-2114",
   "idea": "one-line title of the run",
-  "stages": { "<stage>": { "status": "pending|running|done|skipped|stopped", "rounds": 1 } }
+  "stages": { "<stage>": { "status": "pending|running|done|skipped|stopped|failed|blocked", "rounds": 1 } }
 }
 ```
 
-Key order of `stages` is the display order.
+Key order of `stages` is the display order. Statuses: `pending` (not started), `running`, `done`, `skipped`, `stopped` (halted at a `stop`), `failed` (ended with an error), `blocked` (cannot go on until something else changes, for example a failed verification). The stage bar draws `running` green, `stopped` amber, `failed` and `blocked` red, `done` grey, and anything else (including `pending`, `skipped` and unknown words) blank.
 
 Optional fields:
 
@@ -50,8 +50,12 @@ One JSON object per line. Every event has `type` and `ts` (ISO time). Core event
 | `session` | `stage`, `model`, `tokens{input_tokens,output_tokens,cache_creation_input_tokens,cache_read_input_tokens}`, `cost`, `transcript?` | LLM calls, cost, tokens, transcript link |
 | `progress` | `stage`, `tool`, `detail?` | tool-call ticks |
 | `issue` | `stage`, `summary`, `decision?{owner,blocks}` | errors, send-backs |
-| `stop` | `stage?`, `rule`, `detail` | "waiting on you" |
-| `human.input` | `stage?`, `text` | owner resumed or replied |
+| `stop` | `stage?`, `rule`, `detail` | `rule: "human"`: waiting on you; any other rule: Stopped (`<rule>`) |
+| `human.input` | `stage?`, `text` | owner resumed or replied; clears a stop |
+
+### Waiting on you
+
+A run's current stop is its last `stop` event not followed by `stage.start`, `human.input`, `run.resume` or `run.start` (a `run.end` or other bookkeeping after it does not clear it). The run waits on you when that stop has `rule: "human"`: the home badge says "Waiting on you", and the banner says "Needs you" with the adapter's sign/answer buttons. Any other rule (`budget`, `stage-failed`, …) is shown as "Stopped (<rule>)", with no buttons. The rule lives in `src/status.mjs` (`openStop`, `isWaiting`), shared by the trace, the adapters and the page.
 
 ### Extensions
 
@@ -73,11 +77,13 @@ By default the crew view draws `state.stages` left to right and adds edges from 
 
 ```json
 "graph": {
-  "nodes": { "id": { "label": "Backend", "x": 1, "y": 0, "stages": ["backend"] } },
+  "nodes": { "backend": { "label": "Backend", "x": 700, "y": 280, "stages": ["backend"] } },
   "flow": [["spec", "backend"]],
   "consult": [["qa", "backend"]]
 }
 ```
+
+`x` and `y` are in a 1000 × 560 space (origin top left), the same one the default layout uses; the map scales it to fit. `nodes` may be an id-keyed map or an array of `{ id, … }`. `stages` lists the stages a node stands for (default: its id).
 
 ## Example
 
