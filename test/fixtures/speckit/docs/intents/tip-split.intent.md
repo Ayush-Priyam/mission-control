@@ -1,5 +1,4 @@
 ---
-slug: tip-split
 status: "approved"
 ---
 # Intent: Split a restaurant bill and tip fairly between diners

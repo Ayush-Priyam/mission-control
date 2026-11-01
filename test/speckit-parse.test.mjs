@@ -14,7 +14,7 @@ test("STAGES order", () => {
 });
 
 test("parseFrontmatter reads flat scalars and strips quotes", () => {
-  assert.deepEqual(parseFrontmatter(fx("docs/intents/tip-split.md")), { slug: "tip-split", status: "approved" });
+  assert.deepEqual(parseFrontmatter(fx("docs/intents/tip-split.intent.md")), { status: "approved" });
   assert.deepEqual(parseFrontmatter("---\nurl: http://x:80\n: nokey\nnocolon\n---\nafter: no"), { url: "http://x:80" });
   assert.deepEqual(parseFrontmatter("# no fence\nslug: a"), {});
   assert.deepEqual(parseFrontmatter("--- \nslug: a\n---"), { slug: "a" });
@@ -30,14 +30,14 @@ test("parseTasks counts checkboxes", () => {
 });
 
 test("extractGoal", () => {
-  assert.equal(extractGoal(fx("docs/intents/tip-split.md")), "Split a restaurant bill and tip fairly between diners");
+  assert.equal(extractGoal(fx("docs/intents/tip-split.intent.md")), "Split a restaurant bill and tip fairly between diners");
   assert.equal(extractGoal("# Intent:   padded   \n"), "padded");
   assert.equal(extractGoal("## Intent: not h1"), "");
   assert.equal(extractGoal(""), "");
 });
 
 test("extractSection returns bullets and stops at next ##", () => {
-  const t = fx("docs/intents/tip-split.md");
+  const t = fx("docs/intents/tip-split.intent.md");
   assert.deepEqual(extractSection(t, "Constraints"),
     ["Amounts are integer cents, never floats", "Rounding remainder goes to the first diner"]);
   assert.deepEqual(extractSection(t, "Failure conditions"),
@@ -45,7 +45,7 @@ test("extractSection returns bullets and stops at next ##", () => {
   assert.deepEqual(extractSection(t, "Out of scope"), ["Currency conversion"]);
   assert.deepEqual(extractSection(t, "Missing"), []);
   assert.deepEqual(extractSection("## A\n- one\n## B\n- two\n", "A"), ["one"]);
-  assert.deepEqual(extractSection(fx("docs/intents/tip-split.expectations.md"), "Edge / negative scenarios"),
+  assert.deepEqual(extractSection(fx("docs/expectations/tip-split.expectations.md"), "Edge / negative scenarios"),
     ["Zero diners is rejected with an error", "A 1 cent bill across 3 diners gives 1, 0, 0"]);
 });
 
