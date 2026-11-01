@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { cpSync, mkdtempSync, writeFileSync } from "node:fs"
+import { cpSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -57,4 +57,24 @@ test("session symlink outside the sessions dir is refused", async () => {
 
 test("missing runs dir lists nothing", async () => {
   assert.deepEqual(await create({ runsDir: "/nonexistent" }).listRuns(), [])
+})
+
+test("tokens extra: run with repo and no session events reads transcripts", async () => {
+  const home = mkdtempSync(join(tmpdir(), "mc-home-"))
+  const repo = join(mkdtempSync(join(tmpdir(), "mc-repo-")), "proj.x")
+  const proj = join(home, ".claude", "projects", repo.replaceAll("/", "-").replaceAll(".", "-"))
+  mkdirSync(proj, { recursive: true })
+  const msg = (o) => JSON.stringify({ sessionId: "s1", timestamp: "2026-11-01T09:00:00Z", message: { usage: o } })
+  writeFileSync(join(proj, "s1.jsonl"), [msg({ input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 2, cache_read_input_tokens: 100 }), msg({ input_tokens: 1, output_tokens: 1 })].join("\n"))
+  const runs = mkdtempSync(join(tmpdir(), "mc-runs-"))
+  for (const [id, withSession] of [["r1", false], ["r2", true], ["r3", null]]) {
+    mkdirSync(join(runs, id))
+    writeFileSync(join(runs, id, "state.json"), JSON.stringify(withSession === null ? {} : { repo }))
+    if (withSession) writeFileSync(join(runs, id, "runs.jsonl"), '{"ts":"2026-11-01T09:00:00Z","type":"session","stage":"a"}\n')
+  }
+  const a = create({ runsDir: runs, home })
+  const r = await a.extras.tokens("r1")
+  assert.deepEqual(r.body.total, { input: 11, output: 6, cache_creation: 2, cache_read: 100, billable: 19 })
+  assert.equal((await a.extras.tokens("r2")).status, 404)
+  assert.equal((await a.extras.tokens("r3")).status, 404)
 })

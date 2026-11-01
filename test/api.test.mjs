@@ -3,6 +3,7 @@ import assert from "node:assert/strict"
 import { mkdtempSync, writeFileSync } from "node:fs"
 import { createServer as net } from "node:net"
 import { spawn } from "node:child_process"
+import { get as httpGet } from "node:http"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -90,7 +91,6 @@ test("actions: undeclared 404, thrown status passes through, body delivered", as
 })
 
 test("crew: all runs, repo filter, fixtures grid", async () => {
-  // The synthetic fixtures carry no crew-bearing events, so crew.backend comes from a stub.
   const ev = [{ type: "stage.start", stage: "backend" }, { type: "session", stage: "backend", cost: 1, tokens: { output_tokens: 5 } }]
   const stub = {
     name: "stub",
@@ -107,6 +107,15 @@ test("crew: all runs, repo filter, fixtures grid", async () => {
     assert.deepEqual(Object.keys(two.grid), ["b"])
   })
   await withServer(native(), async (base) => {
+    const real = await (await fetch(`${base}/api/crew`)).json()
+    assert.equal(real.crew.backend.sessions, 1)
+    assert.equal(real.crew.backend.tokens, 1950)
+    assert.equal(real.crew.backend.cost, 0.42)
+    assert.deepEqual(real.crew.backend.models, ["claude-sonnet-4-5"])
+    assert.equal(real.crew.backend.rounds, 2)
+    assert.equal(real.crew.qa.raised, 1)
+    assert.equal(real.crew.qa.stops, 1)
+    assert.equal(real.bounces["qa>backend"], 1)
     const one = await (await fetch(`${base}/api/crew?repo=greeter`)).json()
     assert.deepEqual(Object.keys(one.grid), ["20261101-0900-done"])
     assert.equal(one.grid["20261101-0900-done"].build.status, "done")
@@ -133,6 +142,32 @@ test("static path tricks never leave dist", async () => {
   })
 })
 
+test("raw encoded dot-dot requests never return package.json", async () => {
+  await withServer(native(), async (base) => {
+    const { port } = new URL(base)
+    for (const path of ["/..%2f..%2fpackage.json", "/%2e%2e/%2e%2e/package.json"]) {
+      const { status, text } = await new Promise((done, fail) => {
+        httpGet({ host: "127.0.0.1", port, path }, (res) => {
+          let t = ""
+          res.on("data", (d) => { t += d })
+          res.on("end", () => done({ status: res.statusCode, text: t }))
+        }).on("error", fail)
+      })
+      assert.notEqual(status, 200, path)
+      assert.doesNotMatch(text, /"name": "mission-control"/, path)
+    }
+  })
+})
+
+test("actions: non-object bodies become {}, undefined result becomes {}", async () => {
+  const stub = { ...native(), actions: { say: async (id, body) => (Array.isArray(body) || body === null ? { bad: true } : body.keep ? undefined : { body }) } }
+  const post = (base, text) => fetch(`${base}/api/run/20261101-0900-done/action/say`, { method: "POST", body: text })
+  await withServer(stub, async (base) => {
+    for (const t of ["null", "[1,2]", "7"]) assert.deepEqual(await (await post(base, t)).json(), { body: {} }, t)
+    assert.deepEqual(await (await post(base, '{"keep":1}')).json(), {})
+  })
+})
+
 const run = (args) =>
   new Promise((done) => {
     const p = spawn("node", [join(root, "bin/mission-control.mjs"), ...args], { cwd: root })
@@ -140,8 +175,6 @@ const run = (args) =>
     p.stdout.on("data", (d) => { out += d })
     p.stderr.on("data", (d) => { err += d })
     p.on("exit", (code) => done({ code, out, err }))
-    p.kill = p.kill.bind(p)
-    run.last = p
   })
 
 test("port in use", async () => {
@@ -195,4 +228,12 @@ test("loadAdapter --adapter injects runsDir, createNative and opts", async () =>
   assert.equal(a.o.createNative({ runsDir }).name, "native")
 })
 
-test.todo("loadAdapter: bare path to test/fixtures/speckit selects the speckit adapter (Task 7)")
+test("loadAdapter: bare path to test/fixtures/speckit selects the speckit adapter", async () => {
+  assert.equal((await loadAdapter(["test/fixtures/speckit"], root)).name, "speckit")
+})
+
+test("loadAdapter --adapter without --runs defaults runsDir to cwd/runs", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "mc-ext2-"))
+  writeFileSync(join(dir, "ext.mjs"), "export default (o) => ({ name: 'ext', o })")
+  assert.equal((await loadAdapter(["--adapter", "ext.mjs"], dir)).o.runsDir, join(dir, "runs"))
+})

@@ -1,12 +1,14 @@
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs"
+import { homedir } from "node:os"
 import { join, sep } from "node:path"
 import { readJsonl, isRunId, isSessionName, capText } from "../format.mjs"
+import { transcriptTokens } from "./speckit/index.mjs"
 
 const LIVE_WINDOW_MS = 10 * 60 * 1000
 const time = (ts) => (typeof ts === "number" ? ts : Date.parse(ts))
 
 // Native adapter: reads <runsDir>/<id>/{state.json,runs.jsonl,sessions/}. Never writes.
-export default function create({ runsDir, now = Date.now }) {
+export default function create({ runsDir, now = Date.now, home = homedir() }) {
   const dirOf = (id) => {
     if (!isRunId(id)) return null
     const d = join(runsDir, id)
@@ -67,6 +69,17 @@ export default function create({ runsDir, now = Date.now }) {
         if (!file.startsWith(root + sep)) return null
         return capText(readFileSync(file))
       } catch { return null }
+    },
+    extras: {
+      // Only for runs with a repo and no session events of their own (spec 7.7).
+      async tokens(id) {
+        const d = dirOf(id)
+        const repo = d && readState(d).repo
+        if (!repo || readJsonl(join(d, "runs.jsonl")).some((e) => e.type === "session")) {
+          return { status: 404, body: { error: "no transcript tokens for this run" } }
+        }
+        return { body: transcriptTokens(repo, home) }
+      },
     },
   }
 }

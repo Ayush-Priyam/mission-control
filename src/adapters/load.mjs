@@ -1,4 +1,4 @@
-import { existsSync, statSync } from "node:fs"
+import { statSync } from "node:fs"
 import { resolve, join } from "node:path"
 import { pathToFileURL } from "node:url"
 import createNative from "./native.mjs"
@@ -41,7 +41,7 @@ export async function loadAdapter(argv, cwd = process.cwd()) {
   if (a.adapter) {
     const mod = await import(pathToFileURL(resolve(cwd, a.adapter)).href)
     const opts = { ...a.opts, createNative }
-    if (a.runs) opts.runsDir = resolve(cwd, a.runs)
+    opts.runsDir = resolve(cwd, a.runs ?? "runs")
     return mod.default(opts)
   }
   if (a.runs) return native(resolve(cwd, a.runs))

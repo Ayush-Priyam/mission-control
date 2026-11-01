@@ -106,8 +106,9 @@ async function api(adapter, req, res, url) {
       const id = decode(parts[1]), name = decode(parts[3])
       const fn = Object.hasOwn(adapter.actions ?? {}, name) ? adapter.actions[name] : null
       if (!fn || !isRunId(id)) return notFound(res)
-      const body = await readBody(req)
-      return json(res, await fn(id, body))
+      const raw = await readBody(req)
+      const body = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}
+      return json(res, (await fn(id, body)) ?? {})
     }
   } catch (e) {
     if (Number.isInteger(e?.status)) return json(res, { error: e.message }, e.status)
