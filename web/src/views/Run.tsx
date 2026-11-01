@@ -7,16 +7,19 @@ import { CrewMap } from "@/components/CrewMap"
 import { StageBar } from "@/components/StageBar"
 import { Thread } from "@/components/Thread"
 import { YouBanner } from "@/components/YouBanner"
+import Board from "@/views/Board"
+import Qa from "@/views/Qa"
+import DiffView from "@/views/Diff"
+import Docs from "@/views/Docs"
 import Trace from "@/views/Trace"
 import { RunStatusBadge } from "@/views/Home"
 import { useCapabilities, useRun } from "@/lib/api"
+import { extraTabs } from "@/lib/extras"
 import { crewCards, crewGraph, currentStop, type CrewCard } from "@/lib/graph"
 import { toHash, type Tab } from "@/lib/route"
 
 type Ev = Record<string, any>
 
-/** Tabs this view draws; the rest arrive with their own tasks and fall back to the map. */
-const BUILT: Tab[] = ["chat", "map", "trace"]
 
 function footer(events: Ev[], cards: CrewCard[]) {
   let cost = 0, tokens = 0
@@ -59,7 +62,10 @@ export default function Run({ id, tab }: { id: string; tab: Tab }) {
   const { state, events, graph, stop, cards } = view
   const actions = caps.data?.actions ?? []
   const idea = String(state.idea ?? "")
-  const current = BUILT.includes(tab) ? tab : "map"
+  const has = extraTabs(caps.data?.extras ?? [], events)
+  // A tab whose extra the adapter lacks falls back to the map.
+  const shown: Tab[] = ["chat", "map", ...(has.board ? ["board" as const] : []), ...(has.qa ? ["qa" as const] : []), ...(has.diff ? ["diff" as const] : []), "trace", ...(has.docs ? ["docs" as const] : [])]
+  const current = shown.includes(tab) ? tab : "map"
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-4">
@@ -76,7 +82,11 @@ export default function Run({ id, tab }: { id: string; tab: Tab }) {
           <TabsList>
             <TabsTrigger value="chat">Chat</TabsTrigger>
             <TabsTrigger value="map">Map</TabsTrigger>
+            {has.board && <TabsTrigger value="board">Board</TabsTrigger>}
+            {has.qa && <TabsTrigger value="qa">QA</TabsTrigger>}
+            {has.diff && <TabsTrigger value="diff">Diff</TabsTrigger>}
             <TabsTrigger value="trace">Trace</TabsTrigger>
+            {has.docs && <TabsTrigger value="docs">Docs</TabsTrigger>}
           </TabsList>
           <TabsContent value="chat" className="pt-3">
             <Thread runId={id} idea={idea} events={events} stop={stop} cards={cards} canSay={actions.includes("say")} />
@@ -84,6 +94,10 @@ export default function Run({ id, tab }: { id: string; tab: Tab }) {
           <TabsContent value="map" className="pt-3">
             <CrewMap runId={id} graph={graph} cards={cards} events={events} />
           </TabsContent>
+          {has.board && <TabsContent value="board" className="pt-3"><Board runId={id} cards={cards} /></TabsContent>}
+          {has.qa && <TabsContent value="qa" className="pt-3"><Qa events={events} /></TabsContent>}
+          {has.diff && <TabsContent value="diff" className="pt-3"><DiffView runId={id} /></TabsContent>}
+          {has.docs && <TabsContent value="docs" className="pt-3"><Docs runId={id} state={state} /></TabsContent>}
           <TabsContent value="trace" className="pt-3">
             <Trace runId={id} events={events} live={data.live} idea={idea} />
           </TabsContent>

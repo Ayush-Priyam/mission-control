@@ -87,7 +87,7 @@ function flatten(spans: Span[], open: Map<string, boolean>, approx: Set<string>,
   const rows: Row[] = []
   const walk = (list: Span[], pk: string, depth: number, ax: boolean) =>
     list.forEach((s, i) => {
-      const key = s.kind === "group" ? `g:${s.name}` : s.kind === "stage" ? `st:${s.name}:${s.t0}` : s.kind === "session" ? `${pk}/s${s.t0}` : `${pk}/t${i}`
+      const key = s.kind === "group" ? `g:${s.name}` : s.kind === "stage" ? `st:${s.name}:${s.t0}` : s.kind === "session" ? `${pk}/s${i}:${s.t0}` : `${pk}/t${i}`
       const kids = s.children.length
       const shut = kids > 0 && (open.has(key) ? !open.get(key) : defaultShut(s))
       const a = depth === 0 ? s.kind === "stage" && approx.has(s.name) : ax
@@ -141,10 +141,10 @@ function Pill({ status }: { status: string }) {
   )
 }
 
-function Tip({ tip, children, className, style }: { tip: ReactNode; children: ReactNode; className?: string; style?: CSSProperties }) {
+function Tip({ tip, children, className, style, bar }: { tip: ReactNode; children: ReactNode; className?: string; style?: CSSProperties; bar?: boolean }) {
   return (
     <Tooltip>
-      <TooltipTrigger render={<span className={className} style={style} />}>{children}</TooltipTrigger>
+      <TooltipTrigger render={<span className={className} style={style} data-bar={bar ? "" : undefined} />}>{children}</TooltipTrigger>
       <TooltipContent>{tip}</TooltipContent>
     </Tooltip>
   )
@@ -244,7 +244,6 @@ function Label({ r, a, b }: { r: Row; a: number; b: number }) {
       style={style}
     >
       {bits.join(" · ")}
-      {r.approx && r.root && <span className="text-muted-foreground/80 italic">approx. from file times</span>}
       {s.slowest && <b className="rounded border border-needs-you/40 bg-needs-you/14 px-1 text-[9px] leading-[14px] font-bold tracking-wider text-needs-you">SLOWEST</b>}
       {r.run && <i className="size-[9px] animate-spin rounded-full border-[1.5px] border-consult/25 border-t-consult motion-reduce:animate-none" />}
     </span>
@@ -473,7 +472,7 @@ export default function Trace({ runId, events, live, idea }: { runId: string; ev
             </div>
             {/* break hatches under the rows, playhead over them */}
             <div className="pointer-events-none absolute top-[30px] right-[var(--padr)] bottom-0 left-[calc(var(--namew)+12px)] z-0">{breaks}</div>
-            <div className="relative z-[1]">
+            <div className="relative">
               {rows.length === 0 ? (
                 <div className="px-4 py-14 text-center font-mono text-[13px] text-muted-foreground">No spans yet. Stages, sessions and tool calls show here as the run reaches them.</div>
               ) : (
@@ -515,9 +514,15 @@ export default function Trace({ runId, events, live, idea }: { runId: string; ev
                         {s.error && <span className="flex-none text-[11px] text-failed" aria-label="error">⚠</span>}
                       </div>
                       <div className="relative mr-[var(--padr)] ml-3">
-                        <div data-bar className={barClass(r)} style={{ left: `${a * 100}%`, width: `${Math.max(0, b - a) * 100}%` }}>
-                          {r.shut && <Mini s={s} />}
-                        </div>
+                        {r.approx ? (
+                          <Tip bar tip="approx. from file times" className={barClass(r)} style={{ left: `${a * 100}%`, width: `${Math.max(0, b - a) * 100}%` }}>
+                            {r.shut && <Mini s={s} />}
+                          </Tip>
+                        ) : (
+                          <div data-bar className={barClass(r)} style={{ left: `${a * 100}%`, width: `${Math.max(0, b - a) * 100}%` }}>
+                            {r.shut && <Mini s={s} />}
+                          </div>
+                        )}
                         <Label r={r} a={a} b={b} />
                       </div>
                     </div>

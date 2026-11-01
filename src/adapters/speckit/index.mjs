@@ -261,6 +261,7 @@ export default function create({ repo, home = homedir(), now = Date.now }) {
           runId: f.id, idea: extractGoal(f.intentText), repo, harness: "spec-kit-compound",
           slug: f.slug, status: f.fm.status ?? "", created: f.fm.created ?? "", specDir: f.specRel,
           lane: deriveLane(f.stages), stages: summaryStages(f), detail: f.stages, files: f.stageFiles,
+          compound: f.storeFiles,
         },
         events: eventsOf(f),
         live: liveOf(f),

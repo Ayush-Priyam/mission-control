@@ -49,3 +49,17 @@ describe("sessionFile", () => {
     expect(sessionFile(undefined)).toBeNull()
   })
 })
+
+describe("fixture transcript", () => {
+  it("renders the native fixture's jsonl session as four messages with the Read tool call", async () => {
+    const { readFileSync } = await import("node:fs")
+    const { join } = await import("node:path")
+    const text = readFileSync(join(import.meta.dirname, "../../../test/fixtures/runs/20261101-0930-stopped/sessions/backend-2.jsonl"), "utf8")
+    const r = renderable("backend-2.jsonl", text)
+    expect(r.kind).toBe("messages")
+    if (r.kind !== "messages") return
+    expect(r.items.map((m) => m.role)).toEqual(["user", "assistant", "tool", "assistant"])
+    expect(r.items[1]).toMatchObject({ tool: "Read", text: "I will read the router first." })
+    expect(r.items[3].text).toContain("GET /farewell")
+  })
+})

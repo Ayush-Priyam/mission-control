@@ -3,6 +3,7 @@
 {"ts":"2026-11-01T09:33:00Z","type":"stage.end","stage":"spec"}
 {"ts":"2026-11-01T09:34:00Z","type":"stage.start","stage":"backend"}
 {"ts":"2026-11-01T09:36:00Z","type":"progress","stage":"backend","detail":"farewell route added"}
+{"ts":"2026-11-01T09:37:00Z","type":"session","stage":"backend","model":"claude-sonnet-4-5","cost":0.11,"tokens":{"input_tokens":400,"output_tokens":150},"transcript":"backend-2.jsonl"}
 {"ts":"2026-11-01T09:38:00Z","type":"stage.end","stage":"backend"}
 {"ts":"2026-11-01T09:38:30Z","type":"stage.start","stage":"qa"}
 {"ts":"2026-11-01T09:40:00Z","type":"stop","stage":"qa","rule":"human","detail":"needs a human decision on the farewell copy"}

@@ -46,6 +46,17 @@ test("session read is confined", async () => {
   assert.equal(await a.getSession("nope", "backend-1.md"), null)
 })
 
+test("a jsonl transcript named by a session event is readable", async () => {
+  const a = create({ runsDir })
+  const run = await a.getRun("20261101-0930-stopped")
+  const ev = run.events.find((e) => e.type === "session")
+  assert.equal(ev.transcript, "backend-2.jsonl")
+  const s = await a.getSession("20261101-0930-stopped", ev.transcript)
+  const lines = s.text.trim().split("\n").map((l) => JSON.parse(l))
+  assert.equal(lines.length, 4)
+  assert.equal(lines[1].message.content[1].name, "Read")
+})
+
 test("session symlink outside the sessions dir is refused", async () => {
   const tmp = mkdtempSync(join(tmpdir(), "mc-native-"))
   cpSync(runsDir, tmp, { recursive: true })

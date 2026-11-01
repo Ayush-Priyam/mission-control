@@ -108,9 +108,9 @@ test("crew: all runs, repo filter, fixtures grid", async () => {
   })
   await withServer(native(), async (base) => {
     const real = await (await fetch(`${base}/api/crew`)).json()
-    assert.equal(real.crew.backend.sessions, 1)
-    assert.equal(real.crew.backend.tokens, 1950)
-    assert.equal(real.crew.backend.cost, 0.42)
+    assert.equal(real.crew.backend.sessions, 2)
+    assert.equal(real.crew.backend.tokens, 2500)
+    assert.equal(real.crew.backend.cost, 0.53)
     assert.deepEqual(real.crew.backend.models, ["claude-sonnet-4-5"])
     assert.equal(real.crew.backend.rounds, 2)
     assert.equal(real.crew.qa.raised, 1)

@@ -3,6 +3,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
 import { SayBox } from "@/components/SayBox"
 import { StageLog } from "@/components/StageLog"
+import { Workbench } from "@/components/Workbench"
 import { SessionSheet } from "@/components/SessionSheet"
 import { useCapabilities, useRun } from "@/lib/api"
 import { short, stageEvents } from "@/lib/events"
@@ -25,7 +26,7 @@ export default function Agent({ id, stage }: { id: string; stage: string }) {
     const graph = crewGraph(state, events)
     const node = nodeOf(graph, stage)
     const card = node ? crewCards({ ...graph, nodes: [node] }, state, events, data.live, currentStop(state, events))[0] : null
-    return { log: stageEvents(events, [stage]), card }
+    return { log: stageEvents(events, [stage]), card, events, agent: node?.id ?? stage }
   }, [data, stage])
 
   if (run.loading && !data) return <Skeleton className="h-64 w-full" />
@@ -56,6 +57,7 @@ export default function Agent({ id, stage }: { id: string; stage: string }) {
       <section aria-label="Log" className="rounded-xl border bg-card p-3">
         <StageLog events={view.log} empty={`No events for ${stage} yet.`} onSession={setSession} />
       </section>
+      {(caps.data?.extras ?? []).includes("artifacts") && <Workbench runId={id} agent={view.agent} events={view.events} />}
       {queue.length > 0 && (
         <section aria-label="Sent" className="flex flex-col gap-1 rounded-xl border p-3 font-mono text-xs">
           <h2 className="text-[11px] tracking-widest text-muted-foreground">SENT</h2>
