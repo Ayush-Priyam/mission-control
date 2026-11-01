@@ -1,6 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, statSync, utimesSync, writeFileSync } from "node:fs"
+import { execFileSync } from "node:child_process"
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, utimesSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -66,6 +67,18 @@ test("stage events follow file mtimes", async () => {
   assert.deepEqual(ts, [...ts].sort())
 })
 
+const PINS = {
+  "docs/intents/tip-split.intent.md": "2026-11-01T08:00:00Z",
+  "docs/expectations/tip-split.expectations.md": "2026-11-01T08:10:00Z",
+  "specs/001-tip-split/spec.md": "2026-11-01T08:20:00Z",
+  "specs/001-tip-split/plan.md": "2026-11-01T08:30:00Z",
+  "specs/001-tip-split/tasks.md": "2026-11-01T08:40:00Z",
+  "docs/intents/tip-split.planverify.md": "2026-11-01T08:50:00Z",
+  "docs/intents/tip-split.intentguard.md": "2026-11-01T09:00:00Z",
+  "docs/compound/patterns/one.md": "2026-11-01T07:00:00Z",
+}
+const pinAll = (repo) => { for (const [p, t] of Object.entries(PINS)) at(join(repo, p), t) }
+
 function transcriptHome(repo) {
   const home = emptyHome()
   const proj = join(home, ".claude", "projects", repo.replaceAll("/", "-").replaceAll(".", "-"))
@@ -81,6 +94,7 @@ function transcriptHome(repo) {
 
 test("tokens from transcripts under a fake home", async () => {
   const repo = tmpRepo()
+  pinAll(repo)
   const home = transcriptHome(repo)
   const a = create({ repo, home })
   const { body } = await a.extras.tokens("tip-split", new URLSearchParams())
@@ -92,7 +106,7 @@ test("tokens from transcripts under a fake home", async () => {
   assert.equal(s.transcript, "s1.jsonl")
   assert.equal(s.model, "claude-sonnet-4-5")
   assert.equal(s.tokens.input_tokens, 110)
-  assert.equal(s.stage, "implement")
+  assert.equal(s.stage, "plan")
   assert.match((await a.getSession("tip-split", "s1.jsonl")).text, /half written/)
   assert.equal(await a.getSession("tip-split", "../s1.jsonl"), null)
   const none = await create({ repo, home: emptyHome() }).extras.tokens("tip-split", new URLSearchParams())
@@ -129,12 +143,81 @@ test("drift, tasks and diff extras", async () => {
   assert.equal(t.total, 5)
   assert.equal(t.done, 3)
   assert.equal((await a.extras.drift("nope")).status, 404)
-  const diff = (await a.extras.diff(null, new URLSearchParams())).body
-  assert.equal(diff.count, 0)
+})
+
+const sh = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8", env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" } })
+function gitRepo() {
+  const d = mkdtempSync(join(tmpdir(), "mc-git-"))
+  sh(d, "init", "-q", "-b", "main")
+  sh(d, "config", "user.email", "t@example.com")
+  sh(d, "config", "user.name", "t")
+  writeFileSync(join(d, "a.txt"), "one\ntwo\n")
+  sh(d, "add", "."); sh(d, "commit", "-q", "-m", "init")
+  writeFileSync(join(d, "a.txt"), "one\nTWO\nthree\n")
+  writeFileSync(join(d, "new.txt"), "x\ny\n")
+  mkdirSync(join(d, "specs")); writeFileSync(join(d, "specs", "ignored.md"), "z")
+  return d
+}
+
+test("diff extra on a temp git repo", async () => {
+  const repo = gitRepo()
+  const a = create({ repo, home: emptyHome() })
+  const before = sh(repo, "status", "--porcelain", "-uall")
+  const d = (await a.extras.diff(null, new URLSearchParams())).body
+  assert.equal(d.base.length, 9)
+  assert.deepEqual(d.files, [
+    { path: "a.txt", add: 2, del: 1, status: "M" },
+    { path: "new.txt", add: 0, del: 0, status: "A" },
+  ])
+  assert.equal(d.count, 2)
+  assert.equal(d.additions, 2)
+  assert.equal(d.deletions, 1)
+  assert.equal(d.text, undefined)
+  const f = (await a.extras.diff(null, new URLSearchParams({ full: "1" }))).body
+  assert.match(f.text, /\+TWO/)
+  assert.match(f.text, /diff --git a\/new.txt b\/new.txt/)
+  assert.match(f.text, /\+x\n\+y/)
+  assert.doesNotMatch(f.text, /ignored/)
+  assert.equal(sh(repo, "status", "--porcelain", "-uall"), before)
+})
+
+test("live is scoped to the feature's own files", async () => {
+  const repo = tmpRepo()
+  pinAll(repo)
+  const T = Date.parse("2026-11-01T09:00:00Z")
+  const live = async (now) => (await create({ repo, home: emptyHome(), now: () => now }).listRuns())[0].live
+  assert.equal(await live(T + 5 * 60_000), true)
+  assert.equal(await live(T + 11 * 60_000), false)
+  // touching only the shared compound store does not light the feature
+  at(join(repo, "docs/compound/patterns/one.md"), "2026-11-01T12:00:00Z")
+  assert.equal(await live(Date.parse("2026-11-01T12:01:00Z")), false)
+  assert.equal((await create({ repo, home: emptyHome(), now: () => T + 5 * 60_000 }).getRun("tip-split")).live, true)
+})
+
+test("a transcript attaches only to the feature whose window contains it", async () => {
+  const repo = tmpRepo()
+  pinAll(repo)
+  mkdirSync(join(repo, "specs/002-other"))
+  writeFileSync(join(repo, "docs/intents/other.intent.md"), "# Intent: Other thing\n")
+  writeFileSync(join(repo, "specs/002-other/spec.md"), "# Spec\n")
+  at(join(repo, "docs/intents/other.intent.md"), "2026-11-02T08:00:00Z")
+  at(join(repo, "specs/002-other/spec.md"), "2026-11-02T08:10:00Z")
+  const home = transcriptHome(repo) // timestamps 2026-11-01T08:25 -> inside tip-split's plan window
+  const a = create({ repo, home })
+  const sessions = async (id) => (await a.getRun(id)).events.filter((e) => e.type === "session")
+  assert.equal((await sessions("tip-split")).length, 1)
+  assert.equal((await sessions("other")).length, 0)
+  // still counted at repo level
+  assert.equal((await a.extras.tokens(null, new URLSearchParams())).body.total.input, 110)
+  // a transcript outside every window attaches to no run
+  for (const [f, t] of [["specs/001-tip-split/plan.md", "08:21"], ["specs/001-tip-split/tasks.md", "08:22"],
+    ["docs/intents/tip-split.planverify.md", "08:23"], ["docs/intents/tip-split.intentguard.md", "08:24"]]) at(join(repo, f), `2026-11-01T${t}:00Z`)
+  assert.equal((await sessions("tip-split")).length, 0)
 })
 
 test("repo is untouched", async () => {
   const repo = tmpRepo()
+  pinAll(repo)
   const home = transcriptHome(repo)
   const snap = () => {
     const out = {}
@@ -160,4 +243,11 @@ test("repo is untouched", async () => {
   await a.extras.diff(null, q({ full: "1" }))
   await a.extras.tasks("tip-split")
   assert.deepEqual(snap(), before)
+  // and a real git repo: status identical before/after every method
+  const g = gitRepo()
+  const ga = create({ repo: g, home: emptyHome() })
+  const st = sh(g, "status", "--porcelain", "-uall"), idx = readFileSync(join(g, ".git", "index"))
+  await ga.listRuns(); await ga.extras.diff(null, q()); await ga.extras.diff(null, q({ full: "1" })); await ga.extras.tokens(null, q())
+  assert.equal(sh(g, "status", "--porcelain", "-uall"), st)
+  assert.deepEqual(readFileSync(join(g, ".git", "index")), idx)
 })

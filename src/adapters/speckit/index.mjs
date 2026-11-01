@@ -3,6 +3,9 @@ import { homedir } from "node:os"
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { spawnSync } from "node:child_process"
 import { capText } from "../../names.mjs"
+import { projectSlug, scanTranscripts, transcriptTokens } from "../transcripts.mjs"
+
+export { transcriptTokens, projectSlug }
 import {
   STAGES, parseFrontmatter, parseTasks, extractGoal, parseIntentguard, parsePlanverify,
   matchSpecDir, computeStates, deriveLane,
@@ -15,66 +18,6 @@ const isFile = (p) => { try { return statSync(p).isFile() } catch { return false
 const isDir = (p) => { try { return statSync(p).isDirectory() } catch { return false } }
 const mtimeMs = (p) => { try { return statSync(p).mtimeMs } catch { return 0 } }
 const iso = (ms) => new Date(ms).toISOString()
-
-/** Claude Code project-dir slug: absolute path with separators and dots replaced by '-'. */
-export function projectSlug(repo) {
-  return resolve(repo).replaceAll(sep, "-").replaceAll(".", "-")
-}
-
-const zero = () => ({ input: 0, output: 0, cache_creation: 0, cache_read: 0, billable: 0 })
-function addUsage(acc, u) {
-  const inp = u.input_tokens || 0, out = u.output_tokens || 0
-  const cc = u.cache_creation_input_tokens || 0, cr = u.cache_read_input_tokens || 0
-  acc.input += inp; acc.output += out; acc.cache_creation += cc; acc.cache_read += cr
-  acc.billable += inp + out + cc // cache reads are excluded from billable
-}
-
-/** Read every transcript under ~/.claude/projects/<slug>/*.jsonl (read-only). */
-function scanTranscripts(repo, home) {
-  const dir = join(home, ".claude", "projects", projectSlug(repo))
-  if (!isDir(dir)) return { dir, files: [] }
-  const files = []
-  for (const name of readdirSync(dir).filter((n) => n.endsWith(".jsonl")).sort()) {
-    const f = { name, tokens: zero(), first: "", last: "", model: undefined, sids: new Map() }
-    for (const line of read(join(dir, name)).split("\n")) {
-      let o
-      try { o = JSON.parse(line) } catch { continue }
-      if (!o || typeof o !== "object") continue
-      const u = o.message?.usage ?? o.usage
-      if (!u || typeof u !== "object" || Array.isArray(u)) continue
-      const ts = typeof o.timestamp === "string" ? o.timestamp : ""
-      const sid = o.sessionId ?? "unknown"
-      const s = f.sids.get(sid) ?? { session: sid, first: ts, last: ts, tokens: zero() }
-      f.sids.set(sid, s)
-      if (ts && (!s.first || ts < s.first)) s.first = ts
-      if (ts && ts > s.last) s.last = ts
-      addUsage(s.tokens, u)
-      addUsage(f.tokens, u)
-      if (ts && (!f.first || ts < f.first)) f.first = ts
-      if (ts && ts > f.last) f.last = ts
-      f.model ??= o.message?.model
-    }
-    files.push(f)
-  }
-  return { dir, files }
-}
-
-/** Token totals for a repo's transcripts, as dashboard.py shows them (scan_tokens). */
-export function transcriptTokens(repo, home = homedir()) {
-  const { dir, files } = scanTranscripts(repo, home)
-  if (!isDir(dir)) return { available: false, total: zero(), sessions: [] }
-  const total = zero(), sessions = new Map()
-  for (const f of files) {
-    for (const s of f.sids.values()) {
-      const acc = sessions.get(s.session) ?? { session: s.session, first: s.first, last: s.last, tokens: zero() }
-      sessions.set(s.session, acc)
-      if (s.first && (!acc.first || s.first < acc.first)) acc.first = s.first
-      if (s.last > acc.last) acc.last = s.last
-      for (const k of Object.keys(acc.tokens)) { acc.tokens[k] += s.tokens[k]; total[k] += s.tokens[k] }
-    }
-  }
-  return { available: true, total, sessions: [...sessions.values()].sort((a, b) => (a.first < b.first ? -1 : a.first > b.first ? 1 : 0)) }
-}
 
 // ---- git (read-only) ----
 const DIFF_EXCLUDE = [
@@ -230,15 +173,22 @@ export default function create({ repo, home = homedir(), now = Date.now }) {
       if (has(rel.intentguard)) stageFiles.intentguard = rel.intentguard
       if (storeNewest) stageFiles.writeback = storeNewest
 
-      return { slug, id: runIdOf(slug), intentText, fm, specRel, stages, stageFiles, tasks: counts, storeFiles }
+      // Files this feature owns (the repo-wide compound store is excluded).
+      const own = Object.entries(stageFiles).filter(([k]) => k !== "writeback").map(([, v]) => v)
+      const walk = (d) => {
+        let names = []
+        try { names = readdirSync(join(repo, d), { withFileTypes: true }) } catch { return }
+        for (const e of names) e.isDirectory() ? walk(`${d}/${e.name}`) : own.push(`${d}/${e.name}`)
+      }
+      if (specRel) walk(specRel)
+      return { slug, id: runIdOf(slug), intentText, fm, specRel, stages, stageFiles, ownFiles: own, tasks: counts, storeFiles }
     })
   }
 
   const find = (id) => scan().find((f) => f.id === id) ?? null
 
   function liveOf(f) {
-    const files = Object.values(f.stageFiles)
-    return files.some((p) => now() - mtimeMs(join(repo, p)) <= LIVE_WINDOW_MS)
+    return f.ownFiles.some((p) => now() - mtimeMs(join(repo, p)) <= LIVE_WINDOW_MS)
   }
 
   function eventsOf(f) {
@@ -260,10 +210,11 @@ export default function create({ repo, home = homedir(), now = Date.now }) {
     for (const t of tr.files) {
       const t0 = t.first ? Date.parse(t.first) : NaN
       const w = Number.isFinite(t0) ? windows.find((x) => t0 >= x.from && t0 <= x.to) : null
+      if (!w) continue // unattributed transcripts belong to no run (still counted by the tokens extra)
       events.push({
-        ts: t.first || iso(mtimeMs(join(tr.dir, t.name))),
+        ts: iso(t0),
         type: "session",
-        stage: w?.stage ?? "implement",
+        stage: w.stage,
         model: t.model,
         tokens: {
           input_tokens: t.tokens.input, output_tokens: t.tokens.output,
@@ -329,7 +280,8 @@ export default function create({ repo, home = homedir(), now = Date.now }) {
         const bad = () => body({ error: "not allowed" }, 400)
         if (!p || p.includes("\0") || isAbsolute(p) || !p.endsWith(".md")) return bad()
         const target = resolve(repo, p)
-        if (relative(repo, target).startsWith("..")) return bad()
+        const rel = relative(repo, target)
+        if (rel === ".." || rel.startsWith(".." + sep)) return bad()
         try {
           const realRoot = realpathSync(repo), real = realpathSync(target)
           if (!real.startsWith(realRoot + sep) || !real.endsWith(".md")) return bad()

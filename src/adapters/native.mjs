@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs"
 import { homedir } from "node:os"
 import { join, sep } from "node:path"
 import { readJsonl, isRunId, isSessionName, capText } from "../format.mjs"
-import { transcriptTokens } from "./speckit/index.mjs"
+import { transcriptTokens } from "./transcripts.mjs"
 
 const LIVE_WINDOW_MS = 10 * 60 * 1000
 const time = (ts) => (typeof ts === "number" ? ts : Date.parse(ts))
@@ -75,7 +75,7 @@ export default function create({ runsDir, now = Date.now, home = homedir() }) {
       async tokens(id) {
         const d = dirOf(id)
         const repo = d && readState(d).repo
-        if (!repo || readJsonl(join(d, "runs.jsonl")).some((e) => e.type === "session")) {
+        if (typeof repo !== "string" || !repo || readJsonl(join(d, "runs.jsonl")).some((e) => e.type === "session")) {
           return { status: 404, body: { error: "no transcript tokens for this run" } }
         }
         return { body: transcriptTokens(repo, home) }
