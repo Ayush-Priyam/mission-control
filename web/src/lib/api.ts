@@ -21,6 +21,7 @@ async function getJson<T>(url: string): Promise<T> {
 
 export type FetchState<T> = { url: string | null; data: T | null; error: string | null; loading: boolean }
 export type FetchAction<T> =
+  | { type: "reset"; url: string | null }
   | { type: "ok"; url: string; data: T }
   | { type: "fail"; url: string; error: string }
 
@@ -33,6 +34,7 @@ export const initialFetch = <T,>(url: string | null): FetchState<T> => ({
 
 /** State for `url`. Anything recorded for a different url is discarded; a poll on the same url keeps data. */
 export function fetchReducer<T>(state: FetchState<T>, action: FetchAction<T>): FetchState<T> {
+  if (action.type === "reset") return action.url === state.url ? state : initialFetch<T>(action.url)
   if (action.url !== state.url) return state
   if (action.type === "ok") return { url: state.url, data: action.data, error: null, loading: false }
   return { ...state, error: action.error, loading: false }
@@ -46,6 +48,7 @@ function useFetch<T>(url: string | null, pollMs = 0): Remote<T> {
   const state = raw.url === url ? raw : initialFetch<T>(url)
 
   useEffect(() => {
+    dispatch({ type: "reset", url })
     if (url === null) return
     let cancelled = false
     let timer: ReturnType<typeof setInterval> | undefined
