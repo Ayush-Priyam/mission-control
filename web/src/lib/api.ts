@@ -6,6 +6,8 @@ export type RunSummary = {
   idea: string
   repo?: string
   live: boolean
+  /** The run's current stop is an owner stop (src/status.mjs). */
+  waiting?: boolean
   stages: Record<string, { status: string; rounds?: number }>
   harness?: string
 }

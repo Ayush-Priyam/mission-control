@@ -102,6 +102,9 @@ test("status: live, stopped, waiting, done", () => {
   assert.equal(buildTrace([...run, ev(1, "stop", { stage: "b", rule: "human" }), ev(2, "run.end", { status: "stopped", rule: "human" })]).status, "waiting")
   assert.equal(buildTrace([...run, ev(1, "stop", { stage: "b", rule: "human" }), ev(2, "run.resume"), ev(3, "stage.start", { stage: "c" })]).status, "live")
   assert.equal(buildTrace([...run, ev(1, "run.end", { status: "done" })]).status, "done")
+  // I2: the owner answering clears the wait, as in src/status.mjs.
+  assert.equal(buildTrace([...run, ev(1, "stop", { stage: "b", rule: "human" }), ev(2, "human.input", { text: "ok" })]).status, "live")
+  assert.equal(buildTrace([...run, ev(1, "stop", { stage: "b", rule: "budget" }), ev(2, "run.start")]).status, "live")
   assert.equal(buildTrace([...run, ev(1, "run.end", { status: "stopped" }), ev(1, "published")]).status, "stopped")
 })
 

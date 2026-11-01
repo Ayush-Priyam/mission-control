@@ -17,6 +17,21 @@ test("lists runs newest first with summaries", async () => {
   assert.equal(runs[2].repo, "/work/greeter")
 })
 
+test("I2: summaries carry waiting from the shared stop rule", async () => {
+  const runs = await create({ runsDir }).listRuns()
+  assert.deepEqual(runs.map((r) => r.waiting), [false, true, false])
+  const d = mkdtempSync(join(tmpdir(), "mc-wait-"))
+  const run = (id, lines) => {
+    mkdirSync(join(d, id))
+    writeFileSync(join(d, id, "state.json"), JSON.stringify({ idea: id, stages: { qa: { status: "stopped" } } }))
+    writeFileSync(join(d, id, "runs.jsonl"), lines.map((l) => JSON.stringify(l)).join("\n"))
+  }
+  run("a-budget", [{ ts: "2026-11-01T09:00:00Z", type: "stop", stage: "qa", rule: "budget" }])
+  run("b-answered", [{ ts: "2026-11-01T09:00:00Z", type: "stop", stage: "qa", rule: "human" }, { ts: "2026-11-01T09:01:00Z", type: "human.input", text: "ok" }])
+  const by = Object.fromEntries((await create({ runsDir: d }).listRuns()).map((r) => [r.id, r.waiting]))
+  assert.deepEqual(by, { "a-budget": false, "b-answered": false })
+})
+
 test("bare run has no events", async () => {
   const r = await create({ runsDir }).getRun("20261101-1000-bare")
   assert.deepEqual(r.events, [])

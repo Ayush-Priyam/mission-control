@@ -56,8 +56,15 @@ describe("currentStop", () => {
     expect(currentStop({ stages: {} }, [{ type: "run.start" }, stop])).toMatchObject({ stage: "qa", rule: "human", detail: "copy?" })
     expect(currentStop({ stages: {} }, [stop, { type: "run.resume" }])).toBeNull()
   })
-  it("falls back to a stage the state marks stopped", () => {
-    expect(currentStop({ stages: { qa: { status: "stopped" } } }, [])).toMatchObject({ stage: "qa" })
+  it("uses the shared rule: human.input, stage.start and run.start clear it; only rule human waits", () => {
+    const stop = { ts: "t2", type: "stop", stage: "qa", rule: "human", detail: "copy?" }
+    expect(currentStop({}, [stop])).toMatchObject({ waiting: true })
+    for (const type of ["human.input", "stage.start", "run.start"]) expect(currentStop({}, [stop, { type }])).toBeNull()
+    expect(currentStop({}, [stop, { type: "run.end", status: "stopped" }])).toMatchObject({ waiting: true })
+    expect(currentStop({}, [{ ...stop, rule: "budget" }])).toMatchObject({ rule: "budget", waiting: false })
+  })
+  it("does not invent a stop from the state alone", () => {
+    expect(currentStop({ stages: { qa: { status: "stopped" } } }, [])).toBeNull()
   })
 })
 
@@ -84,6 +91,13 @@ describe("crewCards", () => {
     expect(by.backend.chip).toEqual({ kind: "sendback", text: "fix X3 · qa" })
     expect(by.qa).toMatchObject({ status: "needs-you", rounds: 2 })
     expect(by.review.status).toBe("idle")
+  })
+
+  it("a non-owner stop is stopped (failed), not needs-you", () => {
+    const state = { stages: { qa: { status: "stopped" } } }
+    const events = [{ ts: "2026-11-01T09:12:00Z", type: "stop", stage: "qa", rule: "budget" }]
+    const qa = crewCards(crewGraph(state, events), state, events, false).find((c) => c.node.id === "qa")!
+    expect(qa).toMatchObject({ status: "failed", line: "stopped (budget)" })
   })
 
   it("does not treat a stage.end without ok as a failure, nor an old sendback as a reason", () => {

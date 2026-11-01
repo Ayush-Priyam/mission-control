@@ -16,4 +16,5 @@ export function useSharedRuns(): Remote<RunSummary[]> {
 }
 
 export const repoName = (repo?: string) => String(repo ?? "").split(/[\\/]/).filter(Boolean).pop() ?? ""
-export const isWaiting = (r: RunSummary) => Object.values(r.stages ?? {}).some((s) => s.status === "stopped")
+/** Waiting on you, as the adapter computed it with the shared stop rule (src/status.mjs). */
+export const isWaiting = (r: RunSummary) => r.waiting === true

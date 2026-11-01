@@ -29,6 +29,7 @@ test("one run per intent with ten stages in order", async () => {
   assert.equal(r.idea, "Split a restaurant bill and tip fairly between diners")
   assert.equal(r.repo, repo)
   assert.equal(r.harness, "spec-kit-compound")
+  assert.equal(r.waiting, false)
   assert.deepEqual(Object.keys(r.stages), STAGES)
   assert.equal(r.stages.intent.status, "done")
   assert.equal(r.stages.gapfill.status, "done")

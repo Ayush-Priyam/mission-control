@@ -3,6 +3,7 @@ import { homedir } from "node:os"
 import { join, sep } from "node:path"
 import { readJsonl, isRunId, isSessionName, capText } from "../format.mjs"
 import { transcriptTokens } from "./transcripts.mjs"
+import { isWaiting } from "../status.mjs"
 
 const LIVE_WINDOW_MS = 10 * 60 * 1000
 const time = (ts) => (typeof ts === "number" ? ts : Date.parse(ts))
@@ -46,11 +47,13 @@ export default function create({ runsDir, now = Date.now, home = homedir() }) {
       return ids.filter((id) => dirOf(id)).sort().reverse().map((id) => {
         const d = join(runsDir, id)
         const s = readState(d)
+        const events = readJsonl(join(d, "runs.jsonl"))
         return {
           id,
           idea: String(s.idea ?? "").slice(0, 160),
           repo: s.repo ?? s.worktree,
-          live: isLive(d, readJsonl(join(d, "runs.jsonl"))),
+          live: isLive(d, events),
+          waiting: isWaiting(events),
           stages: s.stages ?? {},
         }
       })

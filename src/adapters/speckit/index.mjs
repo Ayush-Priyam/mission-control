@@ -4,6 +4,7 @@ import { basename, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { spawnSync } from "node:child_process"
 import { capText } from "../../names.mjs"
 import { projectSlug, scanTranscripts, transcriptTokens } from "../transcripts.mjs"
+import { isWaiting } from "../../status.mjs"
 
 export { transcriptTokens, projectSlug }
 import {
@@ -191,7 +192,7 @@ export default function create({ repo, home = homedir(), now = Date.now }) {
     return f.ownFiles.some((p) => now() - mtimeMs(join(repo, p)) <= LIVE_WINDOW_MS)
   }
 
-  function eventsOf(f) {
+  function eventsOf(f, { sessions = true } = {}) {
     const events = []
     let prevEnd = null
     for (const stage of STAGES) {
@@ -203,6 +204,7 @@ export default function create({ repo, home = homedir(), now = Date.now }) {
       events.push({ ts: iso(end), type: "stage.end", stage, approx: true })
       prevEnd = end
     }
+    if (!sessions) return events
     const windows = events.filter((e) => e.type === "stage.start").map((s) => ({
       stage: s.stage, from: Date.parse(s.ts), to: Date.parse(events.find((e) => e.type === "stage.end" && e.stage === s.stage).ts),
     }))
@@ -247,6 +249,8 @@ export default function create({ repo, home = homedir(), now = Date.now }) {
         idea: extractGoal(f.intentText).slice(0, 160),
         repo,
         live: liveOf(f),
+        // Same rule as every adapter; spec-kit files never record a stop, so this is false today.
+        waiting: isWaiting(eventsOf(f, { sessions: false })),
         harness: "spec-kit-compound",
         stages: summaryStages(f),
         lane: deriveLane(f.stages),

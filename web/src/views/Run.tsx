@@ -76,7 +76,7 @@ export default function Run({ id, tab }: { id: string; tab: Tab }) {
       <header className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="min-w-0 flex-1 truncate text-lg font-extrabold tracking-tight">{idea || id}</h1>
-          <RunStatusBadge run={{ id, idea, live: data.live, stages: state.stages ?? {} }} />
+          <RunStatusBadge run={{ id, idea, live: data.live, waiting: !!stop?.waiting, stages: state.stages ?? {} }} />
         </div>
         <StageBar stages={state.stages ?? {}} />
       </header>

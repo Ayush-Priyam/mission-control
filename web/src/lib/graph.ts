@@ -1,3 +1,5 @@
+import { openStop } from "../../../src/status.mjs"
+
 // The crew as a graph (for the map) and as cards (for the sidebar), derived from a run's state and events.
 
 type Ev = Record<string, any>
@@ -75,19 +77,13 @@ export function crewGraph(state: State, events: Ev[]): CrewGraph {
 export const nodeOf = (g: CrewGraph, stage: string) =>
   g.nodes.find((n) => n.stages.includes(stage)) ?? g.nodes.find((n) => n.id === stage) ?? null
 
-export type Stop = { stage?: string; rule?: string; detail?: string; ts?: string }
+export type Stop = { stage?: string; rule?: string; detail?: string; ts?: string; waiting: boolean }
 
-/** The stop the run is waiting on now: the last `stop` not followed by a resume, or a stage the state marks stopped. */
-export function currentStop(state: State, events: Ev[]): Stop | null {
-  let stop: Stop | null = null
-  for (const e of events ?? []) {
-    if (e.type === "stop") stop = { stage: e.stage, rule: e.rule, detail: e.detail, ts: e.ts }
-    else if (e.type === "run.resume" || e.type === "run.start") stop = null
-    else if (e.type === "run.end" && e.status !== "stopped") stop = null
-  }
-  if (stop) return stop
-  const stopped = Object.entries<any>(state?.stages ?? {}).find(([, s]) => s?.status === "stopped")
-  return stopped ? { stage: stopped[0] } : null
+/** The stop the run is on now, by the shared rule (src/status.mjs): the last `stop` not followed by
+ * stage.start, human.input, run.resume or run.start. `waiting` only for an owner stop (rule "human"). */
+export function currentStop(_state: State, events: Ev[]): Stop | null {
+  const e = openStop(events)
+  return e ? { stage: e.stage, rule: e.rule, detail: e.detail, ts: e.ts, waiting: e.rule === "human" } : null
 }
 
 export type StageStatus = "running" | "stopped" | "done" | "skipped" | "failed" | "idle"
@@ -138,10 +134,15 @@ export function crewCards(g: CrewGraph, state: State, events: Ev[], live: boolea
     const has = (s: unknown) => typeof s === "string" && (node.stages.includes(s) || s === node.id)
     const statuses = node.stages.map((s) => stageStatus(state, events, live, s))
     const mine = events.filter((e) => has(e.stage))
-    const needs = (stop?.stage && has(stop.stage)) || statuses.includes("stopped")
+    // Waiting on you only by the shared rule; a stage stopped any other way (or marked stopped in
+    // the state with no owner stop open) has failed.
+    const here = !!stop?.stage && has(stop.stage)
+    const needs = here && stop!.waiting
+    const halted = !needs && (here || statuses.includes("stopped"))
 
     let status: CardStatus = "idle"
     if (needs) status = "needs-you"
+    else if (halted) status = "failed"
     else if (statuses.includes("running")) status = "running"
     else if (statuses.includes("failed")) status = "failed"
     else if (statuses.length && statuses.every((s) => s === "skipped")) status = "skipped"
@@ -155,6 +156,7 @@ export function crewCards(g: CrewGraph, state: State, events: Ev[], live: boolea
     const line =
       status === "needs-you" ? "waits on you"
       : status === "running" ? String(progress ?? "working")
+      : halted ? `stopped${here && stop!.rule ? ` (${stop!.rule})` : ""}`
       : status === "failed" ? `failed${failure?.reason ? `: ${failure.reason}` : ""}`
       : status === "skipped" ? "skipped"
       : status === "done" ? "done"

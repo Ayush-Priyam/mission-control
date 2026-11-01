@@ -6,10 +6,12 @@ import { postAction } from "@/lib/api"
 import { hhmm, short } from "@/lib/events"
 import type { Stop } from "@/lib/graph"
 
-/** The run is stopped and waits on you: what for, and what you may do about it (only the actions the adapter declares). */
+/** The run's current stop. An owner stop waits on you: what for, and what you may do about it (only
+ * the actions the adapter declares). Any other stop is shown as Stopped (<rule>), with no buttons. */
 export function YouBanner({ runId, stop, actions, onActed }: { runId: string; stop: Stop; actions: string[]; onActed?: () => void }) {
-  const canSign = actions.includes("sign")
-  const canSay = actions.includes("say")
+  const waiting = stop.waiting
+  const canSign = waiting && actions.includes("sign")
+  const canSay = waiting && actions.includes("say")
   const [sending, setSending] = useState(false)
   const [notes, setNotes] = useState("")
   const [busy, setBusy] = useState(false)
@@ -33,16 +35,20 @@ export function YouBanner({ runId, stop, actions, onActed }: { runId: string; st
   }
 
   return (
-    <section aria-label="Needs you" className="flex flex-col gap-3 rounded-xl border border-needs-you/70 bg-needs-you/8 p-3">
+    <section
+      aria-label={waiting ? "Needs you" : "Stopped"}
+      className={waiting ? "flex flex-col gap-3 rounded-xl border border-needs-you/70 bg-needs-you/8 p-3" : "flex flex-col gap-3 rounded-xl border border-failed/60 bg-failed/8 p-3"}
+    >
       <div className="flex flex-wrap items-start gap-3">
-        <span className="rounded bg-needs-you/20 px-1.5 py-0.5 font-mono text-[10px] font-bold tracking-widest text-needs-you">
-          NEEDS YOU
+        <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-bold tracking-widest ${waiting ? "bg-needs-you/20 text-needs-you" : "bg-failed/20 text-failed"}`}>
+          {waiting ? "NEEDS YOU" : `STOPPED${stop.rule ? ` (${stop.rule.toUpperCase()})` : ""}`}
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <b className="text-sm font-semibold">{short(stop.detail || `${stage || "the run"} is waiting on you`, 140)}</b>
+          <b className="text-sm font-semibold">{short(stop.detail || (waiting ? `${stage || "the run"} is waiting on you` : `${stage || "the run"} stopped`), 140)}</b>
           <span className="font-mono text-[11px] text-muted-foreground">
-            {stage || "run"} stopped{stop.rule ? ` (${stop.rule})` : ""}
-            {stop.ts ? ` at ${hhmm(stop.ts)}` : ""} · everything else waits until you answer
+            {waiting ? "Needs you" : `Stopped${stop.rule ? ` (${stop.rule})` : ""}`} · {stage || "run"}
+            {stop.ts ? ` at ${hhmm(stop.ts)}` : ""}
+            {waiting ? " · everything else waits until you answer" : ""}
           </span>
         </div>
         {canSign && !sending && (

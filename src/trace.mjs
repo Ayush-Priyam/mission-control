@@ -1,4 +1,5 @@
 import { isSessionName } from "./names.mjs"
+import { openStop } from "./status.mjs"
 
 // Turns a run's events (runs.jsonl) into a span tree for the Trace tab: run → stage → session →
 // tool call, plus markers. Pure: no node: imports, so Node tests and the browser load the same file.
@@ -269,15 +270,12 @@ function assemble(evs, T, breaks, busy) {
     delete s._i; delete s._ts1; delete s._mark
   }
 
-  // Status: waiting follows the last stop with no later run.resume or stage.start (the page's loadRun rule).
-  // An owner stop (rule "human") waits on you; any other rule is stopped. Bookkeeping after the stop does not change that.
-  let openStop = null, lastMeaningful = null
-  for (const e of evs) {
-    if (e.type === "stop") openStop = e
-    else if (e.type === "run.resume" || e.type === "stage.start") openStop = null
-    if (e.type !== "published") lastMeaningful = e
-  }
-  trace.status = openStop ? (openStop.rule === "human" ? "waiting" : "stopped") : lastMeaningful?.type === "run.end" ? (lastMeaningful.status === "stopped" ? "stopped" : "done") : "live"
+  // Status: the shared stop rule (src/status.mjs). An owner stop (rule "human") waits on you; any
+  // other rule is stopped. Bookkeeping after the stop does not change that.
+  const stop = openStop(evs)
+  let lastMeaningful = null
+  for (const e of evs) if (e.type !== "published") lastMeaningful = e
+  trace.status = stop ? (stop.rule === "human" ? "waiting" : "stopped") : lastMeaningful?.type === "run.end" ? (lastMeaningful.status === "stopped" ? "stopped" : "done") : "live"
   t.durationMs = endT
   trace.markers.sort((a, b) => a.t - b.t)
   return trace
