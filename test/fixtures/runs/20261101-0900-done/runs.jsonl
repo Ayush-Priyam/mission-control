@@ -1,0 +1,3 @@
+{"ts":"2026-11-01T09:00:00Z","type":"run.start","runId":"20261101-0900-done"}
+{"ts":"2026-11-01T09:10:00Z","type":"stage.end","stage":"build"}
+{"ts":"2026-11-01T09:20:00Z","type":"run.end","ok":true}
