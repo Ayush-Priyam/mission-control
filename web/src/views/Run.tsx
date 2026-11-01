@@ -13,8 +13,8 @@ import DiffView from "@/views/Diff"
 import Docs from "@/views/Docs"
 import Trace from "@/views/Trace"
 import { RunStatusBadge } from "@/views/Home"
-import { useCapabilities, useRun } from "@/lib/api"
-import { extraTabs } from "@/lib/extras"
+import { useCapabilities, useExtra, useRun } from "@/lib/api"
+import { extraTabs, normaliseDiff, normaliseTasks, qaRows } from "@/lib/extras"
 import { crewCards, crewGraph, currentStop, type CrewCard } from "@/lib/graph"
 import { toHash, type Tab } from "@/lib/route"
 
@@ -35,6 +35,10 @@ function footer(events: Ev[], cards: CrewCard[]) {
     .filter(Boolean)
     .join(" · ")
 }
+
+const Count = ({ n }: { n: number | null }) => (n ? <span className="ml-1 font-mono text-[10px] text-muted-foreground">{n}</span> : null)
+const TaskCount = ({ id }: { id: string }) => <Count n={normaliseTasks(useExtra<unknown>("tasks", id).data).length} />
+const DiffCount = ({ id }: { id: string }) => <Count n={normaliseDiff(useExtra<unknown>("diff", id).data).files.length} />
 
 export default function Run({ id, tab }: { id: string; tab: Tab }) {
   const run = useRun(id)
@@ -82,9 +86,9 @@ export default function Run({ id, tab }: { id: string; tab: Tab }) {
           <TabsList>
             <TabsTrigger value="chat">Chat</TabsTrigger>
             <TabsTrigger value="map">Map</TabsTrigger>
-            {has.board && <TabsTrigger value="board">Board</TabsTrigger>}
-            {has.qa && <TabsTrigger value="qa">QA</TabsTrigger>}
-            {has.diff && <TabsTrigger value="diff">Diff</TabsTrigger>}
+            {has.board && <TabsTrigger value="board">Board<TaskCount id={id} /></TabsTrigger>}
+            {has.qa && <TabsTrigger value="qa">QA<Count n={qaRows(events)?.length ?? null} /></TabsTrigger>}
+            {has.diff && <TabsTrigger value="diff">Diff<DiffCount id={id} /></TabsTrigger>}
             <TabsTrigger value="trace">Trace</TabsTrigger>
             {has.docs && <TabsTrigger value="docs">Docs</TabsTrigger>}
           </TabsList>

@@ -240,7 +240,7 @@ function Label({ r, a, b }: { r: Row; a: number; b: number }) {
     b <= 0.8 ? { left: `calc(${b * 100}% + 7px)` } : inside ? { right: `calc(${(1 - b) * 100}% + 7px)` } : { right: `calc(${(1 - a) * 100}% + 7px)` }
   return (
     <span
-      className={cn("pointer-events-none absolute top-1/2 flex -translate-y-1/2 items-center gap-1.5 font-mono text-[11px] whitespace-nowrap", inside ? "text-foreground" : "text-muted-foreground")}
+      className={cn("pointer-events-none absolute z-[2] top-1/2 flex -translate-y-1/2 items-center gap-1.5 font-mono text-[11px] whitespace-nowrap", inside ? "text-foreground" : "text-muted-foreground")}
       style={style}
     >
       {bits.join(" · ")}

@@ -54,3 +54,21 @@ export function laneFilter(k: string): (file: string) => boolean {
   const own = /^(\.harness|specs)\//, ui = /(composeApp|androidApp|iosApp|\/ui\/|Screen|Theme|Component)/
   return (f) => !own.test(f) && (k === "frontend" ? ui.test(f) : !ui.test(f))
 }
+
+const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit"])
+
+/** Files the stage's Edit/Write/MultiEdit tool calls named (progress events: `tool` + `detail`), in first-seen order. */
+export function touchedFiles(events: Record<string, any>[], stages: string[]): string[] {
+  const seen = new Set<string>()
+  for (const e of events) {
+    if (e?.type !== "progress" || !stages.includes(String(e.stage)) || !EDIT_TOOLS.has(e.tool)) continue
+    const f = String(e.detail ?? "").trim()
+    if (f) seen.add(f)
+  }
+  return [...seen]
+}
+
+/** The "code" tab's file filter: the files the agent edited when it named any, else the lane guess. */
+export function codeFilter(k: string, touched: string[]): (file: string) => boolean {
+  return touched.length ? (f) => touched.some((t) => t === f || t.endsWith(`/${f}`) || f.endsWith(`/${t}`)) : laneFilter(k)
+}

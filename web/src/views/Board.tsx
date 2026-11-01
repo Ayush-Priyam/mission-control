@@ -45,7 +45,7 @@ export default function Board({ runId, cards }: { runId: string; cards: CrewCard
       {(Object.keys(cols) as Col[]).map((c) => (
         <section key={c} aria-label={HEAD[c]} className="flex min-w-0 flex-col gap-2 rounded-xl bg-muted/30 p-2">
           <h3 className="flex justify-between px-1 font-mono text-[11px] tracking-widest text-muted-foreground uppercase"><span>{HEAD[c]}</span><span>{cols[c].length}</span></h3>
-          {cols[c].map((t, i) => <TaskCard key={`${t.id ?? i}`} t={t} col={c} />)}
+          {cols[c].map((t, i) => <TaskCard key={`${t.id ?? ""}:${i}`} t={t} col={c} />)}
           {!cols[c].length && <p className="py-4 text-center font-mono text-[11px] text-muted-foreground">none</p>}
         </section>
       ))}
