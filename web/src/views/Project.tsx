@@ -79,7 +79,7 @@ export default function Project({ repo }: { repo: string }) {
   const runs = useSharedRuns()
   const caps = useCapabilities()
   const mine = (runs.data ?? []).filter((r) => repoName(r.repo) === repo)
-  const hasBrain = !!caps.data && (caps.data.extras.includes("brain") || caps.data.extras.includes("project"))
+  const hasBrain = !!caps.data && caps.data.extras.includes("project")
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-4">
       <h1 className="text-lg font-extrabold tracking-tight">{repo}</h1>

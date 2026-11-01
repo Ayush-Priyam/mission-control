@@ -23,6 +23,23 @@ describe("Trace", () => {
     expect(screen.getByText("Done")).toBeTruthy()
     expect(document.querySelectorAll("[data-trace-row]")).toHaveLength(6)
     expect(screen.getByText("SLOWEST")).toBeTruthy()
+    // M6: the trace total counts cache reads and says so.
+    expect(totals).toContain("incl. cache reads")
+    // M7: a stage that ended fine has no red mark.
+    expect(document.querySelectorAll("[data-stage-icon]").length).toBeGreaterThan(0)
+    expect(document.querySelectorAll("[data-stage-icon] .bg-failed")).toHaveLength(0)
+  })
+
+  it("marks only a failed stage's icon red (M7)", () => {
+    const events = [
+      { ts: "2026-11-01T09:00:00Z", type: "stage.start", stage: "spec" },
+      { ts: "2026-11-01T09:01:00Z", type: "stage.end", stage: "spec", ok: true },
+      { ts: "2026-11-01T09:02:00Z", type: "stage.start", stage: "build" },
+      { ts: "2026-11-01T09:03:00Z", type: "stage.end", stage: "build", ok: false },
+    ]
+    render(<Trace runId="r" events={events} live={false} />)
+    const red = [...document.querySelectorAll("[data-stage-icon]")].filter((i) => i.querySelector(".bg-failed"))
+    expect(red.map((i) => i.getAttribute("data-stage-icon"))).toEqual(["build"])
   })
 
   it("shows an unfinished trace on a dead run as Ended with no spinner, and marks approx stages", () => {

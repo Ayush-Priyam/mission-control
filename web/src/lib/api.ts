@@ -42,7 +42,8 @@ export function fetchReducer<T>(state: FetchState<T>, action: FetchAction<T>): F
   return { ...state, error: action.error, loading: false }
 }
 
-function useFetch<T>(url: string | null, pollMs = 0): Remote<T> {
+/** `refresh`: any value; when it changes the url is fetched again (data kept until the answer). */
+function useFetch<T>(url: string | null, pollMs = 0, refresh: unknown = 0): Remote<T> {
   const [raw, dispatch] = useReducer(fetchReducer<T>, url, initialFetch<T>)
   const [tick, setTick] = useState(0)
   const reload = useCallback(() => setTick((n) => n + 1), [])
@@ -81,7 +82,7 @@ function useFetch<T>(url: string | null, pollMs = 0): Remote<T> {
       stop()
       document.removeEventListener("visibilitychange", onVis)
     }
-  }, [url, pollMs, tick])
+  }, [url, pollMs, tick, refresh])
 
   return { data: state.data, error: state.error, loading: state.loading, reload }
 }
@@ -99,9 +100,10 @@ export const useSession = (id: string, name: string | null) =>
   )
 export const useCrew = (repo?: string) =>
   useFetch<any>(`/api/crew${repo ? `?repo=${encodeURIComponent(repo)}` : ""}`)
-export function useExtra<T>(key: string, id?: string | null, query?: Record<string, string>) {
+/** An adapter extra. `refresh` reloads it when it changes; run-scoped extras pass `runChanges(events)`. */
+export function useExtra<T>(key: string, id?: string | null, query?: Record<string, string>, refresh: unknown = 0) {
   const qs = query ? `?${new URLSearchParams(query)}` : ""
-  return useFetch<T>(`/api/x/${encodeURIComponent(key)}${id ? `/${encodeURIComponent(id)}` : ""}${qs}`)
+  return useFetch<T>(`/api/x/${encodeURIComponent(key)}${id ? `/${encodeURIComponent(id)}` : ""}${qs}`, 0, refresh)
 }
 
 export async function postAction(id: string, name: string, body: object = {}) {

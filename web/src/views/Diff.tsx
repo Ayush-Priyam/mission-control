@@ -35,23 +35,23 @@ function Patch({ file, text, lines, cmd }: { file: DiffFile; text: string | null
 const Big = ({ children }: { children: React.ReactNode }) => <div className="p-4 text-xs text-muted-foreground">{children}</div>
 
 /** One file's patch, asked per file (`?file=`). */
-function FilePatch({ runId, file, cmd }: { runId: string; file: DiffFile; cmd: string }) {
-  const r = useExtra<{ patch: string | null; lines?: number }>("diff", runId, { file: file.file })
+function FilePatch({ runId, file, cmd, refresh }: { runId: string; file: DiffFile; cmd: string; refresh: number }) {
+  const r = useExtra<{ patch: string | null; lines?: number }>("diff", runId, { file: file.file }, refresh)
   if (r.loading && !r.data) return <Skeleton className="m-3 h-24" />
   return <Patch key={file.file} file={file} text={r.data?.patch ?? null} lines={r.data?.lines} cmd={cmd} />
 }
 
 /** One file's patch cut out of the whole diff text (`?full=1`). */
-function FullPatch({ runId, file, cmd }: { runId: string; file: DiffFile; cmd: string }) {
-  const r = useExtra<{ text?: string }>("diff", runId, { full: "1" })
+function FullPatch({ runId, file, cmd, refresh }: { runId: string; file: DiffFile; cmd: string; refresh: number }) {
+  const r = useExtra<{ text?: string }>("diff", runId, { full: "1" }, refresh)
   const text = useMemo(() => splitPatch(r.data?.text ?? "", file.file), [r.data, file.file])
   if (r.loading && !r.data) return <Skeleton className="m-3 h-24" />
   return <Patch key={file.file} file={file} text={text || null} lines={text.split("\n").length} cmd={cmd} />
 }
 
 /** The Diff tab (and a coder's "code" tab): files biggest first, one patch at a time. */
-export default function DiffView({ runId, keep = () => true, label = "the branch as it is now" }: { runId: string; keep?: (file: string) => boolean; label?: string }) {
-  const r = useExtra<unknown>("diff", runId)
+export default function DiffView({ runId, keep = () => true, label = "the branch as it is now", refresh = 0 }: { runId: string; keep?: (file: string) => boolean; label?: string; refresh?: number }) {
+  const r = useExtra<unknown>("diff", runId, undefined, refresh)
   const list: DiffList = useMemo(() => normaliseDiff(r.data), [r.data])
   const files = useMemo(() => list.files.filter((f) => keep(f.file)).sort((a, b) => b.add + b.del - (a.add + a.del)), [list, keep])
   const [pick, setPick] = useState<string | null>(null)
@@ -87,7 +87,7 @@ export default function DiffView({ runId, keep = () => true, label = "the branch
           </ul>
         </ScrollArea>
       </div>
-      <ScrollArea className="max-h-[70vh] min-w-0"><Pane runId={runId} file={sel} cmd={cmd} /></ScrollArea>
+      <ScrollArea className="max-h-[70vh] min-w-0"><Pane runId={runId} file={sel} cmd={cmd} refresh={refresh} /></ScrollArea>
     </div>
   )
 }

@@ -14,9 +14,11 @@ const ROWS: { k: string; tip: string; v: (t: Tok) => string }[] = [
   { k: "Cache read", tip: "Tokens served from cache on later turns. Excluded from Billable.", v: (t) => `${human(t.cache_read)} · excluded` },
 ]
 
-/** Token spend for this project, summed from its Claude Code session logs. */
-export function TokenPanel({ runId }: { runId: string }) {
+/** Token spend for this project, summed from its Claude Code session logs. `optional`: draw nothing
+ * until the run's tokens extra answers 200 (the native adapter 404s runs that log their own sessions). */
+export function TokenPanel({ runId, optional = false }: { runId: string; optional?: boolean }) {
   const r = useExtra<Tokens>("tokens", runId)
+  if (optional && !r.data) return null
   if (r.loading && !r.data) return <Skeleton className="h-24 w-full" />
   if (!r.data) return <p className="font-mono text-xs text-failed">Tokens not available ({r.error ?? "none"}).</p>
   const t = r.data

@@ -7,6 +7,7 @@ import { CrewMap } from "@/components/CrewMap"
 import { StageBar } from "@/components/StageBar"
 import { Thread } from "@/components/Thread"
 import { YouBanner } from "@/components/YouBanner"
+import { TokenPanel } from "@/components/TokenPanel"
 import Board from "@/views/Board"
 import Qa from "@/views/Qa"
 import DiffView from "@/views/Diff"
@@ -14,14 +15,15 @@ import Docs from "@/views/Docs"
 import Trace from "@/views/Trace"
 import { RunStatusBadge } from "@/views/Home"
 import { useCapabilities, useExtra, useRun } from "@/lib/api"
-import { extraTabs, normaliseDiff, normaliseTasks, qaRows } from "@/lib/extras"
+import { extraTabs, normaliseDiff, normaliseTasks, qaRows, runChanges } from "@/lib/extras"
 import { crewCards, crewGraph, currentStop, type CrewCard } from "@/lib/graph"
 import { toHash, type Tab } from "@/lib/route"
 
 type Ev = Record<string, any>
 
 
-function footer(events: Ev[], cards: CrewCard[]) {
+/** The crew footer. Tokens leave cache reads out (the Trace total counts them, and says so). */
+export function footer(events: Ev[], cards: CrewCard[]) {
   let cost = 0, tokens = 0
   for (const e of events) {
     if (e.type !== "session") continue
@@ -31,14 +33,14 @@ function footer(events: Ev[], cards: CrewCard[]) {
   }
   const running = cards.filter((c) => c.status === "running").length
   const waiting = cards.filter((c) => c.status === "needs-you").length
-  return [cost ? `$${cost.toFixed(2)}` : "", tokens ? `${Math.round(tokens / 1000)}k tok` : "", `${running} running`, waiting ? `${waiting} waiting on you` : ""]
+  return [cost ? `$${cost.toFixed(2)}` : "", tokens ? `${Math.round(tokens / 1000)}k tok excl. cache reads` : "", `${running} running`, waiting ? `${waiting} waiting on you` : ""]
     .filter(Boolean)
     .join(" · ")
 }
 
 const Count = ({ n }: { n: number | null }) => (n ? <span className="ml-1 font-mono text-[10px] text-muted-foreground">{n}</span> : null)
-const TaskCount = ({ id }: { id: string }) => <Count n={normaliseTasks(useExtra<unknown>("tasks", id).data).length} />
-const DiffCount = ({ id }: { id: string }) => <Count n={normaliseDiff(useExtra<unknown>("diff", id).data).files.length} />
+const TaskCount = ({ id, refresh }: { id: string; refresh: number }) => <Count n={normaliseTasks(useExtra<unknown>("tasks", id, undefined, refresh).data).length} />
+const DiffCount = ({ id, refresh }: { id: string; refresh: number }) => <Count n={normaliseDiff(useExtra<unknown>("diff", id, undefined, refresh).data).files.length} />
 
 export default function Run({ id, tab }: { id: string; tab: Tab }) {
   const run = useRun(id)
@@ -51,7 +53,7 @@ export default function Run({ id, tab }: { id: string; tab: Tab }) {
     const graph = crewGraph(state, events)
     const stop = currentStop(state, events)
     const cards = crewCards(graph, state, events, data.live, stop)
-    return { state, events, graph, stop, cards }
+    return { state, events, graph, stop, cards, refresh: runChanges(events) }
   }, [data])
 
   if (run.loading && !data) return <Skeleton className="h-64 w-full" />
@@ -63,7 +65,7 @@ export default function Run({ id, tab }: { id: string; tab: Tab }) {
       </Alert>
     )
 
-  const { state, events, graph, stop, cards } = view
+  const { state, events, graph, stop, cards, refresh } = view
   const actions = caps.data?.actions ?? []
   const idea = String(state.idea ?? "")
   const has = extraTabs(caps.data?.extras ?? [], events)
@@ -86,9 +88,9 @@ export default function Run({ id, tab }: { id: string; tab: Tab }) {
           <TabsList>
             <TabsTrigger value="chat">Chat</TabsTrigger>
             <TabsTrigger value="map">Map</TabsTrigger>
-            {has.board && <TabsTrigger value="board">Board<TaskCount id={id} /></TabsTrigger>}
+            {has.board && <TabsTrigger value="board">Board<TaskCount id={id} refresh={refresh} /></TabsTrigger>}
             {has.qa && <TabsTrigger value="qa">QA<Count n={qaRows(events)?.length ?? null} /></TabsTrigger>}
-            {has.diff && <TabsTrigger value="diff">Diff<DiffCount id={id} /></TabsTrigger>}
+            {has.diff && <TabsTrigger value="diff">Diff<DiffCount id={id} refresh={refresh} /></TabsTrigger>}
             <TabsTrigger value="trace">Trace</TabsTrigger>
             {has.docs && <TabsTrigger value="docs">Docs</TabsTrigger>}
           </TabsList>
@@ -98,16 +100,18 @@ export default function Run({ id, tab }: { id: string; tab: Tab }) {
           <TabsContent value="map" className="pt-3">
             <CrewMap runId={id} graph={graph} cards={cards} events={events} />
           </TabsContent>
-          {has.board && <TabsContent value="board" className="pt-3"><Board runId={id} cards={cards} /></TabsContent>}
+          {has.board && <TabsContent value="board" className="pt-3"><Board runId={id} cards={cards} refresh={refresh} /></TabsContent>}
           {has.qa && <TabsContent value="qa" className="pt-3"><Qa events={events} /></TabsContent>}
-          {has.diff && <TabsContent value="diff" className="pt-3"><DiffView runId={id} /></TabsContent>}
+          {has.diff && <TabsContent value="diff" className="pt-3"><DiffView runId={id} refresh={refresh} /></TabsContent>}
           {has.docs && <TabsContent value="docs" className="pt-3"><Docs runId={id} state={state} /></TabsContent>}
           <TabsContent value="trace" className="pt-3">
             <Trace runId={id} events={events} live={data.live} idea={idea} />
           </TabsContent>
         </Tabs>
-        <aside className="lg:sticky lg:top-4 lg:self-start">
+        <aside className="flex flex-col gap-4 lg:sticky lg:top-4 lg:self-start">
           <CrewCards runId={id} cards={cards} footer={footer(events, cards)} />
+          {/* Transcript token spend, for adapters that list it and runs it answers for; the Docs tab shows its own. */}
+          {(caps.data?.extras ?? []).includes("tokens") && !has.docs && <TokenPanel runId={id} optional />}
         </aside>
       </div>
     </div>

@@ -61,8 +61,9 @@ function Icon({ s }: { s: Span }) {
   const box = "grid size-4 flex-none place-items-center"
   if (s.kind === "stage")
     return (
-      <i className="relative mx-0.5 size-3 flex-none rounded-full border-[1.5px] border-foreground">
-        <i className="absolute inset-[2px] rounded-full bg-failed" />
+      <i data-stage-icon={s.name} className="relative mx-0.5 size-3 flex-none rounded-full border-[1.5px] border-foreground">
+        {/* Red only for a failed stage; a running one is green, a finished one neutral. */}
+        <i className={cn("absolute inset-[2px] rounded-full", s.error ? "bg-failed" : s.running ? "bg-running" : "bg-muted-foreground")} />
       </i>
     )
   if (s.kind === "session")
@@ -156,7 +157,7 @@ function Stats({ tr, wall }: { tr: TraceData; wall: number }) {
   const cells: { k: string; v: string | number; tip?: string; sub?: string; lsub?: string; bad?: boolean }[] = [
     { k: "DURATION", v: dur(T.durationMs), lsub: "active", tip: n ? `Active time. Wall clock ${dur(wall)}, with ${n} idle break${n > 1 ? "s" : ""} folded to 4s each` : "Active time" },
     { k: "COST", v: money(T.cost) },
-    { k: "TOKENS", v: toks(T.tokensIn + T.tokensOut), tip: `${toks(T.tokensIn)} in · ${toks(T.tokensOut)} out` },
+    { k: "TOKENS", v: toks(T.tokensIn + T.tokensOut), lsub: "incl. cache reads", tip: `${toks(T.tokensIn)} in (fresh, cache writes and cache reads) · ${toks(T.tokensOut)} out. The crew footer leaves cache reads out.` },
     { k: "LLM CALLS", v: T.llmCalls },
     { k: "TOOL CALLS", v: T.toolCalls },
     {

@@ -69,3 +69,8 @@ export function extraTabs(extras: string[], events: Record<string, any>[]): { bo
     docs: extras.includes("doc"),
   }
 }
+
+/** A refresh key for run-scoped extras (tasks, diff, artifacts): it changes when a stage ends or the
+ * run stops, the moments their content moves, so live runs do not show a stale first answer. */
+export const runChanges = (events: Record<string, any>[]): number =>
+  events.reduce((n, e) => n + (e?.type === "stage.end" || e?.type === "stop" ? 1 : 0), 0)

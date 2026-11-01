@@ -41,6 +41,10 @@ function Crumbs({ route }: { route: Route }) {
   )
 }
 
+/** The footer note: the page writes nothing unless the adapter declares actions. */
+export const footerNote = (actions: string[] | undefined) =>
+  `${actions?.length ? "read-only except your actions" : "read-only"} · local · 127.0.0.1`
+
 export function Shell({ route, children }: { route: Route; children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(initialTheme)
   const caps = useCapabilities()
@@ -89,7 +93,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
       </header>
       <main className="flex-1 p-4">{children}</main>
       <footer className="border-t px-4 py-2 font-mono text-[11px] text-muted-foreground">
-        read-only · local · 127.0.0.1
+        {footerNote(caps.data?.actions)}
       </footer>
     </div>
   )

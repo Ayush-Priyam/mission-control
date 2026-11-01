@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useExtra } from "@/lib/api"
+import { runChanges } from "@/lib/extras"
 import { Markdown } from "@/components/Markdown"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -62,7 +63,7 @@ function Body({ runId, k, s, art, events, stages }: { runId: string; k: string; 
     case "note": return <p className="text-[13px] text-muted-foreground">{s.text}</p>
     case "md": return <RawText runId={runId} path={s.path} />
     case "qa": return <Qa events={events} />
-    case "diff": return <DiffView runId={runId} keep={keep} label={touched.length ? `files ${k} edited` : `${k} files, guessed from paths`} />
+    case "diff": return <DiffView runId={runId} refresh={runChanges(events)} keep={keep} label={touched.length ? `files ${k} edited` : `${k} files, guessed from paths`} />
     case "device":
       return (
         <div className="flex flex-wrap items-start gap-4">
@@ -76,7 +77,8 @@ function Body({ runId, k, s, art, events, stages }: { runId: string; k: string; 
 
 /** What one agent made: notes, designs, code, its last session. Only drawn when the adapter has an `artifacts` extra. */
 export function Workbench({ runId, agent, stages = [agent], events }: { runId: string; agent: string; stages?: string[]; events: Record<string, any>[] }) {
-  const r = useExtra<string[]>("artifacts", runId)
+  const refresh = runChanges(events)
+  const r = useExtra<string[]>("artifacts", runId, undefined, refresh)
   const art = useMemo(() => (Array.isArray(r.data) ? r.data : []), [r.data])
   const secs = useMemo(() => sections(agent, art), [agent, art])
   const [tab, setTab] = useState(0)

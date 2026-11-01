@@ -32,8 +32,8 @@ function TaskCard({ t, col }: { t: Task; col: Col }) {
 }
 
 /** The Board tab: the run's tasks in to do / doing / done columns. */
-export default function Board({ runId, cards }: { runId: string; cards: CrewCard[] }) {
-  const r = useExtra<unknown>("tasks", runId)
+export default function Board({ runId, cards, refresh = 0 }: { runId: string; cards: CrewCard[]; refresh?: number }) {
+  const r = useExtra<unknown>("tasks", runId, undefined, refresh)
   if (r.loading && !r.data) return <Skeleton className="h-48 w-full" />
   if (!r.data) return <p className="font-mono text-xs text-failed">Tasks not available ({r.error ?? "none"}).</p>
   const tasks = normaliseTasks(r.data)
