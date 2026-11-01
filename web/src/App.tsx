@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react"
 import { Shell } from "@/components/Shell"
+import Home from "@/views/Home"
+import Project from "@/views/Project"
+import { RunsProvider } from "@/lib/runs-context"
 import { parseRoute, type Route } from "@/lib/route"
 
 function useRoute(): Route {
@@ -15,10 +18,14 @@ function useRoute(): Route {
 export default function App() {
   const route = useRoute()
   return (
-    <Shell route={route}>
-      <p className="font-mono text-sm text-muted-foreground">
-        {route.view} view: coming in a later task
-      </p>
-    </Shell>
+    <RunsProvider>
+      <Shell route={route}>
+        {route.view === "home" && <Home />}
+        {route.view === "project" && <Project key={route.repo} repo={route.repo} />}
+        {(route.view === "run" || route.view === "agent") && (
+          <p className="font-mono text-sm text-muted-foreground">{route.view} view: coming in a later task</p>
+        )}
+      </Shell>
+    </RunsProvider>
   )
 }

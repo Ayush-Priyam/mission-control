@@ -128,6 +128,7 @@ export function createServer(adapter, { port = 4319, distDir = DEFAULT_DIST } = 
           adapter: adapter.name,
           extras: Object.keys(adapter.extras ?? {}),
           actions: Object.keys(adapter.actions ?? {}),
+          source: adapter.describe?.().source ?? null,
         })
       }
       if (url.pathname.startsWith("/api/")) return await api(adapter, req, res, url)

@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react"
 import { Moon, Sun } from "lucide-react"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { useCapabilities, useRuns } from "@/lib/api"
+import { useCapabilities } from "@/lib/api"
+import { useSharedRuns } from "@/lib/runs-context"
 import { toHash, type Route } from "@/lib/route"
 
 type Theme = "dark" | "light"
@@ -43,7 +44,7 @@ function Crumbs({ route }: { route: Route }) {
 export function Shell({ route, children }: { route: Route; children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(initialTheme)
   const caps = useCapabilities()
-  const runs = useRuns()
+  const runs = useSharedRuns()
   const live = (runs.data ?? []).some((r) => r.live)
 
   useEffect(() => {

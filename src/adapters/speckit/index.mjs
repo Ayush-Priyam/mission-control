@@ -240,6 +240,7 @@ export default function create({ repo, home = homedir(), now = Date.now }) {
 
   return {
     name: "speckit",
+    describe: () => ({ source: repo }),
     async listRuns() {
       return scan().map((f) => ({
         id: f.id,

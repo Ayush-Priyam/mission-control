@@ -39,6 +39,7 @@ export default function create({ runsDir, now = Date.now, home = homedir() }) {
 
   return {
     name: "native",
+    describe: () => ({ source: runsDir }),
     async listRuns() {
       let ids
       try { ids = readdirSync(runsDir) } catch { return [] }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useState } from "react"
 
-export type Capabilities = { adapter: string; extras: string[]; actions: string[] }
+export type Capabilities = { adapter: string; extras: string[]; actions: string[]; source: string | null }
 export type RunSummary = {
   id: string
   idea: string

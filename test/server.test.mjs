@@ -22,7 +22,7 @@ test("serves index and capabilities on loopback", async () => {
   await withServer(async (base) => {
     assert.match(await (await fetch(`${base}/`)).text(), /ok/)
     const res = await fetch(`${base}/api/capabilities`)
-    assert.deepEqual(await res.json(), { adapter: "stub", extras: [], actions: [] })
+    assert.deepEqual(await res.json(), { adapter: "stub", extras: [], actions: [], source: null })
   })
 })
 
@@ -32,4 +32,15 @@ test("unknown route is 404 json", async () => {
     assert.equal(res.status, 404)
     assert.deepEqual(await res.json(), { error: "not found" })
   })
+})
+
+test("capabilities exposes the adapter source from describe()", async () => {
+  const distDir = mkdtempSync(join(tmpdir(), "mc-dist-"))
+  const srv = await createServer({ ...adapter, describe: () => ({ source: "/some/runs" }) }, { port: 0, distDir })
+  try {
+    const caps = await (await fetch(`http://127.0.0.1:${srv.port}/api/capabilities`)).json()
+    assert.equal(caps.source, "/some/runs")
+  } finally {
+    await srv.close()
+  }
 })

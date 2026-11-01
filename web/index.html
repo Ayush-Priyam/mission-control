@@ -6,6 +6,8 @@
     <title>mission control</title>
     <script>
       try {
+        var q = new URLSearchParams(location.search).get("theme")
+        if (q === "light" || q === "dark") localStorage.setItem("mission-control-theme", q)
         if (localStorage.getItem("mission-control-theme") !== "light") document.documentElement.classList.add("dark")
       } catch (e) {
         document.documentElement.classList.add("dark")
