@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useReducer, useState } from "react"
 
 export type Capabilities = { adapter: string; extras: string[]; actions: string[] }
 export type RunSummary = {
@@ -19,37 +19,40 @@ async function getJson<T>(url: string): Promise<T> {
   return r.json()
 }
 
+export type FetchState<T> = { url: string | null; data: T | null; error: string | null; loading: boolean }
+export type FetchAction<T> =
+  | { type: "ok"; url: string; data: T }
+  | { type: "fail"; url: string; error: string }
+
+export const initialFetch = <T,>(url: string | null): FetchState<T> => ({
+  url,
+  data: null,
+  error: null,
+  loading: url !== null,
+})
+
+/** State for `url`. Anything recorded for a different url is discarded; a poll on the same url keeps data. */
+export function fetchReducer<T>(state: FetchState<T>, action: FetchAction<T>): FetchState<T> {
+  if (action.url !== state.url) return state
+  if (action.type === "ok") return { url: state.url, data: action.data, error: null, loading: false }
+  return { ...state, error: action.error, loading: false }
+}
+
 function useFetch<T>(url: string | null, pollMs = 0): Remote<T> {
-  const [data, setData] = useState<T | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(url !== null)
+  const [raw, dispatch] = useReducer(fetchReducer<T>, url, initialFetch<T>)
   const [tick, setTick] = useState(0)
   const reload = useCallback(() => setTick((n) => n + 1), [])
-  const urlRef = useRef(url)
-  urlRef.current = url
+  // never expose results recorded for a previous url
+  const state = raw.url === url ? raw : initialFetch<T>(url)
 
   useEffect(() => {
-    if (url === null) {
-      setData(null)
-      setLoading(false)
-      return
-    }
+    if (url === null) return
     let cancelled = false
     let timer: ReturnType<typeof setInterval> | undefined
-    setLoading(true)
     const load = () =>
       getJson<T>(url).then(
-        (d) => {
-          if (cancelled) return
-          setData(d)
-          setError(null)
-          setLoading(false)
-        },
-        (e) => {
-          if (cancelled) return
-          setError(String(e.message ?? e))
-          setLoading(false)
-        },
+        (data) => !cancelled && dispatch({ type: "ok", url, data }),
+        (e) => !cancelled && dispatch({ type: "fail", url, error: String(e.message ?? e) }),
       )
     const start = () => {
       if (pollMs && timer === undefined) timer = setInterval(load, pollMs)
@@ -75,7 +78,7 @@ function useFetch<T>(url: string | null, pollMs = 0): Remote<T> {
     }
   }, [url, pollMs, tick])
 
-  return { data, error, loading, reload }
+  return { data: state.data, error: state.error, loading: state.loading, reload }
 }
 
 const POLL = 2000

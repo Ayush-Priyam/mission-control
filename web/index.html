@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>mission control</title>
+    <script>
+      try {
+        if (localStorage.getItem("mission-control-theme") !== "light") document.documentElement.classList.add("dark")
+      } catch (e) {
+        document.documentElement.classList.add("dark")
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
