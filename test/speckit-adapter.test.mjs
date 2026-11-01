@@ -252,3 +252,17 @@ test("repo is untouched", async () => {
   assert.equal(sh(g, "status", "--porcelain", "-uall"), st)
   assert.deepEqual(readFileSync(join(g, ".git", "index")), idx)
 })
+
+test("M10: a frontmatter slug outside [\\w.-]+ (or with ..) falls back to the filename slug", async () => {
+  for (const bad of ["../../etc/x", "a/b", "..", "a..b", "has space"]) {
+    const repo = tmpRepo()
+    const p = join(repo, "docs/intents/tip-split.intent.md")
+    writeFileSync(p, readFileSync(p, "utf8").replace('status: "approved"', `status: "approved"\nslug: "${bad}"`))
+    const runs = await create({ repo, home: emptyHome() }).listRuns()
+    assert.equal(runs[0].id, "tip-split", bad)
+  }
+  const repo = tmpRepo()
+  const p = join(repo, "docs/intents/tip-split.intent.md")
+  writeFileSync(p, readFileSync(p, "utf8").replace('status: "approved"', 'status: "approved"\nslug: "tip.split-2"'))
+  assert.equal((await create({ repo, home: emptyHome() }).listRuns())[0].id, "tip-split-2")
+})

@@ -1,11 +1,13 @@
 // Crew stats across runs, derived from events. Pure: no node: imports, so the page can reuse it.
+// Keyed by stage and run names from run files, so every map is prototype-free ("__proto__" is a name).
+const map = () => Object.create(null)
 const blank = (status) => ({ status, rounds: 0, stops: 0, redo: 0, sent: 0 })
 
 export function crewStats(runs) {
-  const grid = {}, crew = {}, bounces = {}
+  const grid = map(), crew = map(), bounces = map()
   const agent = (s) => (crew[s] ??= { stage: s, sessions: 0, tokens: 0, cost: 0, rounds: 0, stops: 0, raised: 0, models: new Set(), runners: new Set(), runs: new Set() })
   for (const r of runs) {
-    const g = (grid[r.id] = {})
+    const g = (grid[r.id] = map())
     for (const [st, v] of Object.entries(r.state?.stages ?? {})) g[st] = blank(v?.status)
     for (const e of r.events ?? []) {
       if (!e.stage) continue

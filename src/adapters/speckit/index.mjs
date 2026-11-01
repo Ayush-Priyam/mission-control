@@ -128,7 +128,9 @@ export default function create({ repo, home = homedir(), now = Date.now }) {
       const intentRel = `docs/intents/${fname}`
       const intentText = read(join(repo, intentRel))
       const fm = parseFrontmatter(intentText)
-      const slug = fm.slug || fname.slice(0, -".intent.md".length)
+      // The frontmatter slug names files to read, so only a plain name counts; else the file's own.
+      const okSlug = (v) => typeof v === "string" && /^[\w.-]+$/.test(v) && !v.includes("..")
+      const slug = okSlug(fm.slug) ? fm.slug : fname.slice(0, -".intent.md".length)
       const specName = matchSpecDir(slug, specDirs)
       const specRel = specName ? `specs/${specName}` : null
 
