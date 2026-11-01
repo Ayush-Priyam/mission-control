@@ -12,6 +12,12 @@ test("readJsonl skips bad lines and returns [] for a missing file", () => {
   assert.deepEqual(readJsonl(f + ".nope"), [])
 })
 
+test("readJsonl keeps only plain objects", () => {
+  const f = join(mkdtempSync(join(tmpdir(), "mc-")), "runs.jsonl")
+  writeFileSync(f, '{"a":1}\nnull\n42\n"s"\n[1]\n{"a":2}\n')
+  assert.deepEqual(readJsonl(f), [{ a: 1 }, { a: 2 }])
+})
+
 test("isRunId", () => {
   assert.equal(isRunId("20261101-2114"), true)
   for (const s of ["../x", "a/b", ""]) assert.equal(isRunId(s), false)
