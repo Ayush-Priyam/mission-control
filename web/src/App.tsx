@@ -2,6 +2,8 @@ import { useEffect, useState } from "react"
 import { Shell } from "@/components/Shell"
 import Home from "@/views/Home"
 import Project from "@/views/Project"
+import Run from "@/views/Run"
+import Agent from "@/views/Agent"
 import { RunsProvider } from "@/lib/runs-context"
 import { parseRoute, type Route } from "@/lib/route"
 
@@ -22,9 +24,8 @@ export default function App() {
       <Shell route={route}>
         {route.view === "home" && <Home />}
         {route.view === "project" && <Project key={route.repo} repo={route.repo} />}
-        {(route.view === "run" || route.view === "agent") && (
-          <p className="font-mono text-sm text-muted-foreground">{route.view} view: coming in a later task</p>
-        )}
+        {route.view === "run" && <Run key={route.id} id={route.id} tab={route.tab} />}
+        {route.view === "agent" && <Agent key={`${route.id}/${route.stage}`} id={route.id} stage={route.stage} />}
       </Shell>
     </RunsProvider>
   )
