@@ -92,7 +92,7 @@ export function ItemTable({
                   <button
                     type="button"
                     onClick={() => pick(c)}
-                    className={cn("inline-flex items-center gap-1 hover:text-foreground", on && "text-muted-foreground")}
+                    className={cn("inline-flex min-h-6 items-center gap-1 py-1 hover:text-foreground", on && "text-muted-foreground")}
                   >
                     {c.label}
                     {on && (sort.dir === "asc" ? <ArrowUp aria-hidden className="size-3" /> : <ArrowDown aria-hidden className="size-3" />)}
@@ -109,27 +109,28 @@ export function ItemTable({
             const folder = i.project ? worktreeLabel({ path: i.project.worktree, branch: null }) : ""
             const branch = i.branch || (showProject && folder === i.project?.name ? "" : folder)
             return (
-              <tr key={`${i.source}/${i.id}`} className="group border-b border-border/60 hover:bg-surface/60">
+              <tr key={`${i.source}/${i.id}`} className="group relative cursor-pointer border-b border-border/60 hover:bg-surface/60">
                 <td className="h-9 truncate px-2">
-                  <a href={href} title={i.title || i.id} className="font-medium text-foreground/90 group-hover:text-foreground">
+                  {/* The row is clickable through its title link (::after covers the row). */}
+                  <a href={href} title={i.title || i.id} className="font-medium text-foreground/90 after:absolute after:inset-0 after:content-[''] group-hover:text-foreground">
                     {i.title || i.id}
                   </a>
                 </td>
-                <td className="px-2 py-1 font-mono text-[11px] leading-tight text-muted-foreground" title={[i.project?.name, branch].filter(Boolean).join(" · ")}>
+                <td className="px-2 py-1 font-mono text-xs leading-tight text-muted-foreground" title={[i.project?.name, branch].filter(Boolean).join(" · ")}>
                   {showProject && i.project && <div className="truncate text-foreground/80">{i.project.name}</div>}
                   {branch && <div className="truncate">{branch}</div>}
                 </td>
-                <td className="truncate px-2 font-mono text-[11px] text-muted-foreground">{i.harness}</td>
+                <td className="truncate px-2 font-mono text-xs text-muted-foreground">{i.harness}</td>
                 <td className="px-2 whitespace-nowrap">
                   <span className={cn("inline-flex items-center gap-1.5", STATUS_TEXT[i.status])}>
-                    <StatusDot status={i.status} live={i.live} className="size-1.5" />
+                    <StatusDot status={i.status} live={i.live} labelled className="size-1.5" />
                     {STATUS_LABEL[i.status]}
                   </span>
                 </td>
                 <td className="px-2 text-right font-mono tabular-nums text-muted-foreground">{i.counts.lanes}</td>
                 <td className="px-2 text-right font-mono tabular-nums text-muted-foreground">
                   {i.partial ? <span title="not counted until the session is opened">–</span> : i.counts.calls}
-                  {!i.partial && i.counts.errors > 0 && <span className="ml-1 text-failed">!{i.counts.errors}</span>}
+                  {!i.partial && i.counts.errors > 0 && <span className="ml-1 text-failed">{i.counts.errors} err<span className="sr-only">ors</span></span>}
                 </td>
                 <td className="px-2 text-right font-mono tabular-nums text-muted-foreground">{i.partial ? "–" : money(i.cost)}</td>
                 <td className="px-2 text-right font-mono tabular-nums text-faint" title={i.updatedAt ?? undefined}>
@@ -141,7 +142,7 @@ export function ItemTable({
         </tbody>
       </table>
       {!all && rows.length > cap && (
-        <button type="button" onClick={() => setAll(true)} className="mt-2 px-2 font-mono text-[11px] text-faint hover:text-foreground">
+        <button type="button" onClick={() => setAll(true)} className="mt-2 px-2 font-mono text-xs text-faint hover:text-foreground">
           Show all {rows.length}
         </button>
       )}

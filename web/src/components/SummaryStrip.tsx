@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils"
 function Cell({ k, children, tip, className }: { k: string; children: ReactNode; tip?: string; className?: string }) {
   return (
     <div className="min-w-0 bg-card px-3 py-2.5" title={tip}>
-      <div className="text-[11px] text-muted-foreground">{k}</div>
+      <div className="text-xs text-muted-foreground">{k}</div>
       <div className={cn("mt-0.5 truncate text-lg font-semibold tracking-tight tabular-nums", className)}>{children}</div>
     </div>
   )
@@ -39,7 +39,7 @@ export function SummaryStrip({ detail, now }: { detail: ItemDetail; now: number 
       </Cell>
       <Cell k="Lanes working" className={s.running ? "text-running" : undefined}>{s.running}</Cell>
       <Cell k={L.subagents > 0 ? "Lanes" : L.stages > 0 ? "Stages done" : "Lanes"}>{lanes}</Cell>
-      <Cell k="Duration">{span(s.durationMs)}</Cell>
+      <Cell k="Duration" tip="Wall clock, first to last activity. The Timeline also shows active time (idle breaks folded)">{span(s.durationMs)}<span className="ml-1 text-xs font-normal text-muted-foreground">wall</span></Cell>
       <Cell k="Calls">{compact(s.calls)}</Cell>
       <Cell k="Issues" tip="Failed calls (a session) or issues raised (a run)" className={s.errors ? "text-failed" : undefined}>{s.errors}</Cell>
       <Cell k="Tokens" tip="Input, output, cache writes and cache reads">{compact(s.tokens)}</Cell>

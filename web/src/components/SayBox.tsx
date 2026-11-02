@@ -88,7 +88,7 @@ export function SayBox({
         </Button>
       </form>
       {note && (
-        <p role="status" className={`font-mono text-[11px] ${note.ok ? "text-running" : "text-failed"}`}>
+        <p role="status" className={`font-mono text-xs ${note.ok ? "text-running" : "text-failed"}`}>
           {note.text}
         </p>
       )}

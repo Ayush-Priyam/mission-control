@@ -32,7 +32,7 @@ function WorktreeRow({ p, w, selected }: { p: ProjectSummary; w: WorktreeSummary
       <StatusDot status={st} live={w.live} className="size-1.5" />
       <span className="min-w-0 flex-1 truncate">{worktreeLabel(w)}</span>
       {!!w.dirty && <span className="text-xs text-muted-foreground" title={`${w.dirty} changed files`}>±{w.dirty}</span>}
-      <span className="w-7 text-right text-[11px] tabular-nums text-faint">{w.counts.items || ""}</span>
+      <span className="w-7 text-right text-xs tabular-nums text-faint">{w.counts.items || ""}</span>
     </a>
   )
 }
@@ -78,7 +78,7 @@ function ProjectRow({
         <a href={toHash({ view: "project", key: p.key })} title={p.path} className="flex h-8 min-w-0 flex-1 items-center gap-2 pr-2">
           <StatusDot status={st} live={live} />
           <span className={cn("min-w-0 flex-1 truncate font-medium", p.hidden && "text-faint italic")}>{p.name}</span>
-          <span className="font-mono text-[11px] tabular-nums text-faint">{count(p.worktrees)}</span>
+          <span className="font-mono text-xs tabular-nums text-faint">{count(p.worktrees)}</span>
         </a>
       </div>
       {open && (
@@ -93,7 +93,7 @@ function ProjectRow({
               <button
                 type="button"
                 onClick={onShowEmpty}
-                className="h-6 pl-2 font-mono text-[11px] text-faint hover:text-muted-foreground"
+                className="h-6 pl-2 font-mono text-xs text-faint hover:text-muted-foreground"
               >
                 {showEmpty ? "hide idle worktrees" : `+ ${empty} idle worktree${empty === 1 ? "" : "s"}`}
               </button>
@@ -179,7 +179,7 @@ export function Sidebar({
           />
         </label>
       </div>
-      <div className="flex items-center justify-between px-3 pt-3 pb-1 font-mono text-[11px] tracking-wider text-faint uppercase">
+      <div className="flex items-center justify-between px-3 pt-3 pb-1 font-mono text-xs tracking-wider text-faint uppercase">
         <span>Projects</span>
         <span className="tabular-nums">{tree.length}</span>
       </div>
@@ -203,7 +203,7 @@ export function Sidebar({
           ))}
         </ul>
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-t border-sidebar-border px-3 py-2 font-mono text-[10px] text-faint">
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-t border-sidebar-border px-3 py-2 font-mono text-xs text-faint">
         <span className="whitespace-nowrap">{footer}</span>
         {hiddenCount > 0 && onShowHidden && (
           <button

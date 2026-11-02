@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils"
 /** The transcript file a lane's calls come from (the names /session/:name accepts). */
 export const sessionFile = (lane: string) => (lane === "main" ? "main.jsonl" : `${lane}.jsonl`)
 
-const Label = ({ children }: { children: string }) => <div className="text-[11px] tracking-wide text-muted-foreground uppercase">{children}</div>
+const Label = ({ children }: { children: string }) => <div className="text-xs tracking-wide text-muted-foreground uppercase">{children}</div>
 const Block = ({ children, tone }: { children: string; tone?: "error" }) => (
   <pre
     className={cn(

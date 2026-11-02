@@ -27,7 +27,7 @@ function Chip({ c, open, onToggle }: { c: ToolChip; open: boolean; onToggle: () 
       onClick={onToggle}
       title={c.summary}
       className={cn(
-        "inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[11px]",
+        "inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-xs",
         open ? "border-ring bg-accent" : "border-border bg-muted/30 hover:bg-muted/60",
         c.ok === false && "border-failed/50",
       )}
@@ -42,14 +42,14 @@ function Chip({ c, open, onToggle }: { c: ToolChip; open: boolean; onToggle: () 
 }
 
 const Pre = ({ children, bad }: { children: string; bad?: boolean }) => (
-  <pre className={cn("max-h-64 overflow-auto rounded-md border bg-background/60 p-2.5 font-mono text-[11.5px] break-words whitespace-pre-wrap", bad ? "border-failed/40 text-failed" : "text-foreground/85")}>{children}</pre>
+  <pre className={cn("max-h-64 overflow-auto rounded-md border bg-background/60 p-2.5 font-mono text-xs break-words whitespace-pre-wrap", bad ? "border-failed/40 text-failed" : "text-foreground/85")}>{children}</pre>
 )
 
 function ChipDetail({ c, href, onOpenLane, subLane }: { c: ToolChip; href: string; subLane?: { id: string; label: string }; onOpenLane: (lane: string) => void }) {
   const args = c.input === undefined ? null : typeof c.input === "string" ? c.input : JSON.stringify(c.input, null, 2)
   return (
     <div className="flex flex-col gap-1.5 rounded-lg border bg-muted/20 p-3" aria-label={`${c.name} detail`}>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs text-muted-foreground">
         <span className={KIND[c.kind].text}>{displayName(asCall(c, ""))}</span>
         <span>{KIND[c.kind].type}</span>
         <span>{fmtDuration(c.durationMs)}</span>
@@ -63,9 +63,9 @@ function ChipDetail({ c, href, onOpenLane, subLane }: { c: ToolChip; href: strin
           open in Calls ↗
         </a>
       </div>
-      <span className="text-[10.5px] tracking-wide text-muted-foreground uppercase">Arguments</span>
+      <span className="text-xs tracking-wide text-muted-foreground uppercase">Arguments</span>
       {args === null ? <span className="text-xs text-muted-foreground">None recorded.</span> : <Pre>{args}</Pre>}
-      <span className="text-[10.5px] tracking-wide text-muted-foreground uppercase">{c.ok === false ? "Error" : "Result"}</span>
+      <span className="text-xs tracking-wide text-muted-foreground uppercase">{c.ok === false ? "Error" : "Result"}</span>
       {c.ok === false ? <Pre bad>{c.error ?? "error"}</Pre> : c.result ? <Pre>{c.result}</Pre> : <span className="text-xs text-muted-foreground">{c.ok === undefined ? "No result yet." : "No output."}</span>}
     </div>
   )
@@ -120,7 +120,7 @@ function SystemNote({ t }: { t: Turn }) {
         aria-expanded={open}
         aria-label={`system note: ${n.kind}`}
         onClick={() => setOpen(!open)}
-        className="flex min-w-0 items-center gap-2 self-start rounded-md border border-dashed border-border/70 px-2 py-0.5 font-mono text-[11px] text-faint hover:text-muted-foreground"
+        className="flex min-w-0 items-center gap-2 self-start rounded-md border border-dashed border-border/70 px-2 py-0.5 font-mono text-xs text-faint hover:text-muted-foreground"
       >
         {open ? <ChevronDown className="size-3 shrink-0" /> : <ChevronRight className="size-3 shrink-0" />}
         <span className="shrink-0">system note · {n.kind}</span>
@@ -165,7 +165,7 @@ function Chips({ chips, open, toggle, callHref, subLanes, onOpenLane }: Omit<Blo
           <Chip key={c.id} c={c} open={open.has(c.id)} onToggle={() => toggle(c.id)} />
         ))}
         {chips.length > SHOWN_CHIPS && (
-          <button type="button" onClick={() => setAll(!all)} className="rounded-md border border-dashed px-2 py-1 font-mono text-[11px] text-muted-foreground hover:text-foreground">
+          <button type="button" onClick={() => setAll(!all)} className="rounded-md border border-dashed px-2 py-1 font-mono text-xs text-muted-foreground hover:text-foreground">
             {all ? "fewer" : `+${chips.length - SHOWN_CHIPS} more`}
           </button>
         )}
@@ -183,7 +183,7 @@ function BlockView({ b, who, ...rest }: BlockProps) {
   const a = b.turns[0], z = b.turns[b.turns.length - 1]
   return (
     <li data-turn={a.i} className={cn("flex flex-col gap-2 rounded-xl border px-4 py-2.5", user ? "border-consult/25 bg-consult/[0.06]" : "border-transparent")}>
-      <div className="flex items-center gap-2 font-mono text-[10.5px] tracking-wider">
+      <div className="flex items-center gap-2 font-mono text-xs tracking-wider">
         <span className={cn("uppercase", user ? "text-consult" : "text-foreground/80")}>{user ? "you" : who}</span>
         <span className="text-faint">{a.ts ? fmtTime(a.ts) : ""}{z !== a && z.ts ? ` – ${fmtTime(z.ts)}` : ""}</span>
         <span className="text-faint">#{a.i + 1}{z !== a ? `–${z.i + 1}` : ""}</span>
@@ -191,7 +191,7 @@ function BlockView({ b, who, ...rest }: BlockProps) {
       {pieces(b).map((p) =>
         p.k === "text" ? (
           user ? (
-            <p key={`t${p.t.i}`} className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">{slashCommand(p.t.text) ?? p.t.text}</p>
+            <p key={`t${p.t.i}`} className="text-body leading-relaxed whitespace-pre-wrap break-words">{slashCommand(p.t.text) ?? p.t.text}</p>
           ) : (
             <Markdown key={`t${p.t.i}`} text={p.t.text} className="break-words" />
           )
@@ -269,7 +269,7 @@ function LaneChat({ source, id, lane, laneId, live, subLanes, onOpenLane }: Lane
 
   if (!latest.data && latest.loading) return <p className="p-6 font-mono text-xs text-muted-foreground">Loading the transcript…</p>
   if (!latest.data && latest.error)
-    return <p className="p-6 text-center font-mono text-[13px] text-muted-foreground">{/404|not found/i.test(latest.error) ? "No transcript recorded for this item." : `Transcript not available (${latest.error}).`}</p>
+    return <p className="p-6 text-center font-mono text-body text-muted-foreground">{/404|not found/i.test(latest.error) ? "No transcript recorded for this item." : `Transcript not available (${latest.error}).`}</p>
 
   return (
     <div
@@ -282,14 +282,14 @@ function LaneChat({ source, id, lane, laneId, live, subLanes, onOpenLane }: Lane
     >
       {first > 0 && (
         <div className="flex flex-col items-center gap-1 pb-3">
-          <button type="button" onClick={loadEarlier} disabled={earlier.busy} className="rounded-md border px-3 py-1.5 font-mono text-[11px] hover:bg-muted disabled:opacity-60">
+          <button type="button" onClick={loadEarlier} disabled={earlier.busy} className="rounded-md border px-3 py-1.5 font-mono text-xs hover:bg-muted disabled:opacity-60">
             {earlier.busy ? "Loading…" : `Load earlier (${first} more)`}
           </button>
-          {earlier.error && <span className="font-mono text-[11px] text-failed">Could not load earlier turns ({earlier.error})</span>}
+          {earlier.error && <span className="font-mono text-xs text-failed">Could not load earlier turns ({earlier.error})</span>}
         </div>
       )}
       {list.length === 0 ? (
-        <p className="p-6 text-center font-mono text-[13px] text-muted-foreground">No messages in this lane yet.</p>
+        <p className="p-6 text-center font-mono text-body text-muted-foreground">No messages in this lane yet.</p>
       ) : (
         <ol className="mx-auto flex max-w-[900px] flex-col gap-2" aria-label="Transcript" data-total={total}>
           {blocks(list).map((b) => (
@@ -320,9 +320,9 @@ export default function Chat({ source, id, lanes, live, calls }: Props) {
   return (
     <div className="flex h-[calc(100vh-19rem)] min-h-[420px] flex-col overflow-hidden rounded-xl border bg-card" aria-label="Chat">
       <div className="flex flex-wrap items-center gap-3 border-b px-4 py-2.5">
-        <b className="font-mono text-[13px] font-bold">Chat</b>
+        <b className="font-mono text-body font-bold">Chat</b>
         {lanes.length > 1 && (
-          <label className="flex min-w-0 items-center gap-2 font-mono text-[11px] text-muted-foreground">
+          <label className="flex min-w-0 items-center gap-2 font-mono text-xs text-muted-foreground">
             lane
             <select
               aria-label="Lane"
@@ -340,7 +340,7 @@ export default function Chat({ source, id, lanes, live, calls }: Props) {
           </label>
         )}
         {lane && <StatusDot status={lane.status} />}
-        {lane?.model && <span className="font-mono text-[11px] text-muted-foreground">{lane.model}</span>}
+        {lane?.model && <span className="font-mono text-xs text-muted-foreground">{lane.model}</span>}
       </div>
       <LaneChat key={laneId} source={source} id={id} lane={lane} laneId={laneId} live={live} subLanes={subLanes} onOpenLane={setPick} />
     </div>

@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils"
 import { STATUS_LABEL } from "@/components/StatusDot"
 
 const itemHref = (source: string, id: string) => toHash({ view: "item", source, id, tab: "lanes" })
-const BTN = "inline-flex h-6 items-center rounded-md px-2.5 text-xs whitespace-nowrap transition-colors disabled:opacity-50"
+const BTN = "inline-flex h-7 items-center rounded-md px-2.5 text-xs whitespace-nowrap transition-colors disabled:opacity-50"
 
 function Ask({ e, actions, now, onActed }: { e: NeedsYou; actions: string[]; now: number; onActed?: () => void }) {
   const [busy, setBusy] = useState(false)
@@ -28,17 +28,18 @@ function Ask({ e, actions, now, onActed }: { e: NeedsYou; actions: string[]; now
     }
   }
   return (
-    <article className="rounded-xl border border-needs-you/40 bg-card p-3">
-      <div className="flex items-baseline justify-between gap-2 text-[11px] text-faint">
+    <article className="relative rounded-xl border border-needs-you/40 bg-card p-3 hover:border-needs-you/70">
+      <div className="flex items-baseline justify-between gap-2 text-xs text-faint">
         <span className="truncate">{[e.project?.name, e.lane].filter(Boolean).join(" · ")}</span>
         <span className="shrink-0 font-mono">{ago(e.updatedAt, now)}</span>
       </div>
-      <a href={href} className="mt-0.5 line-clamp-2 block text-sm hover:underline">
+      {/* The title is the card's link; its ::after covers the card, so the whole card opens the item. */}
+      <a href={href} className="mt-0.5 line-clamp-2 block text-sm after:absolute after:inset-0 after:rounded-xl after:content-[''] hover:underline">
         {e.title || e.id}
       </a>
       {e.detail && <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">{e.detail}</p>}
       {canSign || canSay ? (
-        <div className="mt-2 flex flex-wrap gap-2">
+        <div className="relative z-[1] mt-2 flex flex-wrap gap-2">
           {canSign && (
             <button type="button" disabled={busy} onClick={() => void sign()} className={cn(BTN, "bg-primary text-primary-foreground hover:bg-primary/85")}>
               Sign
@@ -49,15 +50,15 @@ function Ask({ e, actions, now, onActed }: { e: NeedsYou; actions: string[]; now
           </a>
         </div>
       ) : (
-        <p className="mt-2 font-mono text-[11px] text-faint">
-          answer in terminal ·{" "}
-          <a href={href} className="hover:text-foreground">
-            open
+        <div className="relative z-[1] mt-2 flex items-center justify-between gap-2">
+          <span className="text-xs text-muted-foreground">answer in terminal</span>
+          <a href={href} className="inline-flex h-7 items-center rounded-md border border-input px-2.5 text-xs hover:bg-accent">
+            Open
           </a>
-        </p>
+        </div>
       )}
       {note && (
-        <p role="status" className={cn("mt-1.5 font-mono text-[11px]", note.ok ? "text-running" : "text-failed")}>
+        <p role="status" className={cn("mt-1.5 font-mono text-xs", note.ok ? "text-running" : "text-failed")}>
           {note.text}
         </p>
       )}
@@ -103,7 +104,7 @@ export function NeedsYouQueue({
           <h3 className="pt-2 text-xs text-faint">Stopped</h3>
           {stopped.map((i) => (
             <article key={`${i.source}/${i.id}`} className="rounded-xl border bg-card p-3">
-              <div className="flex items-baseline justify-between gap-2 text-[11px] text-faint">
+              <div className="flex items-baseline justify-between gap-2 text-xs text-faint">
                 <span className="truncate">{[i.project?.name, i.branch].filter(Boolean).join(" · ")}</span>
                 <span className={cn("shrink-0 font-mono", i.status === "failed" && "text-failed")}>
                   {STATUS_LABEL[i.status]} · {ago(i.updatedAt, now)}

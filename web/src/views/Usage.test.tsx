@@ -147,7 +147,7 @@ describe("Heatmap labels", () => {
     const map = await screen.findByLabelText("Activity heatmap")
     const labels = map.querySelectorAll("[data-heat-label]")
     expect(labels.length).toBeGreaterThan(7)
-    labels.forEach((l) => expect(l.className).toContain("text-[10px]"))
+    labels.forEach((l) => expect(l.className).toContain("text-xs"))
     expect(map.querySelector("svg")).toBeNull()
   })
 })

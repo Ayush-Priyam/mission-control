@@ -7,8 +7,8 @@ export function TrendBars({ days }: { days: SeriesDay[] }) {
   return (
     <section aria-label="Usage trend" className="flex flex-col gap-3">
       <header className="flex items-baseline justify-between">
-        <h3 className="font-mono text-[11px] tracking-widest text-muted-foreground">USAGE TREND</h3>
-        <span className="font-mono text-[11px] text-muted-foreground">peak {compact(max)}</span>
+        <h3 className="font-mono text-xs tracking-widest text-muted-foreground">USAGE TREND</h3>
+        <span className="font-mono text-xs text-muted-foreground">peak {compact(max)}</span>
       </header>
       <div className="relative flex h-36 items-end gap-[2px] border-b border-border">
         {[0.25, 0.5, 0.75, 1].map((f) => <i key={f} className="pointer-events-none absolute inset-x-0 border-t border-dashed border-border/60" style={{ bottom: `${f * 100}%` }} />)}
@@ -18,7 +18,7 @@ export function TrendBars({ days }: { days: SeriesDay[] }) {
           </div>
         ))}
       </div>
-      <footer className="flex justify-between font-mono text-[11px] text-muted-foreground">
+      <footer className="flex justify-between font-mono text-xs text-muted-foreground">
         <span>{days[0]?.day}</span>
         <span>{days.at(-1)?.day}</span>
       </footer>

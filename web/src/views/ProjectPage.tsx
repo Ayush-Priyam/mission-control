@@ -57,9 +57,9 @@ export default function ProjectPage({ projectKey, worktree }: { projectKey: stri
       <header className="flex flex-col gap-1">
         <div className="flex items-baseline gap-3">
           <h1 className="text-lg font-semibold tracking-tight">{wt ? worktreeLabel(wt) : p.name}</h1>
-          {p.hidden && <span className="rounded bg-secondary px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">hidden by default</span>}
+          {p.hidden && <span className="rounded bg-secondary px-1.5 py-0.5 font-mono text-xs text-muted-foreground">hidden by default</span>}
         </div>
-        <p className="font-mono text-[11px] text-faint">
+        <p className="font-mono text-xs text-faint">
           {wt ? (
             <>
               <a href={toHash({ view: "project", key: p.key })} className="hover:text-foreground">
@@ -82,7 +82,7 @@ export default function ProjectPage({ projectKey, worktree }: { projectKey: stri
           title={wt ? "Worktree" : "Worktrees"}
           aside={
             idle > 0 && (
-              <button type="button" onClick={() => setIdleShown((v) => !v)} className="font-mono text-[11px] text-faint hover:text-foreground">
+              <button type="button" onClick={() => setIdleShown((v) => !v)} className="font-mono text-xs text-faint hover:text-foreground">
                 {idleShown ? "hide idle worktrees" : `+ ${idle} idle worktree${idle === 1 ? "" : "s"}`}
               </button>
             )
@@ -98,7 +98,7 @@ export default function ProjectPage({ projectKey, worktree }: { projectKey: stri
 
       <Section
         title="Runs and sessions"
-        aside={filter && <span className="font-mono text-[11px] text-faint">filtered by the status chip</span>}
+        aside={filter && <span className="font-mono text-xs text-faint">filtered by the status chip</span>}
       >
         <div className="rounded-xl border bg-card p-2">
           <ItemTable items={items} showProject={false} now={now} empty={filter ? "Nothing here matches the status filter" : "No runs or sessions yet"} />

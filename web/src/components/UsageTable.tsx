@@ -36,7 +36,7 @@ export function UsageTable({ rows, nameLabel, defaultSort = "name", empty = "No 
   )
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[720px] text-[13px]">
+      <table className="w-full min-w-[720px] text-body">
         <thead className="border-b text-xs text-muted-foreground">
           <tr>
             {th("name", nameLabel, false)}
@@ -48,7 +48,7 @@ export function UsageTable({ rows, nameLabel, defaultSort = "name", empty = "No 
             <tr key={r.key} className="border-b last:border-0 hover:bg-muted/40">
               <td className="max-w-56 px-3 py-2.5">
                 <div className="truncate" title={r.sub ?? r.label}>{r.label}</div>
-                {r.sub && <div className="truncate font-mono text-[11px] text-muted-foreground">{r.sub}</div>}
+                {r.sub && <div className="truncate font-mono text-xs text-muted-foreground">{r.sub}</div>}
               </td>
               {COLS.map((c) => (
                 <td key={c.id} className={cn("px-3 py-2.5 text-right font-mono tabular-nums", c.id === "total" ? "text-foreground" : "text-muted-foreground", c.id === "cost" && "text-foreground")}>

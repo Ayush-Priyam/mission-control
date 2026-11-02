@@ -105,8 +105,8 @@ export function LaneTimeline({ lanes, calls, live, now, onPick, onOpenLane }: Pr
   return (
     <div className="flex max-h-[calc(100vh-15rem)] min-h-[180px] flex-col overflow-hidden rounded-xl border bg-card [--namew:260px] max-md:[--namew:150px]" aria-label="Timeline">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b px-4 py-3">
-        <b className="font-mono text-[13px] font-bold">Timeline</b>
-        <span className="font-mono text-[11px] text-muted-foreground">
+        <b className="font-mono text-body font-bold">Timeline</b>
+        <span className="font-mono text-xs text-muted-foreground">
           {tl.rows.length} lane{tl.rows.length === 1 ? "" : "s"} · {calls.length} call{calls.length === 1 ? "" : "s"}
           {tl.t0 !== null && ` · active ${dur(tl.activeMs)}`}
           {tl.breaks.length > 0 && ` · wall ${dur(wall)}`}
@@ -114,13 +114,13 @@ export function LaneTimeline({ lanes, calls, live, now, onPick, onOpenLane }: Pr
         <span className="flex-1" />
         <span className="flex flex-wrap items-center gap-2.5" aria-label="Legend">
           {KINDS.map((k) => (
-            <span key={k} className={cn("flex items-center gap-1 font-mono text-[10.5px] text-muted-foreground", !counts[k] && "opacity-40")}>
+            <span key={k} className={cn("flex items-center gap-1 font-mono text-xs text-muted-foreground", !counts[k] && "opacity-40")}>
               <i className={cn("inline-block h-2.5 w-[3px] rounded-[1px]", TICK[k].bg)} />
               {TICK[k].label} {counts[k]}
             </span>
           ))}
         </span>
-        <span className="flex items-center rounded-md border font-mono text-[11px]" aria-label="Zoom">
+        <span className="flex items-center rounded-md border font-mono text-xs" aria-label="Zoom">
           <button type="button" aria-label="Zoom out" title="Zoom out (ctrl/⌘ + wheel)" disabled={zoom <= 1} onClick={() => zoomTo((z) => z / 2)} className="px-1.5 py-1 text-muted-foreground hover:text-foreground disabled:opacity-40">
             <Minus className="size-3" />
           </button>
@@ -132,20 +132,20 @@ export function LaneTimeline({ lanes, calls, live, now, onPick, onOpenLane }: Pr
           </button>
         </span>
         {live && (
-          <span className="flex items-center gap-1.5 rounded-full border border-running/40 bg-running/10 px-2 py-0.5 font-mono text-[11px] text-running">
+          <span className="flex items-center gap-1.5 rounded-full border border-running/40 bg-running/10 px-2 py-0.5 font-mono text-xs text-running">
             <i className="mc-pulse size-1.5 rounded-full bg-running" />
             Live
           </span>
         )}
       </div>
       {tl.rows.length === 0 ? (
-        <p className="m-auto px-4 text-center font-mono text-[13px] text-muted-foreground">No lanes or calls recorded for this item yet.</p>
+        <p className="m-auto px-4 text-center font-mono text-body text-muted-foreground">No lanes or calls recorded for this item yet.</p>
       ) : (
         <div ref={scroller} data-scroller className="min-h-0 flex-1 overflow-auto">
           <div data-track data-zoom={zoom} className="relative min-w-[calc(var(--namew)+520px)] pb-6" style={zoom > 1 ? { width: `calc(var(--namew) + ${zoom} * (100% - var(--namew)))` } : undefined}>
             {/* axis */}
             <div className="sticky top-0 z-30 grid h-[30px] grid-cols-[var(--namew)_minmax(0,1fr)] border-b bg-card">
-              <div className="sticky left-0 z-10 flex items-center border-r bg-card pl-4 font-mono text-[10px] tracking-widest text-muted-foreground">LANE</div>
+              <div className="sticky left-0 z-10 flex items-center border-r bg-card pl-4 font-mono text-xs tracking-widest text-muted-foreground">LANE</div>
               <div data-lanes-track className="relative mr-14 ml-3">
                 {tl.breaks.map((b, i) => (
                   <span key={i} title={`idle ${dur(b.realMs)}`} className={cn("absolute bottom-0 h-3 min-w-1.5 cursor-help border-x", HATCH)} style={{ left: pct(b.x), width: pct(b.w) }}>
@@ -153,7 +153,7 @@ export function LaneTimeline({ lanes, calls, live, now, onPick, onOpenLane }: Pr
                   </span>
                 ))}
                 {tl.marks.map((m, i) => (
-                  <span key={i} data-mark className={cn("absolute top-2 font-mono text-[10.5px] whitespace-nowrap text-muted-foreground/80", markAnchor(m.x))} style={{ left: pct(m.x) }}>
+                  <span key={i} data-mark className={cn("absolute top-2 font-mono text-xs whitespace-nowrap text-muted-foreground/80", markAnchor(m.x))} style={{ left: pct(m.x) }}>
                     {m.label}
                   </span>
                 ))}
@@ -171,15 +171,15 @@ export function LaneTimeline({ lanes, calls, live, now, onPick, onOpenLane }: Pr
                   type="button"
                   onClick={() => onOpenLane?.(r.lane.id)}
                   title={r.lane.reason ?? r.lane.label}
-                  className="sticky left-0 z-[6] flex min-w-0 items-center gap-2 border-r bg-card pr-2.5 pl-4 text-left text-[12.5px] group-hover:bg-muted"
+                  className="sticky left-0 z-[6] flex min-w-0 items-center gap-2 border-r bg-card pr-2.5 pl-4 text-left text-body group-hover:bg-muted"
                 >
                   <StatusDot status={r.lane.status} />
                   <span className={cn("min-w-0 flex-1 truncate", r.lane.kind === "main" && "font-semibold")}>{r.lane.label}</span>
-                  <span className="flex-none font-mono text-[10.5px] text-muted-foreground">{r.ticks.length || ""}</span>
+                  <span className="flex-none font-mono text-xs text-muted-foreground">{r.ticks.length || ""}</span>
                 </button>
                 <div className="relative mr-14 ml-3">
                   {r.a === null || r.b === null ? (
-                    <span className="absolute top-1/2 left-0 -translate-y-1/2 font-mono text-[10.5px] text-faint">no timestamps</span>
+                    <span className="absolute top-1/2 left-0 -translate-y-1/2 font-mono text-xs text-faint">no timestamps</span>
                   ) : (
                     <>
                       <i
@@ -190,7 +190,7 @@ export function LaneTimeline({ lanes, calls, live, now, onPick, onOpenLane }: Pr
                         )}
                         style={{ left: pct(r.a), width: pct(Math.max(0, r.b - r.a)) }}
                       />
-                      <span className="pointer-events-none absolute top-1/2 -translate-y-1/2 pl-1.5 font-mono text-[10.5px] whitespace-nowrap text-muted-foreground" style={{ left: pct(r.b) }}>
+                      <span className="pointer-events-none absolute top-1/2 -translate-y-1/2 pl-1.5 font-mono text-xs whitespace-nowrap text-muted-foreground" style={{ left: pct(r.b) }}>
                         {dur(r.realMs)}
                       </span>
                     </>

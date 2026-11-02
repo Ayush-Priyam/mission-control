@@ -11,7 +11,7 @@ export function UsageTotals({ totals, label }: { totals: Usage["totals"]; label:
   ]
   return (
     <section aria-label="Usage totals" className="flex flex-col items-center gap-1 py-2 text-center">
-      <h2 className="font-mono text-[11px] tracking-widest text-muted-foreground">TOTAL TOKENS · {label.toUpperCase()}</h2>
+      <h2 className="font-mono text-xs tracking-widest text-muted-foreground">TOTAL TOKENS · {label.toUpperCase()}</h2>
       <p data-testid="usage-total" className="text-[clamp(2.25rem,6vw,4.25rem)] font-extrabold leading-none tracking-tight tabular-nums">
         {fmtInt(total)}
       </p>

@@ -14,11 +14,11 @@ const ROLE_CLASS: Record<string, string> = {
 function Item({ m }: { m: Message }) {
   return (
     <li className="flex flex-col gap-1 border-b border-border/60 pb-3 last:border-0">
-      <div className="flex items-center gap-2 font-mono text-[11px] tracking-wider">
+      <div className="flex items-center gap-2 font-mono text-xs tracking-wider">
         <span className={cn("uppercase", ROLE_CLASS[m.role] ?? "text-muted-foreground")}>{m.role}</span>
         {m.tool && <span className="rounded border border-tool/50 bg-tool/10 px-1.5 text-tool">{m.tool}</span>}
       </div>
-      {m.text && <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words text-muted-foreground">{m.text}</p>}
+      {m.text && <p className="text-body leading-relaxed whitespace-pre-wrap break-words text-muted-foreground">{m.text}</p>}
     </li>
   )
 }

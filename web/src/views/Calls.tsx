@@ -100,7 +100,7 @@ export default function Calls({ source, id, sessionHref, timelineHref, call, det
     <div className="grid h-full min-h-0 grid-cols-[230px_minmax(0,1fr)_380px] overflow-hidden">
       {/* lanes */}
       <div className="flex min-h-0 flex-col border-r p-3 text-sm">
-        <div className="px-2 py-1 text-[11px] tracking-wide text-muted-foreground uppercase">Lanes</div>
+        <div className="px-2 py-1 text-xs tracking-wide text-muted-foreground uppercase">Lanes</div>
         <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto" role="list" aria-label="Lanes">
           <LaneRow label="All lanes" count={all.length} on={lane === null} onClick={() => setLane(null)} />
           {lanes.map((l) => (
@@ -117,13 +117,13 @@ export default function Calls({ source, id, sessionHref, timelineHref, call, det
           ))}
         </div>
         <div className="mt-3 border-t pt-3">
-          <div className="truncate px-2 pb-1 text-[11px] tracking-wide text-muted-foreground uppercase">{current ? current.label : "All lanes"} · used</div>
+          <div className="truncate px-2 pb-1 text-xs tracking-wide text-muted-foreground uppercase">{current ? current.label : "All lanes"} · used</div>
           <div className="space-y-1.5 px-2 text-xs text-foreground/85">
             <Stat icon={<Zap className="size-3.5 text-tool" />} label="skills" value={used.skills} />
             <Stat icon={<Plug className="size-3.5 text-llm" />} label="MCP servers" value={used.servers} />
             {tokens > 0 && <Stat label="tokens" value={kfmt(tokens)} />}
             {cost > 0 && <Stat label="cost (est.)" value={`$${cost.toFixed(2)}`} />}
-            {models.length > 0 && <div className="truncate text-[11px] text-muted-foreground" title={models.join(", ")}>{models.join(", ")}</div>}
+            {models.length > 0 && <div className="truncate text-xs text-muted-foreground" title={models.join(", ")}>{models.join(", ")}</div>}
           </div>
         </div>
       </div>
@@ -178,7 +178,7 @@ export default function Calls({ source, id, sessionHref, timelineHref, call, det
         <div className="mt-4">
           <CallBreakdown calls={scoped} />
         </div>
-        <div className="mt-4 mb-1 text-[11px] tracking-wide text-muted-foreground uppercase">
+        <div className="mt-4 mb-1 text-xs tracking-wide text-muted-foreground uppercase">
           Calls · newest first{rows.length !== scoped.length || q ? ` · ${rows.length} shown` : ""}
         </div>
         <CallList

@@ -26,7 +26,7 @@ export function RunCard({ run }: { run: RunSummary }) {
         <CardContent className="flex flex-col gap-3">
           <StageBar stages={run.stages} />
           <div className="flex items-center justify-between gap-2">
-            <span className="truncate font-mono text-[11px] text-muted-foreground">{run.id}</span>
+            <span className="truncate font-mono text-xs text-muted-foreground">{run.id}</span>
             <RunStatusBadge run={run} />
           </div>
         </CardContent>
@@ -73,7 +73,7 @@ function Crew({ repo }: { repo: string }) {
         </TableBody>
       </Table>
       <aside>
-        <h3 className="mb-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">Bounces</h3>
+        <h3 className="mb-2 font-mono text-xs uppercase tracking-widest text-muted-foreground">Bounces</h3>
         {bounces.length ? (
           <ul className="flex flex-col gap-1 font-mono text-xs">
             {bounces.map(([k, n]) => {
@@ -114,7 +114,7 @@ export default function Project({ repo }: { repo: string }) {
       <Tabs defaultValue="crew">
         <TabsList>
           <TabsTrigger value="crew">Crew</TabsTrigger>
-          <TabsTrigger value="runs">Runs <span className="font-mono text-[11px] opacity-60">{mine.length}</span></TabsTrigger>
+          <TabsTrigger value="runs">Runs <span className="font-mono text-xs opacity-60">{mine.length}</span></TabsTrigger>
           {hasBrain && <TabsTrigger value="brain">Brain</TabsTrigger>}
         </TabsList>
         <TabsContent value="crew"><Crew repo={repo} /></TabsContent>

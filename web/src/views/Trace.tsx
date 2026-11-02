@@ -68,10 +68,10 @@ function Icon({ s }: { s: Span }) {
       </i>
     )
   if (s.kind === "session")
-    return <i className={cn(box, "rounded-full bg-llm/30 font-mono text-[9px] font-bold not-italic uppercase text-foreground")}>{(s.name || "?")[0]}</i>
+    return <i className={cn(box, "rounded-full bg-llm/30 font-mono text-xs font-bold not-italic uppercase text-foreground")}>{(s.name || "?")[0]}</i>
   if (s.kind === "group") return <Rows3 className="size-3 flex-none text-muted-foreground" />
   const f = family(String(s.name ?? ""))
-  if (f === "bash") return <i className={cn(box, "font-mono text-[8.5px] font-bold not-italic tracking-tighter text-tool")}>&gt;_</i>
+  if (f === "bash") return <i className={cn(box, "font-mono text-xs font-bold not-italic tracking-tighter text-tool")}>&gt;_</i>
   const I = f === "find" ? Search : f === "edit" ? Pencil : f === "mcp" ? Copy : Diamond
   return <I className="size-3 flex-none text-tool" />
 }
@@ -136,7 +136,7 @@ function Pill({ status }: { status: string }) {
   const p = PILL[status] ?? PILL.stopped
   const pulse = status === "live" || status === "running"
   return (
-    <span className={cn("inline-flex flex-none items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[11px]", p.cls)}>
+    <span className={cn("inline-flex flex-none items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-xs", p.cls)}>
       <i className={cn("size-1.5 rounded-full bg-current", pulse && "animate-pulse motion-reduce:animate-none")} />
       {p.word}
     </span>
@@ -156,28 +156,26 @@ function Stats({ tr, wall }: { tr: TraceData; wall: number }) {
   const T = tr.totals
   const n = tr.breaks.length
   const cells: { k: string; v: string | number; tip?: string; sub?: string; lsub?: string; bad?: boolean }[] = [
-    { k: "DURATION", v: dur(T.durationMs), lsub: "active", tip: n ? `Active time. Wall clock ${dur(wall)}, with ${n} idle break${n > 1 ? "s" : ""} folded to 4s each` : "Active time" },
+    { k: "DURATION", v: dur(T.durationMs), lsub: `active · wall ${dur(wall)}`, tip: n ? `Active time. Wall clock ${dur(wall)}, with ${n} idle break${n > 1 ? "s" : ""} folded to 4s each` : "Active time" },
     { k: "COST", v: money(T.cost), tip: "API list prices; subscription plans differ" },
     { k: "TOKENS", v: toks(T.tokensIn + T.tokensOut), lsub: "incl. cache reads", tip: `${toks(T.tokensIn)} in (fresh, cache writes and cache reads) · ${toks(T.tokensOut)} out. The crew footer leaves cache reads out.` },
     { k: "LLM CALLS", v: T.llmCalls },
     { k: "TOOL CALLS", v: T.toolCalls },
     {
-      k: "ERRORS",
+      k: "ISSUES",
       v: T.errors,
       bad: T.errors > 0,
       tip: "Failure stops, failed checks and blocking issues an agent owns. Stops that wait on you are counted as waits",
-      sub: T.waits ? `${T.waits} wait${T.waits > 1 ? "s" : ""} on you` : "",
+      sub: T.waits ? `${T.waits} stop${T.waits > 1 ? "s" : ""} need${T.waits > 1 ? "" : "s"} you` : "",
     },
   ]
   return (
-    <div className="grid grid-cols-3 gap-x-3.5 gap-y-2.5 border-b px-4 pt-3 pb-3.5 md:grid-cols-6" aria-label="Trace totals">
+    <div className="grid grid-cols-2 gap-x-3.5 gap-y-2.5 border-b px-4 pt-3 pb-3.5 md:grid-cols-3 2xl:grid-cols-6" aria-label="Trace totals">
       {cells.map((c) => {
         const body = (
           <>
-            <span className="font-mono text-[10px] tracking-widest whitespace-nowrap text-muted-foreground">
-              {c.k}
-              {c.lsub && <small className="ml-1.5 tracking-wide normal-case">{c.lsub}</small>}
-            </span>
+            <span className="block min-w-0 truncate font-mono text-xs tracking-widest text-muted-foreground">{c.k}</span>
+            {c.lsub && <small className="block truncate font-mono text-xs tracking-normal text-faint">{c.lsub}</small>}
             <b className={cn("block text-lg leading-tight font-medium tracking-tight whitespace-nowrap tabular-nums md:text-[22px]", c.bad && "text-failed")}>{c.v}</b>
             {c.sub && <small className="block truncate font-mono text-xs text-needs-you">{c.sub}</small>}
           </>
@@ -242,7 +240,7 @@ function Label({ r, a, b }: { r: Row; a: number; b: number }) {
     b <= 0.8 ? { left: `calc(${b * 100}% + 7px)` } : inside ? { right: `calc(${(1 - b) * 100}% + 7px)` } : { right: `calc(${(1 - a) * 100}% + 7px)` }
   return (
     <span
-      className={cn("pointer-events-none absolute z-[2] top-1/2 flex -translate-y-1/2 items-center gap-1.5 font-mono text-[11px] whitespace-nowrap", inside ? "text-foreground" : "text-muted-foreground")}
+      className={cn("pointer-events-none absolute z-[2] top-1/2 flex -translate-y-1/2 items-center gap-1.5 font-mono text-xs whitespace-nowrap", inside ? "text-foreground" : "text-muted-foreground")}
       style={style}
     >
       {bits.join(" · ")}
@@ -295,8 +293,8 @@ function Card({
 
   const block = (label: string, body: string) => (
     <div className="mt-2.5" key={label}>
-      <span className="font-mono text-[9.5px] tracking-widest text-muted-foreground">{label}</span>
-      <p className="mt-0.5 max-h-[118px] overflow-auto text-[12.5px] leading-normal break-words whitespace-pre-wrap text-muted-foreground">{body}</p>
+      <span className="font-mono text-xs tracking-widest text-muted-foreground">{label}</span>
+      <p className="mt-0.5 max-h-[118px] overflow-auto text-body leading-normal break-words whitespace-pre-wrap text-muted-foreground">{body}</p>
     </div>
   )
   let ioBlocks: ReactNode = null
@@ -319,7 +317,7 @@ function Card({
         </span>
         <div className="min-w-0 flex-1">
           <b className="block truncate text-sm font-semibold">{nameOf(s)}</b>
-          <span className="block truncate font-mono text-[11px] text-muted-foreground">
+          <span className="block truncate font-mono text-xs text-muted-foreground">
             {kind}
             {sub ? ` · ${sub}` : ""}
           </span>
@@ -332,15 +330,15 @@ function Card({
       <div className="mt-2.5 grid grid-cols-3 gap-x-2 gap-y-2.5 rounded-lg border bg-background px-3 py-2.5">
         {kv.map(([k, v, small]) => (
           <div key={k} className="min-w-0">
-            <span className="font-mono text-[9.5px] tracking-widest text-muted-foreground">{k}</span>
-            <b className="block truncate text-[15px] leading-snug font-medium tabular-nums">{v}</b>
-            {small && <small className="block font-mono text-[10px] text-muted-foreground">{small}</small>}
+            <span className="font-mono text-xs tracking-widest text-muted-foreground">{k}</span>
+            <b className="block truncate text-title leading-snug font-medium tabular-nums">{v}</b>
+            {small && <small className="block font-mono text-xs text-muted-foreground">{small}</small>}
           </div>
         ))}
       </div>
       {ioBlocks}
       {file && (
-        <button type="button" onClick={() => onOpenSession(file)} className="mt-3 font-mono text-[11px] text-llm underline-offset-2 hover:underline">
+        <button type="button" onClick={() => onOpenSession(file)} className="mt-3 font-mono text-xs text-llm underline-offset-2 hover:underline">
           ↗ open the full transcript
         </button>
       )}
@@ -420,9 +418,9 @@ export default function Trace({ runId, events, live, idea }: { runId: string; ev
     <TooltipProvider delay={150}>
       <div className="flex h-[calc(100vh-15rem)] min-h-[420px] flex-col overflow-hidden rounded-xl border bg-card [--namew:330px] [--padr:112px] max-md:[--namew:190px] max-md:[--padr:92px]">
         <div className="flex min-w-0 items-center gap-2.5 px-4 pt-3">
-          <b className="flex-none font-mono text-[13px] font-bold">Timeline</b>
-          <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">{tr.title || idea || runId}</span>
-          {approx.size > 0 && <span className="flex-none font-mono text-[11px] text-muted-foreground italic">approx. from file times</span>}
+          <b className="flex-none font-mono text-body font-bold">Timeline</b>
+          <span className="min-w-0 flex-1 truncate text-body text-muted-foreground">{tr.title || idea || runId}</span>
+          {approx.size > 0 && <span className="flex-none font-mono text-xs text-muted-foreground italic">approx. from file times</span>}
           <Pill status={status} />
         </div>
         <Stats tr={tr} wall={wall} />
@@ -430,7 +428,7 @@ export default function Trace({ runId, events, live, idea }: { runId: string; ev
           <div ref={innerRef} className="relative min-w-[calc(var(--namew)+560px)] pb-7">
             {/* axis: ticks, markers, breaks, playhead */}
             <div className="sticky top-0 z-30 grid h-[30px] grid-cols-[var(--namew)_minmax(0,1fr)] border-b bg-card">
-              <div className="sticky left-0 z-10 flex items-center border-r bg-card pl-4 font-mono text-[10px] tracking-widest text-muted-foreground">SPAN</div>
+              <div className="sticky left-0 z-10 flex items-center border-r bg-card pl-4 font-mono text-xs tracking-widest text-muted-foreground">SPAN</div>
               <div className="relative mr-[var(--padr)] ml-3">
                 {tr.breaks.map((b, i) => (
                   <Tip
@@ -443,7 +441,7 @@ export default function Trace({ runId, events, live, idea }: { runId: string; ev
                   </Tip>
                 ))}
                 {Array.from({ length: sc.n + 1 }, (_, k) => (
-                  <span key={`t${k}`} className={cn("absolute top-2 font-mono text-[10.5px] whitespace-nowrap text-muted-foreground/80", k > 0 && "-translate-x-1/2")} style={{ left: `${(k / sc.n) * 100}%` }}>
+                  <span key={`t${k}`} className={cn("absolute top-2 font-mono text-xs whitespace-nowrap text-muted-foreground/80", k > 0 && "-translate-x-1/2")} style={{ left: `${(k / sc.n) * 100}%` }}>
                     {tick(k * sc.step)}
                   </span>
                 ))}
@@ -476,7 +474,7 @@ export default function Trace({ runId, events, live, idea }: { runId: string; ev
             <div className="pointer-events-none absolute top-[30px] right-[var(--padr)] bottom-0 left-[calc(var(--namew)+12px)] z-0">{breaks}</div>
             <div className="relative">
               {rows.length === 0 ? (
-                <div className="px-4 py-14 text-center font-mono text-[13px] text-muted-foreground">No spans yet. Stages, sessions and tool calls show here as the run reaches them.</div>
+                <div className="px-4 py-14 text-center font-mono text-body text-muted-foreground">No spans yet. Stages, sessions and tool calls show here as the run reaches them.</div>
               ) : (
                 rows.map((r) => {
                   const s = r.s
@@ -494,14 +492,14 @@ export default function Trace({ runId, events, live, idea }: { runId: string; ev
                       className={cn("group grid h-[27px] cursor-pointer grid-cols-[var(--namew)_minmax(0,1fr)] hover:bg-muted/60", on && "bg-muted/60")}
                     >
                       <div
-                        className={cn("sticky left-0 z-[2] flex min-w-0 items-center gap-1.5 border-r bg-card pr-2.5 text-[12.5px] group-hover:bg-muted", on && "bg-muted")}
+                        className={cn("sticky left-0 z-[2] flex min-w-0 items-center gap-1.5 border-r bg-card pr-2.5 text-body group-hover:bg-muted", on && "bg-muted")}
                         style={{ paddingLeft: 10 + r.depth * 16 }}
                       >
                         <button
                           type="button"
                           aria-label={r.shut ? "Expand" : "Collapse"}
                           aria-expanded={r.kids ? !r.shut : undefined}
-                          className={cn("grid size-3.5 flex-none place-items-center rounded-[3px] text-muted-foreground transition-transform hover:bg-border hover:text-foreground", !r.kids && "invisible", r.kids && !r.shut && "rotate-90")}
+                          className={cn("-mx-1.5 grid size-6 flex-none place-items-center rounded-[3px] text-muted-foreground transition-transform hover:bg-border hover:text-foreground", !r.kids && "invisible", r.kids && !r.shut && "rotate-90")}
                           onClick={(e) => {
                             e.stopPropagation()
                             if (r.kids) toggle(r)
@@ -511,9 +509,9 @@ export default function Trace({ runId, events, live, idea }: { runId: string; ev
                         </button>
                         <Icon s={s} />
                         <span className={cn("max-w-[58%] flex-none truncate max-md:max-w-none max-md:flex-1", (s.kind === "stage" || s.kind === "group") && "font-semibold")}>{nameOf(s)}</span>
-                        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground max-md:hidden">{s.sub}</span>
-                        {r.shut && <span className="flex-none rounded border px-1 font-mono text-[10px] leading-[15px] text-muted-foreground">+{r.kids}</span>}
-                        {s.error && <span className="flex-none text-[11px] text-failed" aria-label="error">⚠</span>}
+                        <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground max-md:hidden">{s.sub}</span>
+                        {r.shut && <span className="flex-none rounded border px-1 font-mono text-xs leading-[15px] text-muted-foreground">+{r.kids}</span>}
+                        {s.error && <span className="flex-none text-xs text-failed" aria-label="error">⚠</span>}
                       </div>
                       <div className="relative mr-[var(--padr)] ml-3">
                         {r.approx ? (

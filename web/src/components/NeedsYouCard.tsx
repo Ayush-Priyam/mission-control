@@ -60,12 +60,12 @@ export function NeedsYouCard({ source, id, ask, actions, now, onActed, flash = f
       aria-label={ask.waiting ? "Needs you" : "Stopped"}
       className={cn("flex flex-col gap-3 rounded-xl border p-4", ask.waiting ? "border-needs-you/70 bg-needs-you/5" : "border-stopped/40 border-dashed bg-card", flash && "mc-flash")}
     >
-      <div className={cn("font-mono text-[11px] font-bold tracking-wider uppercase", ask.waiting ? "text-needs-you" : "text-stopped")}>
+      <div className={cn("font-mono text-xs font-bold tracking-wider uppercase", ask.waiting ? "text-needs-you" : "text-stopped")}>
         {ask.waiting ? "Needs you" : `Stopped${ask.rule ? ` · ${ask.rule}` : ""}`}
         {lane ? <span className="font-normal normal-case"> · {lane}</span> : null}
       </div>
-      <p className="text-[15px] leading-snug font-semibold">{short(ask.detail || (ask.waiting ? `${lane || "The run"} needs you` : `${lane || "The run"} stopped`), 220)}</p>
-      <p className="font-mono text-[11px] text-faint">
+      <p className="text-title leading-snug font-semibold">{short(ask.detail || (ask.waiting ? `${lane || "The run"} needs you` : `${lane || "The run"} stopped`), 220)}</p>
+      <p className="font-mono text-xs text-faint">
         {ask.ts ? `${ago(ask.ts, now)} ago · ` : ""}
         {ask.waiting ? (canSign || canSay ? "everything else waits until you answer" : "answer it where the agent runs") : "nothing runs until it is resumed"}
       </p>
@@ -107,7 +107,7 @@ export function NeedsYouCard({ source, id, ask, actions, now, onActed, flash = f
         </form>
       )}
       {note && (
-        <p role="status" className={cn("font-mono text-[11px]", note.ok ? "text-running" : "text-failed")}>
+        <p role="status" className={cn("font-mono text-xs", note.ok ? "text-running" : "text-failed")}>
           {note.text}
         </p>
       )}

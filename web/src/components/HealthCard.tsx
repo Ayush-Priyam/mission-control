@@ -15,21 +15,16 @@ function Ring({ value }: { value: number | null }) {
       {value !== null && (
         <circle cx="32" cy="32" r={r} fill="none" strokeWidth="5" strokeLinecap="round" strokeDasharray={`${v * c} ${c}`} transform="rotate(-90 32 32)" className={tone} />
       )}
-      <text x="32" y="33" textAnchor="middle" className="fill-foreground text-[15px] font-bold">
+      <text x="32" y="37" textAnchor="middle" className="fill-foreground text-[14px] font-bold">
         {value === null ? "–" : `${Math.round(v * 100)}%`}
       </text>
-      {value !== null && (
-        <text x="32" y="45" textAnchor="middle" className="fill-muted-foreground text-[9px]">
-          calls ok
-        </text>
-      )}
     </svg>
   )
 }
 
 function Row({ k, v, tone, tip }: { k: string; v: string; tone?: string; tip?: string }) {
   return (
-    <div className="flex items-center justify-between gap-3 text-[13px]" title={tip}>
+    <div className="flex items-center justify-between gap-3 text-body" title={tip}>
       <span className="text-muted-foreground">{k}</span>
       <span className={cn("font-mono text-xs tabular-nums", tone)}>{v}</span>
     </div>
@@ -46,7 +41,10 @@ export function HealthCard({ h, live = true }: { h: Health; live?: boolean }) {
         <span className="font-mono text-xs text-faint">{live ? "so far" : "final"}</span>
       </div>
       <div className="flex items-center gap-4">
-        <Ring value={h.okRate} />
+        <div className="flex shrink-0 flex-col items-center gap-1">
+          <Ring value={h.okRate} />
+          <span className="text-xs text-muted-foreground">calls ok</span>
+        </div>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <Row k="Issues" v={h.calls ? `${h.errors} · ${(errRate * 100).toFixed(errRate && errRate < 0.1 ? 1 : 0)}%` : String(h.errors)} tone={h.errors ? "text-failed" : undefined} tip="A session: failed calls over all calls. A run: issues raised over all calls" />
           <Row k="Sent back" v={h.sendBacks ? `↩ ${h.sendBacks}` : "0"} tone={h.sendBacks ? "text-foreground" : undefined} tip="Work a later stage sent back to an earlier one" />

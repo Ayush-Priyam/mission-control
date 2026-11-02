@@ -65,14 +65,14 @@ export default function Home() {
       <div className="flex min-w-0 flex-col gap-5 p-5">
         <Panel
           title="Live now"
-          aside={live.length > 0 && <span className="font-mono text-[11px] text-running">● {live.length} lane{live.length === 1 ? "" : "s"} working</span>}
+          aside={live.length > 0 && <span className="font-mono text-xs text-running">● {live.length} lane{live.length === 1 ? "" : "s"} working</span>}
         >
           <LiveActivity lanes={live} now={now} />
         </Panel>
         <Panel
           title="Recent"
           aside={
-            <span className="font-mono text-[11px] text-faint">
+            <span className="font-mono text-xs text-faint">
               {filter ? `${shown.length} of ${items.length} · filtered by the status chip` : `latest ${items.length} runs and sessions`}
             </span>
           }

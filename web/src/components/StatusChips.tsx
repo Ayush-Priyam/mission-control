@@ -39,7 +39,7 @@ export function StatusChips({
             aria-pressed={on}
             onClick={() => onPick(on ? null : c.filter)}
             className={cn(
-              "flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs whitespace-nowrap transition-[box-shadow,opacity] hover:brightness-125 focus-visible:outline-none focus-visible:ring-1",
+              "flex shrink-0 items-center gap-1.5 h-7 rounded-full px-2.5 text-xs whitespace-nowrap transition-[box-shadow,opacity] hover:brightness-125",
               c.tone,
               on && `ring-1 ${c.ring}`,
               active && !on && "opacity-50",

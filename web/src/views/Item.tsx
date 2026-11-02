@@ -40,7 +40,7 @@ export function itemTabs(o: { v1Run: boolean; extras: string[]; events: Record<s
 
 const LABEL: Record<string, string> = { lanes: "Lanes", map: "Map", calls: "Calls", timeline: "Timeline", chat: "Chat", board: "Board", qa: "QA", diff: "Diff", docs: "Docs" }
 
-const Count = ({ n }: { n: number | null | undefined }) => (n ? <span className="ml-1 font-mono text-[10px] text-muted-foreground">{n}</span> : null)
+const Count = ({ n }: { n: number | null | undefined }) => (n ? <span className="ml-1 font-mono text-xs text-muted-foreground">{n}</span> : null)
 const TaskCount = ({ id, refresh }: { id: string; refresh: number }) => <Count n={normaliseTasks(useExtra<unknown>("tasks", id, undefined, refresh).data).length} />
 const DiffCount = ({ id, refresh }: { id: string; refresh: number }) => <Count n={normaliseDiff(useExtra<unknown>("diff", id, undefined, refresh).data).files.length} />
 
@@ -53,7 +53,7 @@ function Header({ d }: { d: ItemDetail }) {
       <h1 className="min-w-0 flex-1 truncate text-lg font-bold tracking-tight" title={s.title}>
         {s.title || s.id}
       </h1>
-      <span className="font-mono text-[11px] text-faint">
+      <span className="font-mono text-xs text-faint">
         {s.harness} · {s.kind}
         {s.branch ? ` · ${s.branch}` : ""}
       </span>

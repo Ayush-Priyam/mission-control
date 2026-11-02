@@ -13,18 +13,18 @@ export function Heatmap({ series, today, tz }: { series: SeriesDay[]; today: str
   return (
     <section aria-label="Activity heatmap" className="flex flex-col gap-3">
       <header className="flex items-baseline justify-between">
-        <h3 className="font-mono text-[11px] tracking-widest text-muted-foreground">ACTIVITY · 26 WEEKS</h3>
-        <span className="font-mono text-[11px] text-muted-foreground">{tz}</span>
+        <h3 className="font-mono text-xs tracking-widest text-muted-foreground">ACTIVITY · 26 WEEKS</h3>
+        <span className="font-mono text-xs text-muted-foreground">{tz}</span>
       </header>
       <div role="img" aria-label={`${g.activeDays} active days, ${compact(g.total)} tokens`} className="flex flex-col gap-1">
         <div className="grid h-3.5 gap-x-[3px]" style={{ gridTemplateColumns: cols }}>
           {g.months.map((m) => (
-            <span key={m.col} data-heat-label className="whitespace-nowrap font-mono text-[10px] leading-none text-muted-foreground" style={{ gridColumn: m.col + 2, gridRow: 1 }}>{m.label}</span>
+            <span key={m.col} data-heat-label className="whitespace-nowrap font-mono text-xs leading-none text-muted-foreground" style={{ gridColumn: m.col + 2, gridRow: 1 }}>{m.label}</span>
           ))}
         </div>
         <div className="grid gap-[3px]" style={{ gridTemplateColumns: cols, gridTemplateRows: "repeat(7, auto)", gridAutoFlow: "column" }}>
           {ROWS.map((r, i) => (
-            <span key={r} data-heat-label className="self-center font-mono text-[10px] leading-none text-muted-foreground" style={{ gridColumn: 1, gridRow: i + 1 }}>
+            <span key={r} data-heat-label className="self-center font-mono text-xs leading-none text-muted-foreground" style={{ gridColumn: 1, gridRow: i + 1 }}>
               {i % 2 ? r : ""}
             </span>
           ))}
@@ -41,7 +41,7 @@ export function Heatmap({ series, today, tz }: { series: SeriesDay[]; today: str
           )}
         </div>
       </div>
-      <footer className="flex items-center justify-between font-mono text-[11px] text-muted-foreground">
+      <footer className="flex items-center justify-between font-mono text-xs text-muted-foreground">
         <span>{g.activeDays} active days</span>
         <span className="flex items-center gap-1">
           Less

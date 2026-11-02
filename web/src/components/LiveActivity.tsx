@@ -37,10 +37,10 @@ export function LiveActivity({ lanes, now = Date.now() }: { lanes: LiveLane[]; n
                   <span className="text-faint">·</span>
                   <span className="truncate text-foreground/90">{l.title || l.id}</span>
                   <span className="text-faint">·</span>
-                  <span className="shrink-0 font-mono text-[11px] text-running">{l.label}</span>
-                  {l.model && <span className="shrink-0 font-mono text-[11px] text-faint">{l.model}</span>}
+                  <span className="shrink-0 font-mono text-xs text-running">{l.label}</span>
+                  {l.model && <span className="shrink-0 font-mono text-xs text-faint">{l.model}</span>}
                 </div>
-                <div className="mt-0.5 flex min-w-0 items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+                <div className="mt-0.5 flex min-w-0 items-center gap-1.5 font-mono text-xs text-muted-foreground">
                   <Icon aria-hidden className="size-3 shrink-0 text-faint" />
                   {d ? (
                     <>
@@ -52,7 +52,7 @@ export function LiveActivity({ lanes, now = Date.now() }: { lanes: LiveLane[]; n
                   )}
                 </div>
               </div>
-              <span className="font-mono text-[11px] tabular-nums text-faint">{ago(d?.ts ?? l.startedAt ?? l.updatedAt, now)}</span>
+              <span className="font-mono text-xs tabular-nums text-faint">{ago(d?.ts ?? l.startedAt ?? l.updatedAt, now)}</span>
             </a>
           </li>
         )

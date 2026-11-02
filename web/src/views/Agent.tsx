@@ -60,7 +60,7 @@ export default function Agent({ id, stage }: { id: string; stage: string }) {
       {(caps.data?.extras ?? []).includes("artifacts") && <Workbench runId={id} agent={view.agent} stages={view.stages} events={view.events} />}
       {queue.length > 0 && (
         <section aria-label="Sent" className="flex flex-col gap-1 rounded-xl border p-3 font-mono text-xs">
-          <h2 className="text-[11px] tracking-widest text-muted-foreground">SENT</h2>
+          <h2 className="text-xs tracking-widest text-muted-foreground">SENT</h2>
           {queue.slice(-5).map((q, i) => (
             <div key={i} className="flex gap-3">
               <span className="text-consult">→ {q.to}</span>

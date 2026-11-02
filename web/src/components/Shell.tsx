@@ -76,7 +76,7 @@ function Crumbs({ items }: { items: { label: string; href?: string }[] }) {
         <span key={i} className="flex min-w-0 items-center gap-2">
           {i > 0 && <span className="text-faint">/</span>}
           {c.href && i < items.length - 1 ? (
-            <a href={c.href} className="hover:text-foreground">
+            <a href={c.href} className="inline-flex min-h-6 min-w-0 items-center truncate hover:text-foreground">
               {c.label}
             </a>
           ) : (
@@ -120,6 +120,9 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
+      <a href="#main" onClick={(e) => { e.preventDefault(); document.getElementById("main")?.focus() }} className="sr-only z-50 rounded-md bg-background px-3 py-2 text-sm focus:not-sr-only focus:fixed focus:top-2 focus:left-2">
+        Skip to content
+      </a>
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
         <button
           type="button"
@@ -130,7 +133,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
         >
           <PanelLeft className="size-4" />
         </button>
-        <a href="#/" className="mr-3 flex items-center gap-2 text-sm font-semibold tracking-tight whitespace-nowrap">
+        <a href="#/" className="mr-3 flex h-8 items-center gap-2 text-sm font-semibold tracking-tight whitespace-nowrap">
           <span className="grid size-4 place-items-center rounded-full border-[1.5px] border-foreground">
             <span className="size-1.5 rounded-full bg-foreground" />
           </span>
@@ -148,7 +151,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
           >
             <Search className="size-3.5" />
             <span className="flex-1 text-left">Search…</span>
-            <kbd className="rounded border px-1 font-mono text-[10px]">⌘K</kbd>
+            <kbd className="rounded border px-1 font-mono text-xs">⌘K</kbd>
           </button>
           <button
             type="button"
@@ -177,7 +180,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
         </div>
         <div className="flex min-w-0 flex-1 flex-col">
           <Crumbs items={crumbs(route, projects.data ?? [], item)} />
-          <main className="min-h-0 flex-1 overflow-y-auto p-5">{children}</main>
+          <main id="main" tabIndex={-1} className="min-h-0 flex-1 overflow-y-auto p-5 outline-none">{children}</main>
         </div>
       </div>
       <CommandPalette open={palette} onOpenChange={setPalette} projects={tree} showHidden={showHidden} />

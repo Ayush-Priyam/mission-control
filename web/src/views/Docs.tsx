@@ -40,7 +40,7 @@ export default function Docs({ runId, state }: { runId: string; state: Record<st
   return (
     <div className="flex flex-col gap-4">
       <section aria-label="Pipeline" className="flex flex-col gap-2">
-        <div className="flex items-baseline justify-between font-mono text-[11px] tracking-widest text-muted-foreground">
+        <div className="flex items-baseline justify-between font-mono text-xs tracking-widest text-muted-foreground">
           <span>PIPELINE</span><span>{done}/{stages.length} STAGES COMPLETE · CLICK A STAGE TO OPEN ITS DOCUMENT</span>
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -57,21 +57,21 @@ export default function Docs({ runId, state }: { runId: string; state: Record<st
         </div>
       </section>
       <section aria-label="Document" className="rounded-xl border bg-card">
-        <p className="border-b px-4 py-2 font-mono text-[11px] text-muted-foreground">{curPath ?? "no documents yet"}</p>
+        <p className="border-b px-4 py-2 font-mono text-xs text-muted-foreground">{curPath ?? "no documents yet"}</p>
         {curPath ? <ScrollArea className="h-[50vh]"><DocBody key={curPath} runId={runId} path={curPath} /></ScrollArea> : <p className="p-6 text-center font-mono text-xs text-muted-foreground">Nothing to read yet.</p>}
       </section>
       <div className="grid gap-4 lg:grid-cols-2">
         <section aria-label="Compound store" className="flex flex-col gap-2 rounded-xl border bg-card p-4">
-          <h3 className="font-mono text-[11px] tracking-widest text-muted-foreground">COMPOUND STORE</h3>
+          <h3 className="font-mono text-xs tracking-widest text-muted-foreground">COMPOUND STORE</h3>
           {store.length === 0 ? (
             <p className="font-mono text-xs text-muted-foreground">EMPTY · GROWS FROM YOUR FIRST WRITEBACK</p>
           ) : (
             groups.map(({ g, items }) => (
               <div key={g} className="flex flex-wrap items-center gap-1.5">
-                <span className="w-32 flex-none font-mono text-[11px] whitespace-nowrap text-muted-foreground">{g} · {items.length}</span>
+                <span className="w-32 flex-none font-mono text-xs whitespace-nowrap text-muted-foreground">{g} · {items.length}</span>
                 {items.map((p) => (
                   <button key={p} type="button" onClick={() => { setPath(p) }} title={p}
-                    className={cn("rounded border px-1.5 py-0.5 font-mono text-[11px] hover:bg-muted", curPath === p && "bg-muted ring-1 ring-ring")}>
+                    className={cn("rounded border px-1.5 py-0.5 font-mono text-xs hover:bg-muted", curPath === p && "bg-muted ring-1 ring-ring")}>
                     {p.split("/").pop()!.replace(/\.md$/, "")}
                   </button>
                 ))}

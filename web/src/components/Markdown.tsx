@@ -20,7 +20,7 @@ const HEAD = ["", "text-xl font-extrabold", "text-lg font-bold", "text-base font
 /** Markdown as React nodes (no HTML is ever injected). */
 export function Markdown({ text, className }: { text: string; className?: string }) {
   return (
-    <div className={cn("flex flex-col gap-3 text-[13px] leading-relaxed", className)}>
+    <div className={cn("flex flex-col gap-3 text-body leading-relaxed", className)}>
       {parseMarkdown(text).map((b, i) => {
         switch (b.t) {
           case "h": return <p key={i} role="heading" aria-level={b.n} className={cn("mt-2 tracking-tight", HEAD[b.n])}><Inline text={b.text} /></p>

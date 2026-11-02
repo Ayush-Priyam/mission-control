@@ -11,13 +11,13 @@ const lineClass = (l: string) => (l.startsWith("+") ? "bg-running/10 text-runnin
 
 function Patch({ file, text, lines, cmd }: { file: DiffFile; text: string | null; lines?: number; cmd: string }) {
   const [shown, setShown] = useState(PAGE)
-  if (file.binary) return <Big>Binary file. Open it in the repo.{cmd && <pre className="mt-2 font-mono text-[11px]">{cmd}</pre>}</Big>
+  if (file.binary) return <Big>Binary file. Open it in the repo.{cmd && <pre className="mt-2 font-mono text-xs">{cmd}</pre>}</Big>
   if (!text || (lines ?? 0) > TOO_BIG)
-    return <Big><b className="text-foreground">{file.file}</b> {text ? `changes ${lines} lines, too many to read usefully here.` : "has no patch to show."}{cmd && <pre className="mt-2 font-mono text-[11px]">{cmd}</pre>}</Big>
+    return <Big><b className="text-foreground">{file.file}</b> {text ? `changes ${lines} lines, too many to read usefully here.` : "has no patch to show."}{cmd && <pre className="mt-2 font-mono text-xs">{cmd}</pre>}</Big>
   const all = text.split("\n").filter((l) => !HIDDEN.test(l))
   return (
     <div className="flex min-w-0 flex-col">
-      <div className="flex items-center gap-3 border-b px-3 py-1.5 font-mono text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-3 border-b px-3 py-1.5 font-mono text-xs text-muted-foreground">
         <b className="text-foreground">{file.file.split("/").pop()}</b><span>+{file.add} −{file.del}</span><span className="ml-auto">{all.length} lines</span>
       </div>
       <pre className="overflow-x-auto py-1 font-mono text-xs leading-5 [font-variant-ligatures:none]">
@@ -65,7 +65,7 @@ export default function DiffView({ runId, keep = () => true, label = "the branch
   return (
     <div className="grid min-h-[360px] overflow-hidden rounded-xl border md:grid-cols-[minmax(220px,300px)_minmax(0,1fr)]">
       <div className="border-b md:border-r md:border-b-0">
-        <p className="border-b px-3 py-2 font-mono text-[11px] text-muted-foreground">
+        <p className="border-b px-3 py-2 font-mono text-xs text-muted-foreground">
           {files.length} files · <span className="text-running">+{add}</span> <span className="text-failed">−{del}</span>
           <br />{label}{list.base ? ` vs ${list.base.slice(0, 9)}` : ""}, biggest first
         </p>
@@ -78,7 +78,7 @@ export default function DiffView({ runId, keep = () => true, label = "the branch
                   <span className="flex items-center gap-2">
                     {f.status && <b className="text-muted-foreground">{f.status}</b>}
                     <span className="min-w-0 flex-1 truncate" title={f.file}>{f.file}</span>
-                    <span className="flex-none text-[11px]">{f.binary ? "binary" : <><i className="text-running not-italic">+{f.add}</i> <u className="text-failed no-underline">−{f.del}</u></>}</span>
+                    <span className="flex-none text-xs">{f.binary ? "binary" : <><i className="text-running not-italic">+{f.add}</i> <u className="text-failed no-underline">−{f.del}</u></>}</span>
                   </span>
                   <span className="flex h-1 gap-px"><i className="bg-running" style={{ width: `${(f.add / max) * 100}%` }} /><i className="bg-failed" style={{ width: `${(f.del / max) * 100}%` }} /></span>
                 </button>

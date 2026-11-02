@@ -31,7 +31,7 @@ function Line({ ts, tone, children }: { ts: unknown; tone?: string; children: Re
 function Box({ head, ask, done, children }: { head: ReactNode; ask?: boolean; done?: boolean; children: ReactNode }) {
   return (
     <div className={cn("my-1 flex flex-col gap-1.5 rounded-xl border bg-card p-3", ask && "border-needs-you/70", done && "opacity-60")}>
-      <div className={cn("font-mono text-[11px] text-muted-foreground", ask && "text-needs-you")}>{head}</div>
+      <div className={cn("font-mono text-xs text-muted-foreground", ask && "text-needs-you")}>{head}</div>
       {children}
     </div>
   )
@@ -86,7 +86,7 @@ function item(e: Ev, i: number, events: Ev[], runId: string, idea: string, pick:
     case "human.input":
       return (
         <div className="my-1 self-end rounded-xl bg-primary/10 px-3 py-2 text-sm">
-          <span className="mr-2 font-mono text-[11px] text-muted-foreground">you{e.role ? `, as ${e.role}` : ""}</span>
+          <span className="mr-2 font-mono text-xs text-muted-foreground">you{e.role ? `, as ${e.role}` : ""}</span>
           {e.text}
         </div>
       )
@@ -183,7 +183,7 @@ export function Thread({ runId, idea, events, stop, cards, canSay }: { runId: st
         <div className="sticky bottom-0 flex flex-col gap-2 border-t bg-background pt-3 pb-1">
           <div className="flex flex-wrap gap-1.5">
             {chipsFor(stop, cards).map((c) => (
-              <button key={c} type="button" onClick={() => setDraft(c)} className="rounded-full border px-2.5 py-0.5 font-mono text-[11px] text-muted-foreground hover:text-foreground">
+              <button key={c} type="button" onClick={() => setDraft(c)} className="rounded-full border px-2.5 py-0.5 font-mono text-xs text-muted-foreground hover:text-foreground">
                 {c}
               </button>
             ))}

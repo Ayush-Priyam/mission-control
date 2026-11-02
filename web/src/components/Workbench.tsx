@@ -38,7 +38,7 @@ function Gallery({ runId, prefix, art }: { runId: string; prefix: string; art: s
             <button type="button" onClick={() => setBig(p)} aria-label={`Enlarge ${p.split("/").pop()}`} className="cursor-zoom-in rounded-lg focus-visible:outline-2">
               <img loading="lazy" src={rawUrl(runId, p)} alt={p.split("/").pop()} className="rounded-lg border" />
             </button>
-            <figcaption className="truncate font-mono text-[11px] text-muted-foreground">{p.replace(prefix, "")}</figcaption>
+            <figcaption className="truncate font-mono text-xs text-muted-foreground">{p.replace(prefix, "")}</figcaption>
           </figure>
         ))}
       </div>
@@ -60,7 +60,7 @@ function Body({ runId, k, s, art, events, stages }: { runId: string; k: string; 
   const touched = useMemo(() => touchedFiles(events, stages), [events, stages])
   const keep = useMemo(() => codeFilter(k, touched), [k, touched])
   switch (s.kind) {
-    case "note": return <p className="text-[13px] text-muted-foreground">{s.text}</p>
+    case "note": return <p className="text-body text-muted-foreground">{s.text}</p>
     case "md": return <RawText runId={runId} path={s.path} />
     case "qa": return <Qa events={events} />
     case "diff": return <DiffView runId={runId} refresh={runChanges(events)} keep={keep} label={touched.length ? `files ${k} edited` : `${k} files, guessed from paths`} />

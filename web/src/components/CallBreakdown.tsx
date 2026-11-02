@@ -42,7 +42,7 @@ export function serverCounts(calls: Call[]) {
 }
 
 const Label = ({ children, className }: { children: string; className?: string }) => (
-  <div className={cn("text-[11px] tracking-wide text-muted-foreground uppercase", className)}>{children}</div>
+  <div className={cn("text-xs tracking-wide text-muted-foreground uppercase", className)}>{children}</div>
 )
 
 /** The two cards above the call rows: by tool, and skills invoked + MCP servers. */

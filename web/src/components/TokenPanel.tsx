@@ -25,11 +25,11 @@ export function TokenPanel({ runId, optional = false }: { runId: string; optiona
   return (
     <TooltipProvider delay={150}>
       <section aria-label="Token spend" className="flex flex-col gap-2 rounded-xl border bg-card p-4">
-        <h3 className="font-mono text-[11px] tracking-widest text-muted-foreground">TOKEN SPEND · THIS PROJECT</h3>
+        <h3 className="font-mono text-xs tracking-widest text-muted-foreground">TOKEN SPEND · THIS PROJECT</h3>
         {!t.available ? (
           <p className="font-mono text-xs text-muted-foreground">No Claude Code session logs found for this project.</p>
         ) : (
-          <dl className="flex flex-col text-[13px]">
+          <dl className="flex flex-col text-body">
             {ROWS.map((row) => (
               <div key={row.k} className="flex justify-between gap-4 border-b py-1 last:border-0">
                 <Tooltip>

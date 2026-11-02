@@ -17,15 +17,15 @@ function Inline({ text }: { text: string }) {
 function Section({ title, empty, r }: { title: string; empty: string; r?: Report }) {
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2 font-mono text-[11px] tracking-widest text-muted-foreground">
+      <div className="flex items-center gap-2 font-mono text-xs tracking-widest text-muted-foreground">
         {title}
         <Badge className={verdictTone(r?.verdict ?? null)}>{r?.verdict ?? empty}</Badge>
       </div>
       {!!r?.drift?.length && (
-        <ul className="flex flex-col gap-1.5 text-[13px]">
+        <ul className="flex flex-col gap-1.5 text-body">
           {r.drift.map((d, i) => (
             <li key={i} className={cn("flex gap-2", SEVERITY[d.severity])}>
-              <b className="flex-none font-mono text-[11px] tracking-wider">{d.level}</b>
+              <b className="flex-none font-mono text-xs tracking-wider">{d.level}</b>
               <span className="text-foreground"><Inline text={d.text} /></span>
             </li>
           ))}

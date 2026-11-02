@@ -106,21 +106,21 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
             ].map(([v, k]) => (
               <div key={k} className="rounded-lg bg-muted/50 px-2 py-2.5 text-center">
                 <div className="font-mono text-sm font-bold">{v}</div>
-                <div className="font-mono text-[10px] text-muted-foreground">{k}</div>
+                <div className="font-mono text-xs text-muted-foreground">{k}</div>
               </div>
             ))}
           </div>
-          <ol className="flex flex-col gap-2 border-t pt-3 text-[13px]">
+          <ol className="flex flex-col gap-2 border-t pt-3 text-body">
             {topModels.length === 0 && <li className="font-mono text-xs text-muted-foreground">No models used in this range.</li>}
             {topModels.map((m, i) => (
               <li key={m.key} className="flex items-center gap-3">
-                <span className="grid size-5 place-items-center rounded-full bg-muted font-mono text-[10px] text-muted-foreground">{i + 1}</span>
+                <span className="grid size-5 place-items-center rounded-full bg-muted font-mono text-xs text-muted-foreground">{i + 1}</span>
                 <span className="flex-1 truncate">{m.label}</span>
                 <span className="font-mono">{pct(m.tokens, modelTotal)}</span>
               </li>
             ))}
           </ol>
-          <div className="flex justify-between border-t pt-3 font-mono text-[11px] text-muted-foreground">
+          <div className="flex justify-between border-t pt-3 font-mono text-xs text-muted-foreground">
             <span>Since {firstDay ?? "–"}</span>
             <span>Active days {active.length}</span>
           </div>
@@ -146,7 +146,7 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
                 </button>
               ))}
             </div>
-            <div className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground">
+            <div className="flex items-center gap-3 font-mono text-xs text-muted-foreground">
               {scanning && <span className="text-muted-foreground">scanning logs · partial</span>}
               {main.stale && <span>loading…</span>}
               <span>{spanOf(u)}</span>
@@ -157,10 +157,10 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
           </div>
           <div aria-label="Split" {...busyIn(split.stale, "flex flex-col gap-2")}>
             <div className="flex items-center justify-between">
-              <span className="font-mono text-[11px] tracking-widest text-muted-foreground">
+              <span className="font-mono text-xs tracking-widest text-muted-foreground">
                 SPLIT BY{split.stale && split.data ? ` · ${spanOf(split.data)} · loading…` : ""}
               </span>
-              <div role="tablist" aria-label="Split by" className="flex gap-1 font-mono text-[11px]">
+              <div role="tablist" aria-label="Split by" className="flex gap-1 font-mono text-xs">
                 {(["model", "harness"] as const).map((b) => (
                   <button key={b} role="tab" aria-selected={splitBy === b} onClick={() => setSplitBy(b)}
                     className={cn("rounded px-2 py-0.5 text-muted-foreground hover:text-foreground", splitBy === b && "bg-muted text-foreground")}>
@@ -177,19 +177,19 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
           </div>
           <div aria-label="Harnesses" {...busyIn(harness.stale, "flex flex-col gap-2")}>
            {harness.stale && harness.data && (
-             <span className="font-mono text-[11px] text-muted-foreground">Harnesses · {spanOf(harness.data)} · loading…</span>
+             <span className="font-mono text-xs text-muted-foreground">Harnesses · {spanOf(harness.data)} · loading…</span>
            )}
            <div className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-3">
             {!harness.data && <Skeleton className="h-20" />}
             {harness.data && harnessSlices.length === 0 && <p className="font-mono text-xs text-muted-foreground">No harness reported usage in this range.</p>}
             {harnessSlices.map((s) => (
               <div key={s.key} className="rounded-lg border bg-background/40 p-3">
-                <div className="flex items-center gap-2 text-[13px] font-semibold tracking-wide uppercase">
+                <div className="flex items-center gap-2 text-body font-semibold tracking-wide uppercase">
                   <i className="inline-block size-2 rounded-full" style={{ background: s.color }} />
                   {s.key === "(other)" ? s.label : harnessName(s.key)}
                 </div>
                 <div className="mt-1 font-mono text-xl font-bold">{pct(s.tokens, harnessTotal)}</div>
-                <div className="font-mono text-[11px] text-muted-foreground">
+                <div className="font-mono text-xs text-muted-foreground">
                   {compact(s.tokens)} · <span title={EST_TIP}>{estMoney(s.cost)}</span> · {s.sessions} sessions
                 </div>
               </div>
@@ -202,7 +202,7 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
           <div role="tablist" aria-label="Breakdown" className="flex flex-wrap gap-1">
             {TABLES.map((t) => (
               <button key={t.id} role="tab" aria-selected={table === t.id} onClick={() => setTable(t.id)}
-                className={cn("rounded-md px-3 py-1.5 text-[13px] text-muted-foreground hover:text-foreground", table === t.id && "bg-muted text-foreground")}>
+                className={cn("rounded-md px-3 py-1.5 text-body text-muted-foreground hover:text-foreground", table === t.id && "bg-muted text-foreground")}>
                 {t.label}
               </button>
             ))}

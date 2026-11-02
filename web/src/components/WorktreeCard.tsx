@@ -45,14 +45,14 @@ export function WorktreeCard({
           <StatusDot status={st} live={w.live} />
           <span className="truncate font-mono text-sm font-medium">{worktreeLabel(w)}</span>
         </span>
-        <span className="shrink-0 font-mono text-[11px] text-faint" title={w.updatedAt ?? undefined}>
+        <span className="shrink-0 font-mono text-xs text-faint" title={w.updatedAt ?? undefined}>
           {w.updatedAt ? ago(w.updatedAt, now) : "no sessions"}
         </span>
       </div>
-      <div className="truncate font-mono text-[11px] text-faint" title={w.path}>
+      <div className="truncate font-mono text-xs text-faint" title={w.path}>
         {w.path || "(no folder)"}
       </div>
-      <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px]">
+      <div className="flex flex-wrap items-center gap-1.5 font-mono text-xs">
         {w.dirty === undefined ? (
           <span className="text-faint">no git status</span>
         ) : w.dirty ? (
@@ -68,7 +68,7 @@ export function WorktreeCard({
           {lanes.slice(0, 3).map((l) => {
             const Icon = doingIcon(l.nowDoing)
             return (
-              <li key={`${l.id}/${l.lane}`} className="flex min-w-0 items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+              <li key={`${l.id}/${l.lane}`} className="flex min-w-0 items-center gap-1.5 font-mono text-xs text-muted-foreground">
                 <StatusDot status="working" className="size-1.5" />
                 <span className="shrink-0 text-running">{l.label}</span>
                 <Icon aria-hidden className="size-3 shrink-0 text-faint" />
@@ -76,10 +76,10 @@ export function WorktreeCard({
               </li>
             )
           })}
-          {lanes.length > 3 && <li className="font-mono text-[11px] text-faint">+ {lanes.length - 3} more live</li>}
+          {lanes.length > 3 && <li className="font-mono text-xs text-faint">+ {lanes.length - 3} more live</li>}
         </ul>
       )}
-      <div className="mt-auto flex items-center justify-between gap-2 text-[11px]">
+      <div className="mt-auto flex items-center justify-between gap-2 text-xs">
         <span className="flex gap-2">
           {tallies.map((t) => (
             <span key={t.label} className={t.cls}>

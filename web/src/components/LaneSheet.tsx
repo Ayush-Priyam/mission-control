@@ -58,7 +58,7 @@ export function LaneSheet({ detail, lanes, onClose }: { detail: ItemDetail; lane
                 {lanes.length > 1 ? ` · stages ${lanes.map((l) => l.id).join(", ")}` : ""}
               </SheetDescription>
               {lane.reason && <p className={cn("text-sm", lane.status === "waiting" ? "text-needs-you" : "text-muted-foreground")}>{lane.reason}</p>}
-              <div className="flex gap-3 font-mono text-[11px] text-muted-foreground">
+              <div className="flex gap-3 font-mono text-xs text-muted-foreground">
                 <a className="underline hover:text-foreground" href={toHash({ view: "item", source: s.source, id: s.id, tab: "calls" })}>
                   all calls
                 </a>
@@ -70,12 +70,12 @@ export function LaneSheet({ detail, lanes, onClose }: { detail: ItemDetail; lane
             <ScrollArea className="min-h-0 flex-1 px-4 pb-4">
               {events.length > 0 && (
                 <div className="mb-4 flex flex-col gap-2">
-                  <h4 className="font-mono text-[11px] tracking-wider text-faint uppercase">Log</h4>
+                  <h4 className="font-mono text-xs tracking-wider text-faint uppercase">Log</h4>
                   <StageLog events={mine} empty="No events for this stage yet." />
                 </div>
               )}
               <div className="flex flex-col gap-2">
-                <h4 className="font-mono text-[11px] tracking-wider text-faint uppercase">Calls (newest first)</h4>
+                <h4 className="font-mono text-xs tracking-wider text-faint uppercase">Calls (newest first)</h4>
                 {lanes.map((l) => (
                   <LaneCalls key={l.id} source={s.source} id={s.id} lane={l.id} live={s.live} />
                 ))}

@@ -38,17 +38,17 @@ function corner(lane: Lane, x: LaneExtra | undefined): string {
 
 function NowDoing({ lane, now }: { lane: Lane; now: number }) {
   const d = lane.nowDoing
-  if (!d) return <p className="text-[13px] text-muted-foreground">{lane.status === "idle" && !lane.calls ? "not started" : "no calls yet"}</p>
+  if (!d) return <p className="text-body text-muted-foreground">{lane.status === "idle" && !lane.calls ? "not started" : "no calls yet"}</p>
   const kind = (d.kind in KIND ? d.kind : "tool") as CallKind
   const Icon = iconOf({ name: d.name, kind } as Call)
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
-      <div className="flex min-w-0 items-center gap-1.5 font-mono text-[13px]">
+      <div className="flex min-w-0 items-center gap-1.5 font-mono text-body">
         <Icon className={cn("size-3.5 shrink-0", KIND[kind].text)} />
         <span className="shrink-0 font-semibold">{d.name}</span>
         <span className="min-w-0 truncate text-muted-foreground" title={d.summary}>{d.summary}</span>
       </div>
-      <div className="font-mono text-[11px] text-faint">
+      <div className="font-mono text-xs text-faint">
         {lane.status === "working" ? `${ago(d.ts, now)} ago` : `last ${ago(d.ts, now)} ago`}
         {lane.model ? ` · ${modelName(lane.model)}` : ""}
       </div>
@@ -90,26 +90,26 @@ export function LaneCard({ lane, extra, now, onOpen, compactCard, linked, flash,
       )}
     >
       {linked && (
-        <span className={cn("absolute -top-2 right-3 max-w-[85%] truncate rounded bg-background px-1.5 font-mono text-[10.5px]", LINKED[linked.kind].text)} title={linked.text}>
+        <span className={cn("absolute -top-2 right-3 max-w-[85%] truncate rounded bg-background px-1.5 font-mono text-xs", LINKED[linked.kind].text)} title={linked.text}>
           {linked.text}
         </span>
       )}
       <div className="flex min-w-0 items-center gap-2">
         <StatusDot status={lane.status} />
-        <span className={cn("min-w-0 flex-1 truncate font-semibold", compactCard ? "text-sm" : "text-[15px]", quiet && "text-muted-foreground")} title={lane.label}>
+        <span className={cn("min-w-0 flex-1 truncate font-semibold", compactCard ? "text-sm" : "text-title", quiet && "text-muted-foreground")} title={lane.label}>
           {lane.label}
         </span>
-        <span className={cn("shrink-0 font-mono text-[11px]", lane.status === "waiting" ? "text-needs-you" : lane.status === "failed" ? "text-failed" : "text-faint")}>
+        <span className={cn("shrink-0 font-mono text-xs", lane.status === "waiting" ? "text-needs-you" : lane.status === "failed" ? "text-failed" : "text-faint")}>
           {corner(lane, extra)}
         </span>
       </div>
       <NowDoing lane={lane} now={now} />
       {chip && (
-        <span className={cn("line-clamp-2 self-start rounded px-1.5 py-0.5 font-mono text-[11px]", CHIP[chip.kind], "max-w-full")} title={chip.text}>
+        <span className={cn("line-clamp-2 self-start rounded px-1.5 py-0.5 font-mono text-xs", CHIP[chip.kind], "max-w-full")} title={chip.text}>
           {chip.text}
         </span>
       )}
-      <div className="mt-auto flex items-center justify-between gap-2 font-mono text-[11px] whitespace-nowrap text-faint">
+      <div className="mt-auto flex items-center justify-between gap-2 font-mono text-xs whitespace-nowrap text-faint">
         <span title={EST_TIP} className="shrink-0">{estCost(lane.cost)}</span>
         <span className="min-w-0 truncate">
           {lane.calls} call{lane.calls === 1 ? "" : "s"}
@@ -133,13 +133,13 @@ function QuietRows({ lanes, onOpen, look }: { lanes: Lane[]; onOpen?: (id: strin
             data-status={l.status}
             data-linked={look(l.id).linked?.kind}
             onClick={() => onOpen?.(l.id)}
-            className={cn("grid w-full grid-cols-[auto_minmax(0,1fr)_70px_60px_90px] items-center gap-3 rounded-md px-2 py-1 text-left text-[13px] hover:bg-accent/50", look(l.id).flash && "mc-flash")}
+            className={cn("grid w-full grid-cols-[auto_minmax(0,1fr)_70px_60px_90px] items-center gap-3 rounded-md px-2 py-1 text-left text-body hover:bg-accent/50", look(l.id).flash && "mc-flash")}
           >
             <StatusDot status={l.status} />
             <span className="truncate" title={l.label}>{l.label}</span>
-            <span className="font-mono text-[11px] text-faint">{l.model ? modelName(l.model) : ""}</span>
-            <span className="text-right font-mono text-[11px] text-muted-foreground">{l.calls}</span>
-            <span className="text-right font-mono text-[11px] text-faint" title={EST_TIP}>{estCost(l.cost)}</span>
+            <span className="font-mono text-xs text-faint">{l.model ? modelName(l.model) : ""}</span>
+            <span className="text-right font-mono text-xs text-muted-foreground">{l.calls}</span>
+            <span className="text-right font-mono text-xs text-faint" title={EST_TIP}>{estCost(l.cost)}</span>
           </button>
         </li>
       ))}
@@ -177,7 +177,7 @@ function CardGrid({ lanes, render }: { lanes: Lane[]; render: (l: Lane) => React
     <>
       {together.length >= 2 && (
         <section aria-label={`running in parallel · ${together.length}`} className="flex flex-col gap-2 rounded-2xl border border-dashed border-running/30 bg-running/[0.03] p-2.5">
-          <div className="flex items-center gap-1.5 px-1 font-mono text-[11px] tracking-wider text-running uppercase">
+          <div className="flex items-center gap-1.5 px-1 font-mono text-xs tracking-wider text-running uppercase">
             <i className="mc-pulse size-1.5 rounded-full bg-running" />
             running in parallel · {together.length}
           </div>
@@ -236,7 +236,7 @@ export function LaneCards({ lanes, extras, now, onOpen, links = [], focus, onHov
           <section key={lane.id} className="flex flex-col gap-3" aria-label={`${lane.label} and its subagents`}>
             <LaneCard lane={lane} extra={extras.get(lane.id)} now={now} onOpen={onOpen} {...look(lane.id)} />
             <div className="ml-3 flex flex-col gap-2 border-l pl-4">
-              <div className="font-mono text-[11px] tracking-wider text-faint uppercase">
+              <div className="font-mono text-xs tracking-wider text-faint uppercase">
                 Subagents · {children.length}
                 {active.length ? <span className="text-running"> · {active.length} busy</span> : null}
               </div>
@@ -248,7 +248,7 @@ export function LaneCards({ lanes, extras, now, onOpen, links = [], focus, onHov
                   <button
                     type="button"
                     onClick={() => setShowQuiet((s) => ({ ...s, [lane.id]: !open }))}
-                    className="flex items-center gap-1 self-start font-mono text-[11px] text-muted-foreground hover:text-foreground"
+                    className="flex items-center gap-1 self-start font-mono text-xs text-muted-foreground hover:text-foreground"
                     aria-expanded={open}
                   >
                     <ChevronRight className={cn("size-3 transition-transform", open && "rotate-90")} />
@@ -269,7 +269,7 @@ export function LaneCards({ lanes, extras, now, onOpen, links = [], focus, onHov
             extras.get(lane.id)?.skipped ? (
               <span key={lane.id} data-lane={lane.id} className={cn("rounded text-faint", flash.includes(lane.id) && "mc-flash")}>— {lane.label} skipped</span>
             ) : (
-              <button key={lane.id} type="button" data-lane={lane.id} data-linked={related.get(lane.id)?.kind} onClick={() => onOpen?.(lane.id)} onMouseEnter={() => setHover(lane.id)} onMouseLeave={() => setHover(null)} className={cn("rounded hover:text-foreground", flash.includes(lane.id) && "mc-flash", related.has(lane.id) && LINKED[related.get(lane.id)!.kind].text)}>
+              <button key={lane.id} type="button" data-lane={lane.id} data-linked={related.get(lane.id)?.kind} onClick={() => onOpen?.(lane.id)} onMouseEnter={() => setHover(lane.id)} onMouseLeave={() => setHover(null)} className={cn("inline-flex min-h-6 items-center gap-1 rounded px-1 hover:bg-muted hover:text-foreground", flash.includes(lane.id) && "mc-flash", related.has(lane.id) && LINKED[related.get(lane.id)!.kind].text)}>
                 <span className="text-running">✓</span> {lane.label}
               </button>
             ),
