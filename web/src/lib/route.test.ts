@@ -15,6 +15,12 @@ describe("route (v2)", () => {
     expect(parseRoute("#/item/claude-code/abc-123/calls")).toEqual({ view: "item", source: "claude-code", id: "abc-123", tab: "calls" })
   })
 
+  it("an item link can name a call to open", () => {
+    expect(parseRoute("#/item/claude-code/s1/calls?call=toolu_1")).toEqual({ view: "item", source: "claude-code", id: "s1", tab: "calls", call: "toolu_1" })
+    expect(toHash({ view: "item", source: "claude-code", id: "s1", tab: "calls", call: "a b" })).toBe("#/item/claude-code/s1/calls?call=a%20b")
+    expect(parseRoute(toHash({ view: "item", source: "x", id: "y", tab: "calls", call: "a b" }))).toMatchObject({ call: "a b" })
+  })
+
   it("defaults the item tab to lanes and rejects odd tab names", () => {
     expect(parseRoute("#/item/native/r1")).toEqual({ view: "item", source: "native", id: "r1", tab: "lanes" })
     expect(parseRoute("#/item/native/r1/%3Cx%3E")).toEqual({ view: "item", source: "native", id: "r1", tab: "lanes" })

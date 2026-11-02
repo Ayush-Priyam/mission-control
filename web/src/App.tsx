@@ -42,7 +42,7 @@ function Page({ route }: { route: Route }) {
     case "worktree":
       return <ProjectPage key={`${route.key}|${route.path}`} projectKey={route.key} worktree={route.path} />
     case "item":
-      return <Item key={`${route.source}/${route.id}`} source={route.source} id={route.id} tab={route.tab} />
+      return <Item key={`${route.source}/${route.id}`} source={route.source} id={route.id} tab={route.tab} call={route.call} />
     case "run":
       return <RunRedirect id={route.id} tab={route.tab} />
     case "agent":

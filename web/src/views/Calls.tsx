@@ -42,10 +42,12 @@ type Props = {
   sessionHref?: (call: Call) => string
   /** Where "Show on timeline" goes for a call (default: the item's Timeline tab). */
   timelineHref?: (call: Call) => string
+  /** A call to open (from a link such as a timeline tick). */
+  call?: string
 }
 
 /** Calls tab: lanes on the left, filtered calls in the middle, the picked call on the right. */
-export default function Calls({ source, id, sessionHref, timelineHref }: Props) {
+export default function Calls({ source, id, sessionHref, timelineHref, call }: Props) {
   const [poll, setPoll] = useState(0) // poll only while the item is live
   const item = useItem(source, id, poll)
   const calls = useCalls(source, id, {}, poll)
@@ -56,7 +58,10 @@ export default function Calls({ source, id, sessionHref, timelineHref }: Props) 
   const [lane, setLane] = useState<string | null>(null)
   const [chip, setChip] = useState<Chip>("all")
   const [q, setQ] = useState("")
-  const [picked, setPicked] = useState<string | null>(null)
+  const [picked, setPicked] = useState<string | null>(call ?? null)
+  useEffect(() => {
+    if (call) setPicked(call)
+  }, [call])
 
   const all = calls.data ?? []
   const lanes = useMemo(() => orderLanes(detail?.lanes ?? []), [detail])

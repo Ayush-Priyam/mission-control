@@ -11,7 +11,8 @@ export type Route =
   | { view: "usage" }
   | { view: "project"; key: string }
   | { view: "worktree"; key: string; path: string }
-  | { view: "item"; source: string; id: string; tab: string }
+  /** `call`: a call to open on the Calls tab (#/item/<source>/<id>/calls?call=<id>). */
+  | { view: "item"; source: string; id: string; tab: string; call?: string }
   // v1 pages
   | { view: "run"; id: string; tab: Tab }
   | { view: "agent"; id: string; stage: string }
@@ -26,12 +27,17 @@ const dec = (s: string) => {
 }
 
 export function parseRoute(hash: string): Route {
-  const parts = hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(dec)
+  const [path, query = ""] = hash.replace(/^#\/?/, "").split("?", 2)
+  const parts = path.split("/").filter(Boolean).map(dec)
   const [view, a, b, c] = parts
   if (view === "usage") return { view: "usage" }
   if (view === "project" && a) return { view: "project", key: a }
   if (view === "worktree" && a && b) return { view: "worktree", key: a, path: b }
-  if (view === "item" && a && b) return { view: "item", source: a, id: b, tab: c && TAB_NAME.test(c) ? c : ITEM_TAB }
+  if (view === "item" && a && b) {
+    const r: Route = { view: "item", source: a, id: b, tab: c && TAB_NAME.test(c) ? c : ITEM_TAB }
+    const call = new URLSearchParams(query).get("call")
+    return call ? { ...r, call } : r
+  }
   if (view === "run" && a) return { view: "run", id: a, tab: TABS.includes(b as Tab) ? (b as Tab) : "map" }
   if (view === "agent" && a && b) return { view: "agent", id: a, stage: b }
   if (view === "repo" && a) return { view: "repo", repo: a }
@@ -51,7 +57,7 @@ export function toHash(r: Route): string {
     case "worktree":
       return `#/worktree/${enc(r.key)}/${enc(r.path)}`
     case "item":
-      return `#/item/${enc(r.source)}/${enc(r.id)}/${r.tab}`
+      return `#/item/${enc(r.source)}/${enc(r.id)}/${r.tab}${r.call ? `?call=${enc(r.call)}` : ""}`
     case "run":
       return `#/run/${enc(r.id)}/${r.tab}`
     case "agent":

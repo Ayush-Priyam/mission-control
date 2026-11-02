@@ -127,6 +127,16 @@ export function CallList({ calls, selectedId, onSelect, laneLabel, empty = "No c
     }
   }, [windowed])
 
+  // A selection made elsewhere (a timeline tick, a link) scrolls its row into view; a click on a visible row does not move.
+  useEffect(() => {
+    const el = ref.current
+    const i = selectedId ? calls.findIndex((c) => c.id === selectedId) : -1
+    if (!el || i < 0) return
+    const h = el.clientHeight || 600
+    if (i * ROW < el.scrollTop || (i + 1) * ROW > el.scrollTop + h) el.scrollTop = Math.max(0, i * ROW - h / 2)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when the selection changes, never on a poll
+  }, [selectedId])
+
   if (calls.length === 0) return <div className="px-3 py-6 text-sm text-muted-foreground">{empty}</div>
 
   const { start, end } = windowed

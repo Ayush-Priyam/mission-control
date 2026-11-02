@@ -420,7 +420,7 @@ export default function Trace({ runId, events, live, idea }: { runId: string; ev
     <TooltipProvider delay={150}>
       <div className="flex h-[calc(100vh-15rem)] min-h-[420px] flex-col overflow-hidden rounded-xl border bg-card [--namew:330px] [--padr:112px] max-md:[--namew:190px] max-md:[--padr:92px]">
         <div className="flex min-w-0 items-center gap-2.5 px-4 pt-3">
-          <b className="flex-none font-mono text-[13px] font-bold">Trace</b>
+          <b className="flex-none font-mono text-[13px] font-bold">Timeline</b>
           <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">{tr.title || idea || runId}</span>
           {approx.size > 0 && <span className="flex-none font-mono text-[11px] text-muted-foreground italic">approx. from file times</span>}
           <Pill status={status} />

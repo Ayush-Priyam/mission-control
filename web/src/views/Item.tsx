@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ItemMap } from "@/components/ItemMap"
+import { LaneTimeline } from "@/components/LaneTimeline"
 import { LaneCards } from "@/components/LaneCards"
 import { LaneSheet } from "@/components/LaneSheet"
 import { RightRail } from "@/components/RightRail"
@@ -12,6 +13,7 @@ import { Thread } from "@/components/Thread"
 import { TokenPanel } from "@/components/TokenPanel"
 import Board from "@/views/Board"
 import Calls from "@/views/Calls"
+import Chat from "@/views/Chat"
 import DiffView from "@/views/Diff"
 import Docs from "@/views/Docs"
 import Qa from "@/views/Qa"
@@ -39,11 +41,6 @@ const Count = ({ n }: { n: number | null | undefined }) => (n ? <span className=
 const TaskCount = ({ id, refresh }: { id: string; refresh: number }) => <Count n={normaliseTasks(useExtra<unknown>("tasks", id, undefined, refresh).data).length} />
 const DiffCount = ({ id, refresh }: { id: string; refresh: number }) => <Count n={normaliseDiff(useExtra<unknown>("diff", id, undefined, refresh).data).files.length} />
 
-/** A tab the next task of the plan fills in for this kind of item. */
-function Later({ children }: { children: ReactNode }) {
-  return <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">{children}</p>
-}
-
 function Header({ d }: { d: ItemDetail }) {
   const s = d.summary
   return (
@@ -64,7 +61,7 @@ function Header({ d }: { d: ItemDetail }) {
 }
 
 /** The item page: summary strip, tabs (Lanes default), and the right rail. Works for every source. */
-export default function Item({ source, id, tab }: { source: string; id: string; tab: string }) {
+export default function Item({ source, id, tab, call }: { source: string; id: string; tab: string; call?: string }) {
   const [poll, setPoll] = useState(LIVE_POLL)
   const item = useItem(source, id, poll)
   const d = item.data
@@ -73,8 +70,8 @@ export default function Item({ source, id, tab }: { source: string; id: string; 
   const caps = useCapabilities()
   const sources = useSources()
   const isSession = d?.summary.kind === "session"
-  // Sessions read health and findings from their calls (a run's come from its events).
-  const calls = useCalls(source, isSession ? id : null, {}, poll)
+  // Sessions read health and findings from their calls (a run's come from its events); any item's timeline draws them.
+  const calls = useCalls(source, isSession || tab === "timeline" ? id : null, {}, poll)
   const now = useNow(5000)
   const [sheet, setSheet] = useState<string[] | null>(null)
 
@@ -132,17 +129,25 @@ export default function Item({ source, id, tab }: { source: string; id: string; 
             <ItemMap detail={d} extras={extras} selected={sheet?.[0]} onOpen={setSheet} />
           </TabsContent>
           <TabsContent value="calls" className="pt-4">
-            {current === "calls" && <div className="h-[78vh] min-h-[520px] overflow-hidden rounded-xl border bg-card/30"><Calls source={source} id={id} /></div>}
+            {current === "calls" && <div className="h-[78vh] min-h-[520px] overflow-hidden rounded-xl border bg-card/30"><Calls source={source} id={id} call={call} /></div>}
           </TabsContent>
           <TabsContent value="timeline" className="pt-4">
-            {v1Run ? <Trace runId={id} events={events} live={d.summary.live} idea={idea} /> : <Later>The timeline for {d.summary.kind}s arrives with the next task (Timeline and Chat for any item).</Later>}
+            {current === "timeline" &&
+              (v1Run && events.length > 0 ? (
+                <Trace runId={id} events={events} live={d.summary.live} idea={idea} />
+              ) : calls.loading && !calls.data && d.lanes.length > 0 ? (
+                <Skeleton className="h-64 w-full" />
+              ) : (
+                <LaneTimeline lanes={d.lanes} calls={calls.data ?? []} live={d.summary.live} now={now} onPick={(c) => (location.hash = toHash({ view: "item", source, id, tab: "calls", call: c.id }))} onOpenLane={(lane) => setSheet([lane])} />
+              ))}
           </TabsContent>
           <TabsContent value="chat" className="pt-4">
-            {v1Run && v1 ? (
-              <Thread runId={id} idea={idea} events={events} stop={v1.stop} cards={v1.cards} canSay={actions.includes("say")} />
-            ) : (
-              <Later>The transcript for {d.summary.kind}s arrives with the next task (Timeline and Chat for any item).</Later>
-            )}
+            {current === "chat" &&
+              (v1Run && v1 ? (
+                <Thread runId={id} idea={idea} events={events} stop={v1.stop} cards={v1.cards} canSay={actions.includes("say")} />
+              ) : (
+                <Chat source={source} id={id} lanes={d.lanes} live={d.summary.live} calls={calls.data} />
+              ))}
           </TabsContent>
           {tabs.includes("board") && v1 && (
             <TabsContent value="board" className="pt-4">

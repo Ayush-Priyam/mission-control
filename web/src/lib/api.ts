@@ -215,6 +215,11 @@ export type Call = {
   subLane?: string
 }
 export type CallKind = Call["kind"]
+/** A tool use inside a chat turn: what was asked and what came back. */
+export type ToolChip = Pick<Call, "id" | "name" | "kind" | "server" | "summary" | "input" | "ok" | "error" | "durationMs" | "result">
+export type Turn = { i: number; role: "user" | "assistant"; ts: string | null; text: string; tools: ToolChip[] }
+/** Turns [start, start + turns.length) of `total` in one lane's transcript. */
+export type TurnPage = { lane: string; total: number; start: number; turns: Turn[] }
 export type ItemDetail = { summary: ItemSummary; lanes: Lane[]; events: Record<string, any>[]; state?: Record<string, any> }
 type Where = { source: string; id: string; title: string; cwd: string | null; branch: string | null; harness: string; updatedAt: string | null; project?: Placed }
 export type NeedsYou = Where & { lane: string; detail: string }
@@ -281,6 +286,8 @@ export const browserTz = () => Intl.DateTimeFormat().resolvedOptions().timeZone 
 export const itemUrl = (source: string, id: string) => `/api/item/${encodeURIComponent(source)}/${encodeURIComponent(id)}`
 export const callsUrl = (source: string, id: string, f: CallFilter = {}) =>
   `${itemUrl(source, id)}/calls${qs({ lane: f.lane, kind: f.kind, q: f.q })}`
+export const turnsUrl = (source: string, id: string, lane: string, page: { before?: number; limit?: number } = {}) =>
+  `${itemUrl(source, id)}/turns${qs({ lane, before: page.before === undefined ? undefined : String(page.before), limit: page.limit === undefined ? undefined : String(page.limit) })}`
 export const usageUrl = (q: UsageQuery, tz: string) => `/api/usage${qs({ from: q.from, to: q.to, by: q.by ?? "model", tz })}`
 
 const PROJECTS_POLL = 5000
