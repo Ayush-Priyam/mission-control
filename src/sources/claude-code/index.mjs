@@ -231,9 +231,10 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
     const mp = read(main, "main")
     if (!mp) return null
     const subs = []
+    const okStamp = [id(main)] // only files that were read: a failed one makes the next call's stamp differ, so it is retried
     for (const a of found) {
       const p = read(a.c, `agent-${a.aid}`)
-      if (p) subs.push({ aid: a.aid, p, meta: readMeta(a.m), mt: a.c.st.mtimeMs })
+      if (p) { subs.push({ aid: a.aid, p, meta: readMeta(a.m), mt: a.c.st.mtimeMs }); okStamp.push(`${id(a.c)}>${id(a.m)}`) }
     }
     const calls = mp.calls.map((c) => ({ ...c }))
     const byUse = new Map(calls.map((c) => [c.id, c]))
@@ -246,7 +247,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
     calls.sort((x, y) => x.ts.localeCompare(y.ts))
     const lastMs = Math.max(main.st.mtimeMs, ...subs.map((a) => a.mt))
     const data = { main, mp, subs, calls, lastMs }
-    sessions.set(s.id, { stamp, tails, data })
+    sessions.set(s.id, { stamp: okStamp.length === found.length + 1 ? stamp : okStamp.join("\n"), tails, data })
     return data
   }
 

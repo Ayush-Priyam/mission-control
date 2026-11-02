@@ -190,16 +190,17 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, onPa
     const mp = read(r.c, "main")
     if (!mp) return null
     const subs = []
+    const okStamp = [id(r.c)] // a rollout that failed to read is left out of the stamp, so the next call retries it
     for (const k of kids) {
       const p = read(k.c, `agent-${k.id}`)
-      if (p) subs.push({ k, p, mt: k.c.st.mtimeMs })
+      if (p) { subs.push({ k, p, mt: k.c.st.mtimeMs }); okStamp.push(id(k.c)) }
     }
     const calls = [...mp.calls]
     for (const a of subs) calls.push(...a.p.calls)
     calls.sort((x, y) => x.ts.localeCompare(y.ts))
     const lastMs = Math.max(r.c.st.mtimeMs, ...subs.map((a) => a.mt))
     const data = { mp, subs, calls, lastMs }
-    sessions.set(r.id, { stamp, tails, data })
+    sessions.set(r.id, { stamp: okStamp.join("\n"), tails, data })
     return data
   }
 

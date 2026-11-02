@@ -239,3 +239,32 @@ test("works through the registry next to other sources", async () => {
   assert.equal((await reg.calls("codex", C1, { kind: "mcp" })).length, 1)
   assert.equal((await reg.turns("codex", C1, "main", {})).total, 2)
 })
+
+test("v2.2 waiting: parallel tools — a sibling call's hooks do not clear an open approval keyed by call id", async () => {
+  const hooksDir = mkdtempSync(join(tmpdir(), "mc-hooks-"))
+  const base = Math.max(lastMs, Date.parse("2026-11-01T09:01:00Z"))
+  const at = (ms) => () => new Date(ms)
+  const raw = (o) => JSON.stringify({ session_id: C1, cwd: "/work/shop", ...o })
+  const rec = (o, ms) => recordCodexHook({ raw: raw(o), hooksDir, now: at(base + ms) })
+  rec({ hook_event_name: "PreToolUse", tool_name: "Read", tool_use_id: "call_b" }, 1_000)
+  rec({ hook_event_name: "PermissionRequest", tool_name: "Bash", tool_use_id: "call_a", tool_input: { description: "rm build" } }, 2_000)
+  rec({ hook_event_name: "PostToolUse", tool_name: "Read", tool_use_id: "call_b" }, 3_000) // the sibling finishes
+  const line = JSON.parse(readFileSync(join(hooksDir, "codex", `${C1}.jsonl`), "utf8").split("\n")[1])
+  assert.equal(line.callId, "call_a")
+  let w = (await src(base + 30_000, { hooksDir }).listItems()).find((i) => i.id === C1)
+  assert.deepEqual([w.status, w.waiting], ["waiting", true], "sibling PostToolUse must not clear call_a's wait")
+  rec({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_use_id: "call_a" }, 4_000) // approved: call_a starts
+  w = (await src(base + 30_000, { hooksDir }).listItems()).find((i) => i.id === C1)
+  assert.equal(w.waiting, false)
+})
+
+test("v2.2 waiting: keyed waits — two open approvals need both answered; Stop clears all; unkeyed events keep the old rule", async () => {
+  const { waitingFromHooks } = await import("../src/hooks.mjs")
+  const N = (callId, ts) => ({ event: "Notification", message: `ask ${callId}`, callId, ts })
+  const P = (callId) => ({ event: "PreToolUse", ...(callId ? { callId } : {}) })
+  assert.deepEqual(waitingFromHooks([N("a", "t1"), N("b", "t2"), P("b")]), { waiting: true, message: "ask a", since: "t1" })
+  assert.equal(waitingFromHooks([N("a", "t1"), N("b", "t2"), P("b"), P("a")]).waiting, false)
+  assert.equal(waitingFromHooks([N("a", "t1"), N("b", "t2"), { event: "Stop" }]).waiting, false)
+  assert.equal(waitingFromHooks([N("a", "t1"), P()]).waiting, false, "a tool event with no id clears as before")
+  assert.equal(waitingFromHooks([{ event: "Notification", message: "x" }, P("zz")]).waiting, false, "an unkeyed wait clears on any tool event")
+})

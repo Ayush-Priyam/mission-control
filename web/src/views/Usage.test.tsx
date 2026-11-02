@@ -122,6 +122,10 @@ describe("Usage page", () => {
     const cells = [...totals.querySelectorAll(":scope > [data-strip-cell]")]
     expect(cells).toHaveLength(7)
     expect(cells[0].className).toContain("sm:col-span-2")
+    // 7 totals at 2 columns (phones): the total spans the row too, so no cell is left empty
+    expect(cells[0].className.split(" ")).toContain("col-span-2")
+    // the split and at-a-glance panels keep their own heights: no blank band under the harness cards
+    expect(screen.getByLabelText("Harnesses").closest("section")!.parentElement!.className).toContain("items-start")
     const sub = document.querySelector("[data-harness-sub]")!
     expect(sub.textContent).toMatch(/sessions/)
     expect(sub.closest(".truncate")).toBeNull()

@@ -134,7 +134,8 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
         <UsageTotals totals={u.totals} label={main.stale ? spanOf(u) : RANGE_LABEL[range]} />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+      {/* items-start: each panel keeps its own height, so the shorter one leaves no blank band inside its card */}
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
         <Panel
           title="Split"
           aside={

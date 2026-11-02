@@ -26,7 +26,11 @@ Ideas and fixes, roughly in the order they'll land. Many came from people trying
 
 ## Known small issues
 
-- Usage page leaves blank space under the harness cards at some widths; one empty cell on phones.
-- A subagent file that fails to read once stays hidden until it changes.
-- Haiku 3 is priced at the Haiku 3.5 rate.
-- Codex: a sibling tool call's hook can clear a wait while another approval is still open (parallel tools).
+None open right now.
+
+## Done in v2.2
+
+- Fixed: the Usage page left blank space under the harness cards at some widths, and one empty cell on phones.
+- Fixed: a subagent file that failed to read once stayed hidden until it changed; it is now retried on the next request.
+- Fixed: Haiku 3 was priced at the Haiku 3.5 rate; it now has its own list price.
+- Fixed (Codex): a sibling tool call's hook could clear a wait while another approval was still open (parallel tools). Waits are keyed by tool call id when the hook payload has one.
