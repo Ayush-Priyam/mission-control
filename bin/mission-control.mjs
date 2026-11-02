@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process"
 import { createServer } from "../src/server.mjs"
-import { loadSources, parseArgs } from "../src/adapters/load.mjs"
+import { loadClaude, loadSources, parseArgs } from "../src/adapters/load.mjs"
 
 const argv = process.argv.slice(2)
 let args
@@ -18,7 +18,11 @@ if (!(port >= 0 && port <= 65535)) {
 }
 
 let adapters
-try { adapters = await loadSources(argv, process.cwd()) } catch (e) {
+try {
+  adapters = await loadSources(argv, process.cwd())
+  const claude = await loadClaude(argv, process.cwd())
+  if (claude) adapters = [...adapters, claude]
+} catch (e) {
   console.error(`mission control: ${e.message}`)
   process.exit(1)
 }

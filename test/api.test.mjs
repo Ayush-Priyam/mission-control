@@ -182,7 +182,7 @@ test("actions: non-object bodies become {}, undefined result becomes {}", async 
 
 const run = (args) =>
   new Promise((done) => {
-    const p = spawn("node", [join(root, "bin/mission-control.mjs"), ...args], { cwd: root })
+    const p = spawn("node", [join(root, "bin/mission-control.mjs"), "--no-claude", ...args], { cwd: root })
     let out = "", err = ""
     p.stdout.on("data", (d) => { out += d })
     p.stderr.on("data", (d) => { err += d })
@@ -205,7 +205,7 @@ test("prints the startup line", async () => {
   await new Promise((r) => probe.listen(0, "127.0.0.1", r))
   const p = probe.address().port
   await new Promise((r) => probe.close(r))
-  const child = spawn("node", [join(root, "bin/mission-control.mjs"), "--runs", "test/fixtures/runs", "--port", String(p), "--no-open"], { cwd: root })
+  const child = spawn("node", [join(root, "bin/mission-control.mjs"), "--runs", "test/fixtures/runs", "--port", String(p), "--no-open", "--no-claude"], { cwd: root })
   try {
     const first = await new Promise((res, rej) => {
       let buf = ""
@@ -255,7 +255,7 @@ test("M3: the port comes from --port or MISSION_CONTROL_PORT; PORT is ignored", 
   await new Promise((r) => probe.listen(0, "127.0.0.1", r))
   const p = probe.address().port
   await new Promise((r) => probe.close(r))
-  const child = spawn("node", [join(root, "bin/mission-control.mjs"), "--runs", "test/fixtures/runs", "--no-open"], {
+  const child = spawn("node", [join(root, "bin/mission-control.mjs"), "--runs", "test/fixtures/runs", "--no-open", "--no-claude"], {
     cwd: root, env: { ...process.env, PORT: "not-a-port", MISSION_CONTROL_PORT: String(p) },
   })
   try {

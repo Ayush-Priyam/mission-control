@@ -1,16 +1,18 @@
 import { statSync } from "node:fs"
+import { homedir } from "node:os"
 import { resolve, join } from "node:path"
 import { pathToFileURL } from "node:url"
 import createNative from "./native.mjs"
 
-const VALUE_FLAGS = new Set(["--runs", "--speckit", "--adapter", "--adapter-opt", "--port"])
+const VALUE_FLAGS = new Set(["--runs", "--speckit", "--adapter", "--adapter-opt", "--port", "--claude-dir"])
 
-/** Parse CLI args: value flags, repeatable --adapter-opt k=v, --no-open, one bare path. */
+/** Parse CLI args: value flags, repeatable --adapter-opt k=v, --no-open, --no-claude, one bare path. */
 export function parseArgs(argv) {
-  const out = { opts: {}, noOpen: false }
+  const out = { opts: {}, noOpen: false, noClaude: false }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === "--no-open") out.noOpen = true
+    else if (a === "--no-claude") out.noClaude = true
     else if (VALUE_FLAGS.has(a)) {
       const v = argv[++i]
       if (v === undefined) throw new Error(`${a} needs a value`)
@@ -67,4 +69,16 @@ export async function loadSources(argv, cwd = process.cwd()) {
   else if (a.runs) out.push(native(resolve(cwd, a.runs)))
   if (a.speckit) out.push(await speckit(resolve(cwd, a.speckit)))
   return out
+}
+
+/**
+ * The Claude Code source, on by default: sessions under ~/.claude/projects, or --claude-dir <projects dir>.
+ * null with --no-claude. Lazy import, so --no-claude never touches the module.
+ */
+export async function loadClaude(argv, cwd = process.cwd(), home = homedir()) {
+  const a = parseArgs(argv)
+  if (a.noClaude) return null
+  const root = a["claude-dir"] ? resolve(cwd, a["claude-dir"]) : join(home, ".claude", "projects")
+  const { create } = await import("../sources/claude-code/index.mjs")
+  return create({ root, hooksDir: join(home, ".mission-control", "hooks") })
 }
