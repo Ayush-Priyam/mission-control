@@ -46,17 +46,23 @@ export function createRegistry(sources) {
    */
   async function overview(items) {
     items ??= await list()
-    const counts = { waiting: 0, working: 0, stopped: 0, done: 0 }
+    const counts = { waiting: 0, working: 0, stopped: 0, done: 0, ready: 0, looping: 0 }
+    const ready = []
     for (const i of items) {
+      if (i.ready && i.status !== "waiting") counts.ready++
       if (i.status === "waiting") counts.waiting++
       else if (i.status === "working") counts.working++
+      else if (i.status === "looping") counts.looping++
       else if (i.status === "done") counts.done++
       else if (i.status === "stopped" || i.status === "failed") counts.stopped++
     }
     const where = (i) => ({ title: i.title, cwd: i.cwd ?? null, branch: i.branch ?? null, harness: i.harness, updatedAt: i.updatedAt ?? null, ...(i.project ? { project: i.project } : {}) })
+    for (const i of items) if (i.ready && i.status !== "waiting") ready.push({ source: i.source, id: i.id, ...where(i), since: i.readySince ?? i.updatedAt ?? null })
+    ready.sort((a, b) => String(b.since ?? "").localeCompare(String(a.since ?? "")))
     const needsYou = []
     const live = []
-    const busy = items.filter((x) => x.status === "waiting" || x.live || x.status === "working")
+    const looping = []
+    const busy = items.filter((x) => x.status === "waiting" || x.live || x.status === "working" || x.status === "looping")
     // Details load at most OVERVIEW_POOL at a time; results keep the list order.
     const details = new Array(busy.length)
     let next = 0
@@ -70,16 +76,28 @@ export function createRegistry(sources) {
       const d = details[k]
       if (i.status === "waiting") {
         const lane = d?.lanes.find((l) => l.status === "waiting")
-        needsYou.push({ source: i.source, id: i.id, ...where(i), lane: lane?.id ?? "", detail: lane?.reason ?? "" })
+        const ask = lane?.ask ?? {}
+        needsYou.push({
+          source: i.source, id: i.id, ...where(i), lane: lane?.id ?? "", detail: lane?.reason ?? "",
+          // The prompt's identity: when it was asked, and the tool and target it is about (when known).
+          since: ask.since ?? null, tool: ask.tool ?? null, target: ask.target ?? null,
+        })
       }
+      // The listing may lag the detail by a poll: the detail (just parsed) decides working vs looping.
+      const st = d?.summary.status
+      if (st === "looping" && i.status === "working") { counts.working--; counts.looping++ }
+      else if (st === "working" && i.status === "looping") { counts.looping--; counts.working++ }
+      const loop = d?.summary.loop ?? (st ? null : i.loop)
+      if ((st ?? i.status) === "looping" && loop) looping.push({ source: i.source, id: i.id, ...where(i), lane: loop.lane ?? "", loop, sinceChange: d?.summary.sinceChange ?? i.sinceChange ?? null })
       for (const l of d?.lanes ?? []) {
-        if (l.status !== "working") continue
-        live.push({ source: i.source, id: i.id, ...where(i), lane: l.id, label: l.label, kind: l.kind, model: l.model ?? null, nowDoing: l.nowDoing ?? null, startedAt: l.startedAt ?? null })
+        if (l.status !== "working" && l.status !== "looping") continue
+        live.push({ source: i.source, id: i.id, ...where(i), lane: l.id, label: l.label, kind: l.kind, model: l.model ?? null, nowDoing: l.nowDoing ?? null, startedAt: l.startedAt ?? null, ...(l.status === "looping" ? { looping: true } : {}) })
       }
     }
     const at = (l) => String(l.nowDoing?.ts ?? l.startedAt ?? l.updatedAt ?? "")
     live.sort((a, b) => at(b).localeCompare(at(a)))
-    return { counts, needsYou, live }
+    looping.sort((a, b) => String(a.loop.since ?? "").localeCompare(String(b.loop.since ?? "")))
+    return { counts, needsYou, ready, looping, live }
   }
 
   return {
@@ -87,6 +105,18 @@ export function createRegistry(sources) {
     get,
     overview,
     sources: all,
+    /** What /api/events watches: every source's hook dirs and live files (sources without watchTargets add nothing). */
+    watchTargets() {
+      const dirs = new Set(), files = new Set()
+      for (const s of all()) {
+        try {
+          const t = s.watchTargets?.() ?? {}
+          for (const d of t.dirs ?? []) dirs.add(d)
+          for (const f of t.files ?? []) files.add(f)
+        } catch { /* one source must not stop the feed */ }
+      }
+      return { dirs: [...dirs], files: [...files] }
+    },
     error: (name) => errors.get(name) ?? null,
     source: (name) => byName.get(name) ?? null,
     async calls(source, id, filter) {

@@ -1,3 +1,4 @@
+import { createLoopConfig } from "../loops.mjs"
 import { createHash } from "node:crypto"
 import { statSync } from "node:fs"
 import { homedir } from "node:os"
@@ -91,7 +92,7 @@ export async function loadClaude(argv, cwd = process.cwd(), home = homedir()) {
   if (a.noClaude) return null
   const root = a["claude-dir"] ? resolve(cwd, a["claude-dir"]) : join(home, ".claude", "projects")
   const { create } = await import("../sources/claude-code/index.mjs")
-  return create({ root, hooksDir: process.env.MISSION_CONTROL_HOOKS_DIR || join(home, ".mission-control", "hooks"), cachePath: usageCachePath(home, root) })
+  return create({ root, hooksDir: process.env.MISSION_CONTROL_HOOKS_DIR || join(home, ".mission-control", "hooks"), cachePath: usageCachePath(home, root), loops: createLoopConfig(join(home, ".mission-control", "config.json")) })
 }
 
 /**
@@ -104,5 +105,5 @@ export async function loadCodex(argv, cwd = process.cwd(), home = homedir()) {
   const root = a["codex-dir"] ? resolve(cwd, a["codex-dir"]) : join(home, ".codex", "sessions")
   if (!a["codex-dir"] && !isDir(root)) return null
   const { create } = await import("../sources/codex/index.mjs")
-  return create({ root, hooksDir: process.env.MISSION_CONTROL_HOOKS_DIR || join(home, ".mission-control", "hooks"), cachePath: usageCachePath(home, root) })
+  return create({ root, hooksDir: process.env.MISSION_CONTROL_HOOKS_DIR || join(home, ".mission-control", "hooks"), cachePath: usageCachePath(home, root), loops: createLoopConfig(join(home, ".mission-control", "config.json")) })
 }

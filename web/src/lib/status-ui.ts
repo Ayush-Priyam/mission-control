@@ -1,4 +1,4 @@
-import { Check, Circle, CircleDot, Hand, OctagonX, Pause, type LucideIcon } from "lucide-react"
+import { Check, Circle, CircleDot, Hand, OctagonX, Pause, Repeat, type LucideIcon } from "lucide-react"
 import type { Status } from "@/lib/api"
 
 /**
@@ -11,6 +11,8 @@ export type StatusUi = { label: string; title: string; text: string; fill: strin
 export const STATUS_UI: Record<Status, StatusUi> = {
   working: { label: "working", title: "Working", text: "text-running", fill: "bg-running", border: "border-running/40", icon: CircleDot },
   waiting: { label: "needs you", title: "Needs you", text: "text-needs-you", fill: "bg-needs-you", border: "border-needs-you/50", icon: Hand },
+  // Looping: still working, but retrying the same failure and burning tokens. Its own colour (fuchsia), never amber or red.
+  looping: { label: "looping", title: "Looping", text: "text-looping", fill: "bg-looping", border: "border-looping/50", icon: Repeat },
   failed: { label: "failed", title: "Failed", text: "text-failed", fill: "bg-failed", border: "border-failed/40", icon: OctagonX },
   stopped: { label: "stopped", title: "Stopped", text: "text-stopped", fill: "bg-stopped", border: "border-stopped/40", icon: Pause },
   done: { label: "done", title: "Done", text: "text-muted-foreground", fill: "bg-done", border: "border-border", icon: Check },

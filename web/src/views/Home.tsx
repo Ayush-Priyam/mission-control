@@ -5,6 +5,8 @@ import { Panel } from "@/components/Panel"
 import { ItemTable } from "@/components/ItemTable"
 import { LiveActivity } from "@/components/LiveActivity"
 import { NeedsYouQueue } from "@/components/NeedsYouQueue"
+import { ReadyList } from "@/components/ReadyList"
+import { LoopingList } from "@/components/LoopingList"
 import { useItems, useSources, type ItemSummary } from "@/lib/api"
 import { useNow } from "@/lib/format"
 import { useShared } from "@/lib/projects-context"
@@ -43,6 +45,13 @@ export default function Home() {
             actions={actions}
             onActed={overview.reload}
             now={now}
+            loaded={!!overview.data}
+            between={
+              <>
+                <LoopingList entries={overview.data?.looping ?? []} now={now} />
+                <ReadyList entries={overview.data?.ready ?? []} now={now} />
+              </>
+            }
           />
         )}
       </aside>

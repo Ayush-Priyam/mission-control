@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useState } from "react"
 import { markFail, markOk } from "@/lib/freshness"
+import { onServerChange } from "@/lib/server-events"
 
 export type Capabilities = { adapter: string; extras: string[]; actions: string[]; source: string | null }
 export type RunSummary = {
@@ -124,8 +125,11 @@ export function useFetch<T>(url: string | null, pollMs = 0, refresh: unknown = 0
     void load()
     if (!document.hidden) start()
     if (pollMs) document.addEventListener("visibilitychange", onVis)
+    // A polled url also refetches the moment the server says something changed (SSE); polling stays as the fallback.
+    const off = pollMs ? onServerChange(() => { if (!document.hidden) void load() }) : () => {}
     return () => {
       cancelled = true
+      off()
       stop()
       document.removeEventListener("visibilitychange", onVis)
     }
@@ -166,7 +170,11 @@ export async function postAction(id: string, name: string, body: object = {}) {
 
 // ---- v2: one set of routes for every source ----
 
-export type Status = "working" | "waiting" | "stopped" | "failed" | "done" | "idle"
+export type Status = "working" | "waiting" | "looping" | "stopped" | "failed" | "done" | "idle"
+/** Tokens and time since the last successful file change (Edit, Write, apply_patch...). */
+export type SinceChange = { tokens: number; since: string | null; ms: number }
+/** Why a lane counts as looping (src/loops.mjs): since when, how many failures, cost since, the first failing call. */
+export type LoopInfo = { looping: true; rule: "repeat" | "cycle" | "burn"; since: string; failures: number; costSince: number; firstCallId: string; reason: string; command: string; lane?: string }
 export type Tokens = { in: number; out: number; cacheRead: number; cacheWrite: number }
 export type ItemSummary = {
   source: string
@@ -190,6 +198,11 @@ export type ItemSummary = {
   project?: Placed
   /** Its project is hidden (noise) by default. */
   hidden?: boolean
+  /** Done and waiting for your next prompt (Claude's idle reminder, or a Codex turn that ended < 30 min ago). */
+  ready?: boolean
+  readySince?: string
+  sinceChange?: SinceChange
+  loop?: LoopInfo
 }
 export type Placed = { key: string; name: string; worktree: string }
 export type Lane = {
@@ -200,6 +213,10 @@ export type Lane = {
   model?: string
   nowDoing?: { name: string; kind: string; summary: string; ts: string }
   reason?: string
+  /** The open prompt of a waiting lane: when it was asked, the tool and its command or path. */
+  ask?: { since?: string; tool?: string; target?: string }
+  loop?: LoopInfo
+  sinceChange?: SinceChange
   calls: number
   errors: number
   tokens: Tokens
@@ -233,7 +250,8 @@ export type Turn = { i: number; role: "user" | "assistant"; ts: string | null; t
 export type TurnPage = { lane: string; total: number; start: number; turns: Turn[] }
 export type ItemDetail = { summary: ItemSummary; lanes: Lane[]; events: Record<string, any>[]; state?: Record<string, any> }
 type Where = { source: string; id: string; title: string; cwd: string | null; branch: string | null; harness: string; updatedAt: string | null; project?: Placed }
-export type NeedsYou = Where & { lane: string; detail: string }
+/** `since`, `tool`, `target`: the prompt's identity (when it was asked, the tool and its command or path), when known. */
+export type NeedsYou = Where & { lane: string; detail: string; since?: string | null; tool?: string | null; target?: string | null }
 export type LiveLane = Where & {
   lane: string
   label: string
@@ -242,14 +260,20 @@ export type LiveLane = Where & {
   nowDoing: Lane["nowDoing"] | null
   startedAt: string | null
 }
+/** A session that is done and waiting for your next prompt: not urgent, but findable. */
+export type ReadyItem = Where & { since: string | null }
+/** An item looping now, with its looping lane's loop. */
+export type LoopingItem = Where & { lane: string; loop: LoopInfo; sinceChange: SinceChange | null }
 export type Overview = {
-  counts: { waiting: number; working: number; stopped: number; done: number }
+  counts: { waiting: number; working: number; stopped: number; done: number; ready?: number; looping?: number }
   needsYou: NeedsYou[]
+  ready?: ReadyItem[]
+  looping?: LoopingItem[]
   live: LiveLane[]
   /** Items left out because their project is hidden. */
   hidden: number
 }
-export type StatusCounts = Record<Status, number> & { items: number; live: number }
+export type StatusCounts = Record<Status, number> & { items: number; live: number; ready?: number }
 /** A worktree as the sidebar sees it (`/api/projects?slim=1`): counts, no item list. */
 export type WorktreeSummary = {
   path: string

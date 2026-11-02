@@ -198,9 +198,40 @@ function build() {
     const hf = join(hooksDir, `${id}.jsonl`)
     writeFileSync(hf, jsonl([
       { event: "UserPromptSubmit", sessionId: id, ts: iso(startW) },
-      { event: "PreToolUse", sessionId: id, ts: iso(since - 20000), tool: "Edit" },
-      { event: "Notification", sessionId: id, ts: iso(since + 1000), message: "Claude needs your permission to use Bash" },
+      { event: "PreToolUse", sessionId: id, ts: iso(since - 20000), tool: "Edit", target: "/work/api/deploy/staging.yaml" },
+      { event: "PostToolUse", sessionId: id, ts: iso(since - 19000), tool: "Edit" },
+      { event: "PreToolUse", sessionId: id, ts: iso(since), tool: "Bash", target: "./scripts/rotate-keys.sh staging" },
+      { event: "PermissionRequest", sessionId: id, ts: iso(since + 400), tool: "Bash", target: "./scripts/rotate-keys.sh staging", message: "Claude needs your permission to use Bash" },
     ]))
+
+    // READY: finished a turn, Claude's idle reminder came a minute later.
+    id = "sess-api-docs"
+    tx = transcript({ sessionId: id, cwd, branch: "main", start: now - 20 * MIN })
+    tx.user("document the new orders index in the runbook")
+    tx.turn(SONNET, [read("/work/api/docs/runbook.md"), edit("/work/api/docs/runbook.md", ["## Indexes", "## Indexes\n- orders(customer_id, created_at)"])])
+    tx.turn(SONNET, [{ text: "Runbook updated. Anything else?" }])
+    const doneAt = tx.t
+    sessions[id] = writeSession(cwd, id, tx, { summary: "Runbook: orders index", endMs: doneAt })
+    writeFileSync(join(hooksDir, `${id}.jsonl`), jsonl([
+      { event: "UserPromptSubmit", sessionId: id, ts: iso(now - 20 * MIN) },
+      { event: "Stop", sessionId: id, ts: iso(doneAt) },
+      { event: "Notification", sessionId: id, ts: iso(doneAt + 60000), kind: "idle_prompt", message: "Claude is waiting for your input" },
+    ]))
+  }
+
+  // --- LOOPING: live, retrying the same failing test with small edits for ~14 minutes
+  {
+    const cwd = "/work/shop", id = "sess-shop-loop"
+    const tx = transcript({ sessionId: id, cwd, branch: "fix/checkout-total", start: now - 16 * MIN })
+    tx.user("make the checkout total test pass")
+    tx.turn(SONNET, [read("/work/shop/src/checkout/total.ts"), read("/work/shop/src/checkout/total.test.ts")])
+    for (let i = 0; i < 9; i++) {
+      tx.turn(SONNET, [edit("/work/shop/src/checkout/total.ts", [`round(${i})`, `round(${i + 1})`]), bash("npm test -- checkout", "", "FAIL total.test.ts: expected 19.99, received 20")], { think: 60000 })
+    }
+    const shift = now - 15000 - tx.t
+    for (const l of tx.lines) l.timestamp = iso(Date.parse(l.timestamp) + shift)
+    tx.gap(shift)
+    sessions[id] = writeSession(cwd, id, tx, { summary: "Fix checkout total rounding", endMs: now - 15000 })
   }
 
   // --- the LIVE session: last turn 20 s ago, one subagent still running
@@ -360,7 +391,7 @@ function buildRuns() {
 
 const sessions = build()
 const busy = buildRuns()
-console.log(`demo data in ${out}: ${Object.keys(sessions).length} sessions, 5 runs, 1 waiting`)
+console.log(`demo data in ${out}: ${Object.keys(sessions).length} sessions, 5 runs, 1 waiting, 1 ready, 1 looping`)
 
 if (live) {
   const busyFile = join(busy, "runs.jsonl")

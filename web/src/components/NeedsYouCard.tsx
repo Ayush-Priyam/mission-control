@@ -15,6 +15,9 @@ export type Ask = {
   rule?: string
   detail?: string
   ts?: string
+  /** The tool the prompt is about and its command or path (secret-safe, first 120 chars), when known. */
+  tool?: string
+  target?: string
 }
 
 /**
@@ -65,8 +68,14 @@ export function NeedsYouCard({ source, id, ask, actions, now, onActed, flash = f
         {lane ? <span className="font-normal normal-case"> · {lane}</span> : null}
       </div>
       <p className="text-title leading-snug font-semibold">{short(ask.detail || (ask.waiting ? `${lane || "The run"} needs you` : `${lane || "The run"} stopped`), 220)}</p>
+      {(ask.tool || ask.target) && (
+        <p className="flex min-w-0 items-baseline gap-1.5 text-xs">
+          {ask.tool && <span data-tool className="shrink-0 font-mono font-semibold text-needs-you">{ask.tool}</span>}
+          {ask.target && <code data-target title={ask.target} className="min-w-0 truncate font-mono text-muted-foreground">{ask.target}</code>}
+        </p>
+      )}
       <p className="font-mono text-xs text-faint">
-        {ask.ts ? `${ago(ask.ts, now)} ago · ` : ""}
+        {ask.ts ? (ago(ask.ts, now) === "now" ? "asked just now · " : `asked ${ago(ask.ts, now)} ago · `) : ""}
         {ask.waiting ? (canSign || canSay ? "everything else waits until you answer" : "answer it where the agent runs") : "nothing runs until it is resumed"}
       </p>
       {canSign && mode === "idle" && (

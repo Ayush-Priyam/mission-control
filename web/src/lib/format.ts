@@ -14,6 +14,20 @@ export function ago(ts: string | null | undefined, now = Date.now()): string {
   return `${Math.floor(h / 24)}d`
 }
 
+/** "looping 14m · npm test failed 9× · $3.20 est. since" */
+export function loopLine(loop: { since: string; reason: string; costSince: number }, now = Date.now()): string {
+  const how = ago(loop.since, now)
+  return `looping ${how === "now" ? "0m" : how} · ${loop.reason}${loop.costSince ? ` · ${money(loop.costSince)} est. since` : ""}`
+}
+
+/** "412k tok since last change · 18m" (null when unknown). */
+export function sinceChangeLine(s: { tokens: number; ms: number } | null | undefined): string | null {
+  if (!s) return null
+  const m = Math.round(s.ms / 60_000)
+  const t = m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`
+  return `${compact(s.tokens)} tok since last change · ${t}`
+}
+
 /** Dollars: "$0.84", "$12.30", "–" for zero, "<$0.01" for crumbs. */
 export function money(n: number | null | undefined): string {
   if (!n || !Number.isFinite(n)) return "–"

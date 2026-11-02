@@ -1,10 +1,10 @@
 import type { ItemSummary, ProjectSummary, Status, StatusCounts, WorktreeSummary } from "./api"
 import { toHash } from "./route"
 
-/** The status chips' filters. `stopped` covers failed too; `done` means done today. */
-export type ChipFilter = "waiting" | "working" | "stopped" | "done"
+/** The status chips' filters. `stopped` covers failed too; `done` means done today; `ready` is idle and waiting for your next prompt. */
+export type ChipFilter = "waiting" | "looping" | "ready" | "working" | "stopped" | "done"
 
-const RANK: Status[] = ["waiting", "working", "failed", "stopped", "done", "idle"]
+const RANK: Status[] = ["waiting", "looping", "working", "failed", "stopped", "done", "idle"]
 
 /** One status for a group of items: the most urgent one present. */
 export function rollup(items: Pick<ItemSummary, "status">[]): Status {
@@ -26,6 +26,7 @@ const localDay = (d: Date) => d.toLocaleDateString("en-CA")
 
 export function matchesFilter(i: ItemSummary, f: ChipFilter | null, now = new Date()): boolean {
   if (!f) return true
+  if (f === "ready") return !!i.ready && i.status !== "waiting"
   if (f === "stopped") return i.status === "stopped" || i.status === "failed"
   if (f === "done") return i.status === "done" && !!i.updatedAt && localDay(new Date(i.updatedAt)) === localDay(now)
   return i.status === f
@@ -34,6 +35,7 @@ export function matchesFilter(i: ItemSummary, f: ChipFilter | null, now = new Da
 /** How many of a worktree's items a chip filter keeps (done = done today, counted by the server in the viewer's zone). */
 export function filterCount(w: Pick<WorktreeSummary, "counts" | "doneToday">, f: ChipFilter | null): number {
   if (!f) return w.counts.items
+  if (f === "ready") return w.counts.ready ?? 0
   if (f === "stopped") return w.counts.stopped + w.counts.failed
   if (f === "done") return w.doneToday
   return w.counts[f]

@@ -13,7 +13,8 @@ export type PresetId = "mission" | "blossom" | "mint" | "mono" | "custom"
 export type BaseId = "neutral" | "warm" | "cool"
 
 type Surface = { bg: string; card: string; muted: string; border: string; input: string; fg: string; mutedFg: string; faint: string; hover: string; sidebar: string }
-type StatusSet = { running: string; needsYou: string; failed: string; consult: string; stopped: string; done: string; tool: string; llm: string }
+/** `looping` is optional so custom themes stored before it existed stay valid (they take the default). */
+type StatusSet = { running: string; needsYou: string; failed: string; consult: string; stopped: string; done: string; tool: string; llm: string; looping?: string }
 
 export const BASES: Record<BaseId | "rose" | "mint", Record<Mode, Surface>> = {
   neutral: {
@@ -40,12 +41,12 @@ export const BASES: Record<BaseId | "rose" | "mint", Record<Mode, Surface>> = {
 
 export const STATUS: Record<"color" | "mono", Record<Mode, StatusSet>> = {
   color: {
-    light: { running: "#15803d", needsYou: "#b45309", failed: "#b91c1c", consult: "#0369a1", stopped: "#6b6b74", done: "#8a8a93", tool: "#0f766e", llm: "#6d5fd3" },
-    dark: { running: "#22c55e", needsYou: "#f59e0b", failed: "#ef4444", consult: "#38bdf8", stopped: "#a1a1aa", done: "#6b6b74", tool: "#2dd4bf", llm: "#a78bfa" },
+    light: { running: "#15803d", needsYou: "#b45309", failed: "#b91c1c", consult: "#0369a1", stopped: "#6b6b74", done: "#8a8a93", tool: "#0f766e", llm: "#6d5fd3", looping: "#a21caf" },
+    dark: { running: "#22c55e", needsYou: "#f59e0b", failed: "#ef4444", consult: "#38bdf8", stopped: "#a1a1aa", done: "#6b6b74", tool: "#2dd4bf", llm: "#a78bfa", looping: "#e879f9" },
   },
   mono: {
-    light: { running: "#27272a", needsYou: "#09090b", failed: "#3f3f46", consult: "#52525b", stopped: "#6b6b74", done: "#8a8a93", tool: "#3f3f46", llm: "#52525b" },
-    dark: { running: "#f4f4f5", needsYou: "#ffffff", failed: "#d4d4d8", consult: "#b4b4bb", stopped: "#a1a1aa", done: "#6b6b74", tool: "#d4d4d8", llm: "#b4b4bb" },
+    light: { running: "#27272a", needsYou: "#09090b", failed: "#3f3f46", consult: "#52525b", stopped: "#6b6b74", done: "#8a8a93", tool: "#3f3f46", llm: "#52525b", looping: "#44403c" },
+    dark: { running: "#f4f4f5", needsYou: "#ffffff", failed: "#d4d4d8", consult: "#b4b4bb", stopped: "#a1a1aa", done: "#6b6b74", tool: "#d4d4d8", llm: "#b4b4bb", looping: "#e7e5e4" },
   },
 }
 
@@ -77,9 +78,9 @@ export const PRESET_IDS: PresetId[] = ["mission", "blossom", "mint", "mono", "cu
 export type Tokens = Record<string, string>
 
 /** Text tokens that must reach 4.5:1 on background, card and muted. */
-export const TEXT_TOKENS = ["--foreground", "--muted-foreground", "--faint", "--running", "--needs-you", "--failed", "--consult", "--stopped", "--tool", "--llm", "--brand"]
+export const TEXT_TOKENS = ["--foreground", "--muted-foreground", "--faint", "--running", "--needs-you", "--looping", "--failed", "--consult", "--stopped", "--tool", "--llm", "--brand"]
 /** Non-text tokens (dots, focus ring) that must reach 3:1 on background and card. */
-export const MARK_TOKENS = ["--done", "--focus", "--running", "--needs-you", "--failed", "--consult", "--stopped"]
+export const MARK_TOKENS = ["--done", "--focus", "--running", "--needs-you", "--looping", "--failed", "--consult", "--stopped"]
 export const SURFACES = ["--background", "--card", "--muted"]
 
 /**
@@ -136,6 +137,7 @@ export function buildTokens(spec: ThemeSpec, mode: Mode): { tokens: Tokens; adju
     "--faint": text("--faint", s.faint),
     "--running": text("--running", st.running),
     "--needs-you": text("--needs-you", st.needsYou),
+    "--looping": text("--looping", st.looping ?? STATUS.color[mode].looping!),
     "--failed": text("--failed", st.failed),
     "--consult": text("--consult", st.consult),
     "--stopped": text("--stopped", st.stopped),

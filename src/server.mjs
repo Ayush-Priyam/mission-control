@@ -11,6 +11,8 @@ import { buildTree, NO_PROJECT_INFO, projectsOf, shapeTree } from "./projects.mj
 import { createHide, isNoise } from "./hidden.mjs"
 import { aggregate, defaultTz, isBy, isTz } from "./usage.mjs"
 import { createRegistry } from "./sources/registry.mjs"
+import { createLoopConfig } from "./loops.mjs"
+import { createChangeFeed } from "./events.mjs"
 
 const DEFAULT_DIST = join(dirname(fileURLToPath(import.meta.url)), "..", "dist")
 
@@ -284,9 +286,11 @@ const LOOPBACK = ["localhost", "127.0.0.1", "[::1]"]
  * `input` is one v1 adapter, one source, or an array of either. Every entry becomes a source;
  * the v1 routes (/api/runs, /api/run/..., /api/crew, /api/x/...) stay as aliases for the first adapter.
  */
-export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, config = null, now = () => Date.now() } = {}) {
+export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, config = null, now = () => Date.now(), loops = null, heartbeatMs = 15_000, eventsPollMs = 1000 } = {}) {
   const entries = Array.isArray(input) ? input : [input]
-  const sources = entries.map((e) => (typeof e.listItems === "function" ? e : fromAdapter(e)))
+  // Loop thresholds from config.json {"loops": {...}} (re-read when the file changes); `loops` injects them.
+  const loopCfg = typeof loops === "function" ? loops : loops ? () => loops : createLoopConfig(config)
+  const sources = entries.map((e) => (typeof e.listItems === "function" ? e : fromAdapter(e, { loops: loopCfg, now })))
   const registry = createRegistry(sources)
   const adapter = entries.find((e) => typeof e.listRuns === "function") ?? null
   // `config`: path of config.json ({ "hide": [...] }); null reads nothing. The CLI passes ~/.mission-control/config.json.
@@ -294,6 +298,24 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
   if (!existsSync(join(distDir, "index.html"))) {
     console.error(`mission control: no built page at ${join(distDir, "index.html")} — run npm run build`)
   }
+  // Server-Sent Events: "changed" when a hook line lands or a live session file grows; "heartbeat" keeps
+  // the page's freshness badge honest. The feed runs only while at least one page listens.
+  const clients = new Set()
+  const send = (event) => { for (const r of clients) r.write(`event: ${event}\ndata: {}\n\n`) }
+  const feed = createChangeFeed({ targets: () => registry.watchTargets(), pollMs: eventsPollMs, onChange: () => send("changed") })
+  const beat = setInterval(() => send("heartbeat"), heartbeatMs)
+  beat.unref?.()
+  function openEvents(req, res) {
+    res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-store", connection: "keep-alive", "x-accel-buffering": "no" })
+    res.write("retry: 2000\nevent: heartbeat\ndata: {}\n\n")
+    clients.add(res)
+    feed.start()
+    req.on("close", () => {
+      clients.delete(res)
+      if (!clients.size) feed.stop()
+    })
+  }
+
   // Filled once the actual port is known (port 0 picks one).
   let hosts = new Set(), origins = new Set()
   const handler = async (req, res) => {
@@ -318,6 +340,13 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
           actions: Object.keys(adapter?.actions ?? {}),
           source: adapter?.describe?.().source ?? null,
         })
+      }
+      if (url.pathname === "/api/events") {
+        // An EventSource from another site would send its Origin: refuse it like a cross-site POST.
+        const origin = req.headers.origin
+        if (origin !== undefined && !origins.has(origin)) return json(res, { error: "cross-origin request refused" }, 403)
+        if (req.method === "HEAD") return json(res, {})
+        return openEvents(req, res)
       }
       if (url.pathname.startsWith("/api/")) return await api(ctx, req, res, url)
       return await serveStatic(res, distDir, url.pathname)
@@ -350,6 +379,10 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
         port: actual,
         close: () =>
           new Promise((done) => {
+            clearInterval(beat)
+            feed.stop()
+            for (const r of clients) r.end()
+            clients.clear()
             v6.close(() => v4.close(() => done()))
             v4.closeAllConnections?.()
             v6.closeAllConnections?.()

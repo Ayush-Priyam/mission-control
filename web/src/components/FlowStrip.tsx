@@ -17,6 +17,7 @@ const MAX_SUB = 12
 const STROKE: Record<Status, string> = {
   working: "stroke-running",
   waiting: "stroke-needs-you",
+  looping: "stroke-looping",
   failed: "stroke-failed",
   stopped: "stroke-stopped",
   done: "stroke-foreground/30",
@@ -25,6 +26,7 @@ const STROKE: Record<Status, string> = {
 const DOT: Record<Status, string> = {
   working: "fill-running",
   waiting: "fill-needs-you",
+  looping: "fill-looping",
   failed: "fill-failed",
   stopped: "fill-stopped",
   done: "fill-done",

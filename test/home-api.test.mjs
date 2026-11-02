@@ -83,7 +83,7 @@ test("/api/projects flags hidden projects; slim drops items and carries counts",
     assert.equal(shop.hidden, undefined)
     const w = shop.worktrees[0]
     assert.equal(w.items, undefined)
-    assert.deepEqual(w.counts, { items: 2, live: 1, waiting: 1, working: 1, stopped: 0, failed: 0, done: 0, idle: 0 })
+    assert.deepEqual(w.counts, { items: 2, live: 1, ready: 0, waiting: 1, looping: 0, working: 1, stopped: 0, failed: 0, done: 0, idle: 0 })
     assert.equal(w.dirty, 1)
     assert.equal(w.ahead, 2)
     assert.equal(w.updatedAt, T)
@@ -104,12 +104,12 @@ test("slim doneToday counts done items on the viewer's day", async () => {
 test("overview excludes hidden projects unless all=1, and lists live lanes", async () => {
   await withServer({ config: configWith(["secret"]) }, async (base) => {
     const ov = await (await fetch(`${base}/api/overview`)).json()
-    assert.deepEqual(ov.counts, { waiting: 1, working: 1, stopped: 0, done: 1 })
+    assert.deepEqual(ov.counts, { waiting: 1, working: 1, stopped: 0, done: 1, ready: 0, looping: 0 })
     assert.deepEqual(ov.needsYou.map((n) => [n.id, n.lane, n.detail, n.project.name]), [["q1", "main", "permission for Bash", "shop"]])
     assert.deepEqual(ov.live.map((l) => [l.id, l.lane, l.label, l.nowDoing.name, l.project.name]), [["w1", "main", "main", "Bash", "shop"]])
     assert.equal(ov.hidden, 3)
     const all = await (await fetch(`${base}/api/overview?all=1`)).json()
-    assert.deepEqual(all.counts, { waiting: 2, working: 2, stopped: 1, done: 1 })
+    assert.deepEqual(all.counts, { waiting: 2, working: 2, stopped: 1, done: 1, ready: 0, looping: 0 })
     assert.equal(all.live.length, 2)
   })
 })
@@ -187,6 +187,6 @@ test("/api/items?limit places only about the first chunk", async () => {
 test("registry overview accepts a pre-filtered item list", async () => {
   const reg = createRegistry([source()])
   const ov = await reg.overview((await reg.list()).filter((i) => i.id === "q1"))
-  assert.deepEqual(ov.counts, { waiting: 1, working: 0, stopped: 0, done: 0 })
+  assert.deepEqual(ov.counts, { waiting: 1, working: 0, stopped: 0, done: 0, ready: 0, looping: 0 })
   assert.deepEqual(ov.live, [])
 })

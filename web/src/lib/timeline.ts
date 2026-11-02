@@ -26,7 +26,7 @@ const ms = (s: string | null | undefined) => {
   const t = s ? Date.parse(s) : NaN
   return Number.isFinite(t) ? t : null
 }
-const ACTIVE = new Set(["working", "waiting"])
+const ACTIVE = new Set(["working", "looping", "waiting"])
 export const tickKind = (c: Call): TickKind => (c.ok === false ? "error" : c.kind)
 
 /** main first, then lanes by start (no start last), then id. */

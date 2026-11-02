@@ -1,4 +1,5 @@
 import { isWaiting, openStop } from "../status.mjs"
+import { LOOP_DEFAULTS, applyLoops, runCalls } from "../loops.mjs"
 import { defaultTz, localDay } from "../usage.mjs"
 
 const zeroTokens = () => ({ in: 0, out: 0, cacheRead: 0, cacheWrite: 0 })
@@ -93,6 +94,7 @@ function buildLanes(state, events, calls, live) {
   }
   for (const lane of lanes) {
     if (stop && stop.stage === lane.id && (lane.status === "waiting" || lane.status === "stopped") && typeof stop.detail === "string") lane.reason = stop.detail
+    if (stop && stop.stage === lane.id && lane.status === "waiting" && typeof stop.ts === "string") lane.ask = { since: stop.ts }
   }
   const byId = new Map(lanes.map((l) => [l.id, l]))
   for (const e of events) {
@@ -123,7 +125,7 @@ function itemStatus({ live, waiting, events, lanes }) {
 }
 
 /** Turn a v1 adapter ({ name, listRuns, getRun, getSession, extras?, actions?, describe? }) into a v2 Source. */
-export function fromAdapter(adapter) {
+export function fromAdapter(adapter, { loops = () => LOOP_DEFAULTS, now = () => Date.now() } = {}) {
   const harnessName = adapter.harness ?? adapter.name
 
   function build(id, run) {
@@ -142,6 +144,8 @@ export function fromAdapter(adapter) {
     }
     const stamps = events.map((e) => str(e.ts)).filter(Boolean)
     const live = Boolean(run.live)
+    // Loops per stage lane, from progress / issue / stage.end / session events.
+    const lp = applyLoops(lanes.map((lane) => ({ lane, ...runCalls(events, lane.id) })), { now: now(), config: loops(), detect: live && !waiting })
     const summary = {
       source: adapter.name,
       id,
@@ -151,13 +155,15 @@ export function fromAdapter(adapter) {
       cwd: str(state.repo) ?? str(state.worktree),
       branch: str(state.branch),
       live,
-      status: itemStatus({ live, waiting, events, lanes }),
+      status: itemStatus({ live, waiting, events, lanes }) === "working" && lp.loop ? "looping" : itemStatus({ live, waiting, events, lanes }),
       waiting,
       startedAt: stamps[0] ?? null,
       updatedAt: stamps.at(-1) ?? null,
       counts: { lanes: lanes.length, calls: calls.length, errors: lanes.reduce((n, l) => n + l.errors, 0) },
       tokens,
       cost,
+      sinceChange: lp.sinceChange,
+      ...(lp.loop ? { loop: lp.loop } : {}),
     }
     return { summary, lanes, events, state, calls }
   }

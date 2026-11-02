@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { ChevronRight } from "lucide-react"
 import type { Call, CallKind, Lane, Status } from "@/lib/api"
-import { ago, compact } from "@/lib/format"
+import { ago, compact, loopLine, sinceChangeLine } from "@/lib/format"
 import { estCost, EST_TIP, laneTree, modelName, totalTokens, type Chip, type LaneExtra } from "@/lib/item"
 import { iconOf, KIND } from "@/components/CallList"
 import { StatusDot } from "@/components/StatusDot"
@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 
 const BORDER: Record<Status, string> = {
   working: "border-running/45",
+  looping: "border-looping/70",
   waiting: "border-needs-you/80 shadow-[0_0_0_1px_var(--needs-you),0_0_18px_-6px_var(--needs-you)]",
   failed: "border-failed/60",
   stopped: "border-stopped/40 border-dashed",
@@ -29,6 +30,7 @@ function corner(lane: Lane, x: LaneExtra | undefined): string {
   if (lane.status === "waiting") return "needs you"
   if (lane.status === "stopped") return "stopped"
   if (lane.status === "failed") return "failed"
+  if (lane.status === "looping") return "looping"
   if (x?.skipped) return "skipped"
   if (lane.status === "working" && x && x.rounds > 1) return `round ${x.rounds}`
   if (lane.status === "working") return "working"
@@ -66,7 +68,39 @@ const LINKED: Record<Linked["kind"], { ring: string; text: string }> = {
 }
 
 /** One lane: dot, label, corner word, what it is doing now, why (chip), and its calls/tokens/cost. */
-export function LaneCard({ lane, extra, now, onOpen, compactCard, linked, flash, onHover }: { lane: Lane; extra?: LaneExtra; now: number; onOpen?: (id: string) => void; compactCard?: boolean } & Look) {
+/**
+ * The looping line and its link to the first failing call. The card is a button, so the link is a
+ * keyboard-reachable role="link" that navigates without opening the lane.
+ */
+function LoopLine({ lane, now, callHref }: { lane: Lane; now: number; callHref?: (callId: string) => string }) {
+  const loop = lane.loop
+  if (lane.status !== "looping" || !loop) return null
+  const href = callHref?.(loop.firstCallId)
+  const go = (e: { stopPropagation: () => void; preventDefault: () => void }) => {
+    e.stopPropagation()
+    e.preventDefault()
+    if (href) location.hash = href.replace(/^#/, "")
+  }
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5 rounded-md bg-looping/10 px-2 py-1 font-mono text-xs text-looping">
+      <span className="line-clamp-3" title={loop.command}>{loopLine(loop, now)}</span>
+      {href && (
+        <span
+          role="link"
+          tabIndex={0}
+          data-href={href}
+          onClick={go}
+          onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && go(e)}
+          className="self-start underline decoration-dotted underline-offset-2 hover:decoration-solid"
+        >
+          first failing call →
+        </span>
+      )}
+    </div>
+  )
+}
+
+export function LaneCard({ lane, extra, now, onOpen, compactCard, linked, flash, onHover, callHref }: { lane: Lane; extra?: LaneExtra; now: number; onOpen?: (id: string) => void; compactCard?: boolean; callHref?: (callId: string) => string } & Look) {
   const quiet = lane.status === "idle" || lane.status === "done" || lane.status === "stopped"
   const chip = extra?.chip
   return (
@@ -99,15 +133,19 @@ export function LaneCard({ lane, extra, now, onOpen, compactCard, linked, flash,
         <span className={cn("min-w-0 flex-1 truncate font-semibold", compactCard ? "text-sm" : "text-title", quiet && "text-muted-foreground")} title={lane.label}>
           {lane.label}
         </span>
-        <span className={cn("shrink-0 font-mono text-xs", lane.status === "waiting" ? "text-needs-you" : lane.status === "failed" ? "text-failed" : "text-faint")}>
+        <span className={cn("shrink-0 font-mono text-xs", lane.status === "waiting" ? "text-needs-you" : lane.status === "failed" ? "text-failed" : lane.status === "looping" ? "text-looping" : "text-faint")}>
           {corner(lane, extra)}
         </span>
       </div>
       <NowDoing lane={lane} now={now} />
+      <LoopLine lane={lane} now={now} callHref={callHref} />
       {chip && (
         <span className={cn("line-clamp-2 self-start rounded px-1.5 py-0.5 font-mono text-xs", CHIP[chip.kind], "max-w-full")} title={chip.text}>
           {chip.text}
         </span>
+      )}
+      {sinceChangeLine(lane.sinceChange) && (lane.status === "working" || lane.status === "looping") && (
+        <span data-since-change className="font-mono text-xs text-faint">{sinceChangeLine(lane.sinceChange)}</span>
       )}
       <div className="mt-auto flex items-center justify-between gap-2 font-mono text-xs whitespace-nowrap text-faint">
         <span title={EST_TIP} className="shrink-0">{estCost(lane.cost)}</span>
@@ -147,7 +185,7 @@ function QuietRows({ lanes, onOpen, look }: { lanes: Lane[]; onOpen?: (id: strin
   )
 }
 
-const busy = (l: Lane) => l.status === "working" || l.status === "waiting" || l.status === "failed"
+const busy = (l: Lane) => l.status === "working" || l.status === "looping" || l.status === "waiting" || l.status === "failed"
 const sel = (ids: string[]) => ids.map((id) => `[data-lane="${id.replace(/["\\]/g, "\\$&")}"]`).join(",")
 
 /** What each card is to the hovered lane: "sent back X3 to backend", "got X3 back from qa", "asked Q4 by backend". */
@@ -195,7 +233,7 @@ function CardGrid({ lanes, render }: { lanes: Lane[]; render: (l: Lane) => React
  * Hovering a card outlines its linked cards and reports the lane to `onHover` (the flow strip lights its node
  * and arcs); `focus` (from the flow strip) scrolls to a lane and flashes it.
  */
-export function LaneCards({ lanes, extras, now, onOpen, links = [], focus, onHover }: { lanes: Lane[]; extras: Map<string, LaneExtra>; now: number; onOpen?: (id: string) => void; links?: LaneLink[]; focus?: { ids: string[]; n: number } | null; onHover?: (id: string | null) => void }) {
+export function LaneCards({ lanes, extras, now, onOpen, links = [], focus, onHover, callHref }: { lanes: Lane[]; extras: Map<string, LaneExtra>; now: number; onOpen?: (id: string) => void; links?: LaneLink[]; focus?: { ids: string[]; n: number } | null; onHover?: (id: string | null) => void; callHref?: (callId: string) => string }) {
   const [showQuiet, setShowQuiet] = useState<Record<string, boolean>>({})
   const [hover, setHoverState] = useState<string | null>(null)
   const setHover = (id: string | null) => { setHoverState(id); onHover?.(id) }
@@ -234,14 +272,14 @@ export function LaneCards({ lanes, extras, now, onOpen, links = [], focus, onHov
         const open = showQuiet[lane.id] ?? quiet.length <= 12
         return (
           <section key={lane.id} className="flex flex-col gap-3" aria-label={`${lane.label} and its subagents`}>
-            <LaneCard lane={lane} extra={extras.get(lane.id)} now={now} onOpen={onOpen} {...look(lane.id)} />
+            <LaneCard lane={lane} extra={extras.get(lane.id)} now={now} onOpen={onOpen} callHref={callHref} {...look(lane.id)} />
             <div className="ml-3 flex flex-col gap-2 border-l pl-4">
               <div className="font-mono text-xs tracking-wider text-faint uppercase">
                 Subagents · {children.length}
                 {active.length ? <span className="text-running"> · {active.length} busy</span> : null}
               </div>
               {active.length > 0 && (
-                <CardGrid compactCard lanes={active} render={(c) => <LaneCard key={c.id} lane={c} extra={extras.get(c.id)} now={now} onOpen={onOpen} compactCard {...look(c.id)} />} />
+                <CardGrid compactCard lanes={active} render={(c) => <LaneCard key={c.id} lane={c} extra={extras.get(c.id)} now={now} onOpen={onOpen} callHref={callHref} compactCard {...look(c.id)} />} />
               )}
               {quiet.length > 0 && (
                 <div className="flex flex-col gap-1">
@@ -261,7 +299,7 @@ export function LaneCards({ lanes, extras, now, onOpen, links = [], focus, onHov
           </section>
         )
       })}
-      {singles.length > 0 && <CardGrid lanes={singles.map((g) => g.lane)} render={(l) => <LaneCard key={l.id} lane={l} extra={extras.get(l.id)} now={now} onOpen={onOpen} {...look(l.id)} />} />}
+      {singles.length > 0 && <CardGrid lanes={singles.map((g) => g.lane)} render={(l) => <LaneCard key={l.id} lane={l} extra={extras.get(l.id)} now={now} onOpen={onOpen} callHref={callHref} {...look(l.id)} />} />}
       {folded.length > 0 && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs text-muted-foreground" aria-label="Done">
           <span>Done</span>

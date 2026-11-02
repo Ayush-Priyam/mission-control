@@ -1,11 +1,12 @@
 import { closeSync, openSync, readSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs"
 import { join, sep } from "node:path"
-import { createWaitingReader } from "../../hooks.mjs"
+import { askOf, createWaitingReader, readyOf } from "../../hooks.mjs"
 import { capText, isSessionName } from "../../names.mjs"
 import { createCache } from "./cache.mjs"
 import { parseTranscript, peek, transcriptAcc, turnsAcc } from "./parse.mjs"
 import { createTail, parseFileWith } from "./tail.mjs"
 import { costOf } from "./prices.mjs"
+import { LOOP_DEFAULTS, applyLoops, tokenMessages } from "../../loops.mjs"
 import { createUsageScanner } from "./usage.mjs"
 
 const LIVE_MS = 2 * 60 * 1000
@@ -29,7 +30,7 @@ const iso = (ms) => new Date(ms).toISOString()
  * usage scan only) and `onParse(path, { bytes, full })` (every transcript read for items, calls and turns)
  * are for tests.
  */
-export function create({ root, now = () => Date.now(), hooksDir, cachePath, parse = parseTranscript, onParse } = {}) {
+export function create({ root, now = () => Date.now(), hooksDir, cachePath, parse = parseTranscript, onParse, loops = () => LOOP_DEFAULTS } = {}) {
   const cache = createCache() // key helper for the head cache below
   // id -> { stamp, tails, data }: one parse per session version (stamp = identity of all its files), shared by
   // getItem, getCalls and the overview. tails keeps each file's incremental reader, so a growing
@@ -40,6 +41,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
   const lastTurns = createCache(4096) // path|size|mtime -> newest turn time in the tail of a main log
   const peeked = createCache(8192) // path|size|mtime -> peek of the head, so warm lists skip file reads
   const opened = new Map() // id -> { lastMs, summary } of sessions already fully parsed, for list totals
+  let liveFiles = [] // main logs of sessions live or waiting at the last listing, for /api/events
   let realRoot = null
   const rootReal = () => (realRoot ??= realpathSync(root))
 
@@ -270,9 +272,13 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
     for (const l of lanes) { add(tokens, l.tokens); cost += l.cost; errors += l.errors }
     const running = lanes.some((l) => l.status === "working")
     const w = waitingOf(s.id, main)
+    // Loops and tokens-since-last-change per lane (a session waiting on you or ready is not looping).
+    const parts = [{ lane: lanes[0], calls: mp.calls, messages: tokenMessages(mp.messages, costOf) }, ...subs.map((a, i) => ({ lane: lanes[i + 1], calls: a.p.calls, messages: tokenMessages(a.p.messages, costOf) }))]
+    const lp = applyLoops(parts, { now: now(), config: loops(), detect: !w?.waiting && !w?.ready })
     if (w?.waiting) {
       lanes[0].status = "waiting"
       lanes[0].reason = w.message ?? "Waiting for you"
+      lanes[0].ask = askOf(w)
     } else if (w?.ready) {
       lanes[0].status = "idle"
       lanes[0].reason = "ready for input"
@@ -282,10 +288,13 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
       title: mp.meta.title ?? s.id, harness: "claude-code",
       cwd: mp.meta.cwd, branch: mp.meta.branch,
       // A session the hooks call ready (idle reminder) is not live, whatever its file times say.
-      live: running && !w?.ready, status: w?.waiting ? "waiting" : w?.ready ? "idle" : running ? "working" : "idle", waiting: !!w?.waiting,
+      live: running && !w?.ready, status: w?.waiting ? "waiting" : w?.ready ? "idle" : running ? (lp.loop ? "looping" : "working") : "idle", waiting: !!w?.waiting,
       startedAt: mp.firstTs, updatedAt: iso(lastMs),
       counts: { lanes: lanes.length, calls: calls.length, errors },
       tokens, cost,
+      sinceChange: lp.sinceChange,
+      ...(lp.loop ? { loop: lp.loop } : {}),
+      ...readyOf(w),
     }
     if (mp.meta.version) summary.version = mp.meta.version
     opened.set(s.id, { lastMs, summary })
@@ -299,6 +308,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
     /** stat + the first 64 KB of each file only; totals appear once a session has been opened. */
     async listItems() {
       const items = []
+      const watched = []
       const logged = new Set(hooksDir ? dirs(hooksDir).map((d) => d.name) : []) // one readdir instead of a miss per session
       for (const s of sessionFiles()) {
         try {
@@ -313,20 +323,29 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
           const done = o && o.lastMs === lastMs ? o.summary : null
           const live = liveAt(lastMs)
           const w = waitingOf(s.id, c, logged)
+          if (live || w?.waiting) watched.push(c.real)
           items.push({
             source: "claude-code", id: s.id, kind: "session",
             title: h.title ?? s.id, harness: "claude-code",
             cwd: h.cwd, branch: h.branch,
-            live: live && !w?.ready, status: w?.waiting ? "waiting" : w?.ready ? "idle" : live ? "working" : "idle", waiting: !!w?.waiting,
+            // Looping is known once the session was opened (the overview opens every busy one each poll).
+            live: live && !w?.ready, status: w?.waiting ? "waiting" : w?.ready ? "idle" : live ? (o?.summary.status === "looping" ? "looping" : "working") : "idle", waiting: !!w?.waiting,
             startedAt: h.startedAt, updatedAt: iso(lastMs),
+            ...(o?.summary.sinceChange ? { sinceChange: o.summary.sinceChange } : {}),
+            ...(live && o?.summary.loop && !w?.waiting && !w?.ready ? { loop: o.summary.loop } : {}),
             counts: { lanes: 1 + subs.length, calls: done?.counts.calls ?? 0, errors: done?.counts.errors ?? 0 },
             tokens: done?.tokens ?? zero(), cost: done?.cost ?? 0,
+            ...readyOf(w),
             ...(done ? {} : { partial: true }), // totals appear once the session is opened
           })
         } catch { /* one unreadable file must not hide the rest */ }
       }
+      liveFiles = watched
       return items.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     },
+
+    /** For /api/events: the hook log dir and the main logs of live (or waiting) sessions. */
+    watchTargets: () => ({ dirs: hooksDir ? [hooksDir] : [], files: liveFiles }),
 
     async getItem(id) {
       const s = locate(id)

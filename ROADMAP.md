@@ -2,13 +2,13 @@
 
 Ideas and fixes, roughly in the order they'll land. Many came from people trying the dashboard; thanks.
 
-## v2.1 (in progress)
+## Done in v2.1
 
 - **Stale prompt safety.** Answering a permission prompt in the terminal while the dashboard is down must clear "Needs you" when it reconnects, and a new prompt replacing an old one must look new: each card shows the tool, the command or target, and when it was asked, and briefly flags "new prompt". A test covers prompt → dashboard down → answered in terminal → reconnect.
 - **Ready vs needs you.** "Done, waiting for your next prompt" stays out of the Needs you queue but gets its own calm "Ready (N)" chip, so idle sessions are findable without looking urgent.
-- **Tokens since last file change.** A per-lane count of tokens and minutes since the agent last changed a file, shown on lane cards and as a column, so a session that looks busy but makes no diff stands out.
 - **Looping detection.** A session silently retrying a failing test is the expensive kind of stuck. New "Looping" state when the same tool and command fails N times in a row, or an edit → test → fail cycle repeats on the same failure, or tokens keep burning with no new passing check. The card says how long, how many failures and the estimated cost since it started, with a link to the first failing call. Thresholds are configurable.
-- **Faster "Needs you".** Use Claude Code's PermissionRequest hook where available (fires when the permission dialog opens, not later), and push updates to the page as soon as a hook line lands instead of waiting for the next poll.
+- **Tokens since last file change** (from replies). Per lane and per item: tokens used and time passed since the last successful file edit, reset by every Edit / Write / apply_patch (a failed edit does not count). Shown on lane cards ("412k tok since last change · 18m") and as a sortable column in the Home and project tables, and used by the looping rule for burning tokens (300k tokens and 10 minutes with no file change and no passing check, configurable).
+- **Faster "Needs you".** Claude Code's PermissionRequest hook (fires when the permission dialog opens, not ~6 s later like the permission Notification, which stays as the fallback), and `GET /api/events` pushes "changed" to the page as soon as a hook line lands or a live session file grows; polling stays as the fallback.
 
 ## Later
 

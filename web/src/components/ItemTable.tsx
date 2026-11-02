@@ -1,16 +1,16 @@
 import { useMemo, useState } from "react"
 import { ArrowDown, ArrowUp } from "lucide-react"
 import type { ItemSummary, Status } from "@/lib/api"
-import { ago, money } from "@/lib/format"
+import { ago, compact, money } from "@/lib/format"
 import { toHash } from "@/lib/route"
 import { worktreeLabel } from "@/lib/tree"
 import { cn } from "@/lib/utils"
 import { STATUS_LABEL, STATUS_TEXT, StatusDot } from "@/components/StatusDot"
 
-export type SortKey = "title" | "where" | "harness" | "status" | "lanes" | "calls" | "cost" | "updated"
+export type SortKey = "title" | "where" | "harness" | "status" | "lanes" | "calls" | "cost" | "sinceChange" | "updated"
 export type SortDir = "asc" | "desc"
 
-const URGENCY: Status[] = ["waiting", "working", "failed", "stopped", "done", "idle"]
+const URGENCY: Status[] = ["waiting", "looping", "working", "failed", "stopped", "done", "idle"]
 const where = (i: ItemSummary) => `${i.project?.name ?? ""} ${i.branch ?? ""}`.trim().toLowerCase()
 const time = (i: ItemSummary) => String(i.updatedAt ?? "")
 
@@ -22,6 +22,8 @@ const KEYS: Record<SortKey, (i: ItemSummary) => string | number> = {
   lanes: (i) => i.counts.lanes,
   calls: (i) => i.counts.calls,
   cost: (i) => i.cost ?? 0,
+  // Unknown (not opened yet) sorts below every known value in both directions' "most first" view.
+  sinceChange: (i) => i.sinceChange?.tokens ?? -1,
   updated: time,
 }
 
@@ -70,6 +72,7 @@ export function ItemTable({
     { key: "lanes", label: "Lanes", first: "desc", num: true, className: "w-[54px]" },
     { key: "calls", label: "Calls", first: "desc", num: true, className: "w-[68px]" },
     { key: "cost", label: "Cost", first: "desc", num: true, className: "w-[60px]" },
+    { key: "sinceChange", label: "Since change", first: "desc", num: true, className: "w-[96px]" },
     { key: "updated", label: "Updated", first: "desc", num: true, className: "w-[72px]" },
   ]
   const pick = (c: Col) =>
@@ -133,6 +136,12 @@ export function ItemTable({
                   {!i.partial && i.counts.errors > 0 && <span className="ml-1 text-failed">{i.counts.errors} err<span className="sr-only">ors</span></span>}
                 </td>
                 <td className="px-2 text-right font-mono tabular-nums text-muted-foreground">{i.partial ? "–" : money(i.cost)}</td>
+                <td
+                  className={cn("px-2 text-right font-mono whitespace-nowrap tabular-nums", i.status === "looping" ? "text-looping" : "text-muted-foreground")}
+                  title={i.sinceChange ? `${i.sinceChange.tokens.toLocaleString("en-US")} tokens since the last file change (${Math.round(i.sinceChange.ms / 60_000)} min)` : "not known until the session is opened"}
+                >
+                  {i.sinceChange ? compact(i.sinceChange.tokens) : "–"}
+                </td>
                 <td className="px-2 text-right font-mono tabular-nums text-faint" title={i.updatedAt ?? undefined}>
                   {ago(i.updatedAt, now)}
                 </td>

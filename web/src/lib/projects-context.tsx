@@ -1,4 +1,5 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react"
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
+import { connectServerEvents } from "@/lib/server-events"
 import { useOverview, useProjects, type Overview, type ProjectSummary, type Remote } from "@/lib/api"
 import { visibleProjects, type ChipFilter } from "@/lib/tree"
 
@@ -19,6 +20,8 @@ const Ctx = createContext<Shared | null>(null)
 
 /** One slim /api/projects poll, one /api/overview poll, the status-chip filter and the show-hidden toggle, for the shell and every view. */
 export function ProjectsProvider({ children }: { children: ReactNode }) {
+  // One event stream for the page: polled fetches (overview, items, projects, the open item) refetch on "changed".
+  useEffect(() => connectServerEvents(), [])
   const projects = useProjects()
   const [showHidden, setShowHidden] = useState(false)
   const overview = useOverview(showHidden)
