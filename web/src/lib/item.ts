@@ -183,7 +183,7 @@ export function health(d: ItemDetail, calls: Call[] | null = null): Health {
   // A run counts its issues as errors (its calls carry no outcome); a session counts its failed calls.
   const isRun = Array.isArray(d.events) && d.events.length > 0
   const failedCalls = calls && !isRun ? calls.filter((c) => c.ok === false || !!c.error).length : null
-  const nCalls = calls ? calls.length : (s.counts?.calls ?? 0)
+  const nCalls = calls && !isRun ? calls.length : (s.counts?.calls ?? 0)
   const errors = failedCalls ?? (s.counts?.errors ?? 0)
   const stages: Record<string, any> = d.state?.stages ?? {}
   const rework = Object.values(stages).reduce((n: number, st: any) => n + Math.max(0, (Number(st?.rounds) || 0) - 1), 0)
