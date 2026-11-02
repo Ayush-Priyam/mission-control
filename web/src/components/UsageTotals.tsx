@@ -1,4 +1,4 @@
-import { compact, fmtInt, money, totalTokens, type Usage } from "@/lib/usage-api"
+import { compact, EST_TIP, fmtInt, money, totalTokens, type Usage } from "@/lib/usage-api"
 
 /** The headline: total tokens for the range, estimated cost under it, and the four token kinds. */
 export function UsageTotals({ totals, label }: { totals: Usage["totals"]; label: string }) {
@@ -15,8 +15,8 @@ export function UsageTotals({ totals, label }: { totals: Usage["totals"]; label:
       <p data-testid="usage-total" className="text-[clamp(2.25rem,6vw,4.25rem)] font-extrabold leading-none tracking-tight tabular-nums">
         {fmtInt(total)}
       </p>
-      <p className="mt-2 font-mono text-xl font-bold text-[#22c55e]" title="Estimated from list prices; not a bill">
-        {money(totals.cost)} <span className="text-xs font-normal text-muted-foreground">est.</span>
+      <p className="mt-2 font-mono text-xl font-bold text-[#22c55e]" title={EST_TIP}>
+        {money(totals.cost)} <span className="text-xs font-normal text-muted-foreground">est. · API prices</span>
       </p>
       <dl className="mt-3 flex flex-wrap justify-center gap-x-5 gap-y-1 font-mono text-xs text-muted-foreground">
         {parts.map(([k, v, tip]) => (

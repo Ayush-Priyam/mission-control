@@ -1,6 +1,6 @@
 // /api/usage client for the Usage page: types, range and heatmap math, and a fetch hook.
 // Local to Task 11 (parallel worktree); folded into api.ts when the views are wired up.
-import { useCallback, useEffect, useReducer, useState } from "react"
+import { useCallback, useEffect, useReducer, useRef, useState } from "react"
 import { fetchReducer, initialFetch, type Remote } from "@/lib/api"
 
 export type By = "model" | "project" | "harness" | "day" | "worktree" | "branch"
@@ -115,23 +115,38 @@ export function heatmapGrid(series: SeriesDay[], today: string, weeks = 26): Hea
   return { weeks: cols, months, total: active.reduce((a, b) => a + b, 0), activeDays: active.length }
 }
 
-/** GET /api/usage for `url`; `null` loads nothing. Polls every `pollMs` while set (the page polls while the scan is partial). */
-export function useUsage(url: string | null, pollMs = 0): Remote<Usage> {
+export type UsageRemote = Remote<Usage> & {
+  /** true when `data` is the last answer for a different url, kept on screen while `url` loads or after it failed */
+  stale: boolean
+}
+
+async function getUsage(url: string): Promise<Usage> {
+  const r = await fetch(url)
+  if (r.ok) return r.json()
+  const j: { error?: string } = await r.json().catch(() => ({}))
+  throw new Error(j.error ?? `usage: ${r.status}`)
+}
+
+/**
+ * GET /api/usage for `url`; `null` loads nothing. Polls every `pollMs` while set (the page polls while the scan
+ * is partial). While a new url loads (or fails), the last answer for an earlier url stays as `data` with `stale`.
+ */
+export function useUsage(url: string | null, pollMs = 0): UsageRemote {
   const [raw, dispatch] = useReducer(fetchReducer<Usage>, url, initialFetch<Usage>)
   const [tick, setTick] = useState(0)
   const reload = useCallback(() => setTick((n) => n + 1), [])
   const state = raw.url === url ? raw : initialFetch<Usage>(url)
+  const last = useRef<Usage | null>(null)
+  if (state.data) last.current = state.data
   useEffect(() => {
     dispatch({ type: "reset", url })
     if (url === null) return
     let cancelled = false
     const load = () =>
-      fetch(url)
-        .then((r) => (r.ok ? r.json() : r.json().catch(() => ({})).then((j: any) => Promise.reject(new Error(j.error ?? `${r.status}`)))))
-        .then(
-          (data: Usage) => !cancelled && dispatch({ type: "ok", url, data }),
-          (e: any) => !cancelled && dispatch({ type: "fail", url, error: String(e?.message ?? e) }),
-        )
+      getUsage(url).then(
+        (data) => !cancelled && dispatch({ type: "ok", url, data }),
+        (e: unknown) => !cancelled && dispatch({ type: "fail", url, error: e instanceof Error ? e.message : String(e) }),
+      )
     load()
     const timer = pollMs ? setInterval(load, pollMs) : undefined
     return () => {
@@ -139,7 +154,26 @@ export function useUsage(url: string | null, pollMs = 0): Remote<Usage> {
       if (timer) clearInterval(timer)
     }
   }, [url, pollMs, tick])
-  return { data: state.data, error: state.error, loading: state.loading, reload }
+  const stale = !state.data && url !== null && last.current !== null
+  return { data: state.data ?? (stale ? last.current : null), stale, error: state.error, loading: state.loading, reload }
+}
+
+/** Today in `tz`, refreshed when the window regains focus and just after local midnight. */
+export function useToday(tz: string): string {
+  const [today, setToday] = useState(() => todayIn(tz))
+  useEffect(() => {
+    const check = () => setToday(todayIn(tz))
+    check()
+    const now = new Date()
+    const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime() - now.getTime() + 1000
+    const t = setTimeout(check, midnight)
+    window.addEventListener("focus", check)
+    return () => {
+      clearTimeout(t)
+      window.removeEventListener("focus", check)
+    }
+  }, [tz, today])
+  return today
 }
 
 /** 4354248744 -> "4,354,248,744" */
@@ -154,6 +188,9 @@ export function compact(n: number): string {
 }
 /** Estimated dollars: "$3,544.66"; under a cent shows "$0.00". */
 export const money = (n: number) => `$${(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+/** Every cost on the page is an estimate at API list prices (ruling V9). */
+export const EST_TIP = "API list prices; subscription plans differ"
+export const estMoney = (n: number) => `${money(n)} est.`
 export const pct = (part: number, whole: number) => (whole > 0 ? `${((part / whole) * 100).toFixed(1)}%` : "0.0%")
 
 /** Series colours for models / harnesses, in rank order; the last is "other". */

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Heatmap } from "@/components/Heatmap"
 import { slices, SplitBar } from "@/components/SplitBar"
 import { TrendBars } from "@/components/TrendBars"
@@ -6,7 +6,7 @@ import { UsageTable, type UsageRowView } from "@/components/UsageTable"
 import { UsageTotals } from "@/components/UsageTotals"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
-  browserTz, compact, fillSeries, money, pct, rangeDates, RANGES, shiftDay, todayIn, totalTokens, trendWindow, usageUrl, useUsage,
+  browserTz, compact, EST_TIP, estMoney, fillSeries, pct, rangeDates, RANGES, shiftDay, totalTokens, trendWindow, usageUrl, useToday, useUsage,
   type By, type Group, type Range, type SeriesDay, type Usage as UsageData,
 } from "@/lib/usage-api"
 import { cn } from "@/lib/utils"
@@ -26,6 +26,9 @@ const HEAT_DAYS = 26 * 7
 
 const card = "rounded-xl border bg-card p-5"
 const sum = (days: SeriesDay[]) => days.reduce((a, d) => a + totalTokens(d), 0)
+/** The days an answer covers, from the answer itself (so a kept answer never borrows the new range's dates). */
+const spanOf = (u: UsageData) => (u.from ? (u.from === u.to ? `${u.to}` : `${u.from} → ${u.to}`) : `all → ${u.to ?? ""}`)
+const busy = (on: boolean) => (on ? { "aria-busy": true, className: "opacity-50 transition-opacity" } : { className: "transition-opacity" })
 const baseName = (p: string) => p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p
 
 /** A group as a table row; worktrees show their folder name with the full path under it. */
@@ -37,7 +40,7 @@ function groupRow(g: Group, by: TableTab): UsageRowView {
 /** Usage across every source: TokenTracker layout over /api/usage, days in the viewer's zone. */
 export function Usage({ initialRange = "month", initialTable = "day" }: { initialRange?: Range; initialTable?: TableTab } = {}) {
   const tz = browserTz()
-  const today = todayIn(tz)
+  const today = useToday(tz)
   const [range, setRange] = useState<Range>(initialRange)
   const [splitBy, setSplitBy] = useState<"model" | "harness">("model")
   const [table, setTable] = useState<TableTab>(initialTable)
@@ -53,10 +56,7 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
 
   const partial = [main, harness, half].some((r) => r.data && !r.data.complete)
   useEffect(() => setScanning(partial), [partial])
-  // keep the last answer on screen while a new range loads, so the page does not blank
-  const lastMain = useRef<UsageData | null>(null)
-  if (main.data) lastMain.current = main.data
-  const mainData = main.data ?? lastMain.current
+  const mainData = main.data
 
   const trend = useMemo(() => {
     const w = trendWindow(range, today, mainData?.series ?? [])
@@ -64,9 +64,9 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
     return src ? fillSeries(src, w.from, w.to) : []
   }, [range, today, mainData, half.data])
 
-  const error = main.error ?? harness.error ?? half.error
+  const errors = [main.error, harness.error, half.error, grouped.error].filter((e): e is string => !!e)
   if (!mainData && main.loading) return <UsageSkeleton />
-  if (!mainData) return <p className="p-6 font-mono text-xs text-failed">Usage not available ({error ?? "no data"}).</p>
+  if (!mainData) return <p role="alert" className="p-6 font-mono text-xs text-failed">Usage not available ({errors[0] ?? "no data"}).</p>
 
   const u = mainData
   const splitGroups = splitBy === "model" ? u.groups : (harness.data?.groups ?? [])
@@ -85,8 +85,15 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
 
   return (
     <div className="mx-auto grid w-full max-w-[1400px] grid-cols-1 gap-5 p-4 sm:p-5 lg:grid-cols-[minmax(300px,380px)_1fr]">
+      {errors.length > 0 && (
+        <p role="alert" className="rounded-lg border border-[#ef4444]/40 bg-[#ef4444]/10 px-4 py-2 font-mono text-xs text-[#ef4444] lg:col-span-2">
+          Usage request failed: {[...new Set(errors)].join(" · ")}
+          {main.stale || harness.stale || half.stale ? " (showing the last answer)" : ""}
+        </p>
+      )}
       <aside className="flex min-w-0 flex-col gap-5">
-        <section aria-label="Quick stats" className={cn(card, "flex flex-col gap-4")}>
+        <section aria-label="Quick stats" {...busy(half.stale || main.stale)} >
+         <div className={cn(card, "flex flex-col gap-4")}>
           <div className="grid grid-cols-4 gap-2">
             {[
               [compact(sum(last(7))), "7d"],
@@ -114,17 +121,19 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
             <span>Since {firstDay ?? "–"}</span>
             <span>Active days {active.length}</span>
           </div>
+         </div>
         </section>
-        <div className={card}>
-          <Heatmap series={halfSeries} today={today} tz={tz} />
+        <div {...busy(half.stale)}>
+          <div className={card}>{half.data ? <Heatmap series={halfSeries} today={today} tz={tz} /> : <Skeleton className="h-40" />}</div>
         </div>
-        <div className={card}>
-          <TrendBars days={trend} />
+        <div {...busy(range === "all" ? main.stale : half.stale)}>
+          <div className={card}><TrendBars days={trend} /></div>
         </div>
       </aside>
 
       <main className="flex min-w-0 flex-col gap-5">
-        <section className={cn(card, "flex flex-col gap-5")}>
+        <section aria-label="Range summary" {...busy(main.stale || harness.stale)}>
+         <div className={cn(card, "flex flex-col gap-5")}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div role="tablist" aria-label="Range" className="flex gap-1">
               {RANGES.map((r) => (
@@ -137,10 +146,11 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
             </div>
             <div className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground">
               {scanning && <span className="text-[#f59e0b]">scanning logs · partial</span>}
-              <span>{dates.from ? (dates.from === dates.to ? dates.to : `${dates.from} → ${dates.to}`) : `→ ${dates.to}`}</span>
+              {main.stale && <span>loading…</span>}
+              <span>{spanOf(u)}</span>
             </div>
           </div>
-          <UsageTotals totals={u.totals} label={RANGE_LABEL[range]} />
+          <UsageTotals totals={u.totals} label={main.stale ? spanOf(u) : RANGE_LABEL[range]} />
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <span className="font-mono text-[11px] tracking-widest text-muted-foreground">SPLIT BY</span>
@@ -156,7 +166,8 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
             <SplitBar groups={splitBy === "harness" ? splitGroups.map((g) => ({ ...g, name: harnessName(g.key) })) : splitGroups} label={splitBy} />
           </div>
           <div aria-label="Harnesses" className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-3">
-            {harnessSlices.length === 0 && <p className="font-mono text-xs text-muted-foreground">No harness reported usage in this range.</p>}
+            {!harness.data && <Skeleton className="h-20" />}
+            {harness.data && harnessSlices.length === 0 && <p className="font-mono text-xs text-muted-foreground">No harness reported usage in this range.</p>}
             {harnessSlices.map((s) => (
               <div key={s.key} className="rounded-lg border bg-background/40 p-3">
                 <div className="flex items-center gap-2 text-[13px] font-semibold tracking-wide uppercase">
@@ -165,14 +176,15 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
                 </div>
                 <div className="mt-1 font-mono text-xl font-bold">{pct(s.tokens, harnessTotal)}</div>
                 <div className="font-mono text-[11px] text-muted-foreground">
-                  {compact(s.tokens)} · {money(s.cost)} · {s.sessions} sessions
+                  {compact(s.tokens)} · <span title={EST_TIP}>{estMoney(s.cost)}</span> · {s.sessions} sessions
                 </div>
               </div>
             ))}
           </div>
+         </div>
         </section>
 
-        <section className={cn(card, "flex flex-col gap-3 p-3 sm:p-5")}>
+        <section className={cn(card, "flex flex-col gap-3 p-3 sm:p-5")} {...(main.stale || grouped.stale ? { "aria-busy": true } : {})}>
           <div role="tablist" aria-label="Breakdown" className="flex flex-wrap gap-1">
             {TABLES.map((t) => (
               <button key={t.id} role="tab" aria-selected={table === t.id} onClick={() => setTable(t.id)}
@@ -184,7 +196,9 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
           {table !== "day" && !grouped.data ? (
             grouped.error ? <p className="font-mono text-xs text-failed">{grouped.error}</p> : <Skeleton className="h-40 w-full" />
           ) : (
-            <UsageTable key={table} rows={tableRows} nameLabel={tableMeta.name} defaultSort={table === "day" ? "name" : "cost"} />
+            <div className={cn("transition-opacity", (table === "day" ? main.stale : grouped.stale) && "opacity-50")}>
+              <UsageTable key={`${table}-${range}`} rows={tableRows} nameLabel={tableMeta.name} defaultSort={table === "day" ? "name" : "cost"} />
+            </div>
           )}
         </section>
       </main>

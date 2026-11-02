@@ -1,4 +1,4 @@
-import { compact, money, totalTokens, type SeriesDay } from "@/lib/usage-api"
+import { compact, estMoney, totalTokens, type SeriesDay } from "@/lib/usage-api"
 
 /** One bar per day (already zero-filled), height by total tokens; today is the last bar. */
 export function TrendBars({ days }: { days: SeriesDay[] }) {
@@ -13,7 +13,7 @@ export function TrendBars({ days }: { days: SeriesDay[] }) {
       <div className="relative flex h-36 items-end gap-[2px] border-b border-border">
         {[0.25, 0.5, 0.75, 1].map((f) => <i key={f} className="pointer-events-none absolute inset-x-0 border-t border-dashed border-border/60" style={{ bottom: `${f * 100}%` }} />)}
         {days.map((d, i) => (
-          <div key={d.day} className="group relative flex h-full flex-1 items-end" title={`${d.day}: ${compact(vals[i])} tokens · ${money(d.cost)} · ${d.sessions} sessions`}>
+          <div key={d.day} className="group relative flex h-full flex-1 items-end" title={`${d.day}: ${compact(vals[i])} tokens · ${estMoney(d.cost)} · ${d.sessions} sessions`}>
             <i data-day={d.day} className="block w-full rounded-t-[2px] bg-[#22c55e] opacity-85 group-hover:opacity-100" style={{ height: max ? `${(vals[i] / max) * 100}%` : 0, minHeight: vals[i] ? 2 : 0 }} />
           </div>
         ))}

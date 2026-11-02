@@ -13,9 +13,18 @@ const answer = (by: string, over: object = {}) => ({
   totals: { ...tok(0), cost: 0, sessions: 0 }, series: [], groups: [], by, tz: "UTC", from: null, to: null, complete: true, ...over,
 })
 
-function stub(make: (by: string, url: URL) => object) {
-  const fetch = vi.fn(async (u: string) => {
+type Reply = { ok: boolean; status?: number; json: () => Promise<object> }
+const isWeek = (url: URL) => {
+  const from = url.searchParams.get("from"), to = url.searchParams.get("to")
+  return !!from && !!to && (Date.parse(to) - Date.parse(from)) / 86_400_000 === 6
+}
+const withSpan = (url: URL, o: object) => ({ ...o, from: url.searchParams.get("from"), to: url.searchParams.get("to") })
+
+function stub(make: (by: string, url: URL) => object, override?: (url: URL) => Promise<Reply> | null) {
+  const fetch = vi.fn(async (u: string): Promise<Reply> => {
     const url = new URL(u, "http://x")
+    const o = override?.(url)
+    if (o) return o
     return { ok: true, json: async () => make(url.searchParams.get("by")!, url) }
   })
   vi.stubGlobal("fetch", fetch)
@@ -58,5 +67,44 @@ describe("Usage page", () => {
       const from = u.searchParams.get("from")!, to = u.searchParams.get("to")!
       expect((Date.parse(to) - Date.parse(from)) / 86_400_000).toBe(6)
     })
+  })
+
+  const full = (by: string, url: URL) =>
+    withSpan(url, answer(by, { totals: { ...tok(1000), cost: 2, sessions: 1 }, series: [{ day: "2026-10-30", ...tok(1000), cost: 2, sessions: 1, byKey: {} }], groups: [{ key: by === "harness" ? "claude-code" : "model-x", ...tok(1000), cost: 2, sessions: 1 }] }))
+
+  it("while a new range loads, the last answer is dimmed and busy and keeps its own dates, not the new range's label", async () => {
+    stub(full, (url) => (isWeek(url) ? new Promise<Reply>(() => {}) : null))
+    render(<Usage />)
+    await waitFor(() => expect(screen.getByTestId("usage-total").textContent).toBe("1,000"))
+    const monthSpan = screen.getByLabelText("Usage totals").querySelector("h2")!.textContent!
+    expect(monthSpan).toMatch(/LAST 30 DAYS/)
+    fireEvent.click(screen.getByRole("tab", { name: "Week" }))
+    await waitFor(() => expect(screen.getByLabelText("Range summary").getAttribute("aria-busy")).toBe("true"))
+    const label = screen.getByLabelText("Usage totals").querySelector("h2")!.textContent!
+    expect(label).not.toMatch(/LAST 7 DAYS|LAST 30 DAYS/)
+    expect(label).toMatch(/\d{4}-\d{2}-\d{2} → \d{4}-\d{2}-\d{2}/)
+    expect(screen.getByText("loading…")).toBeTruthy()
+    expect(screen.queryByText("No harness reported usage in this range.")).toBeNull()
+  })
+
+  it("a failure after a successful load is shown, with the last answer kept", async () => {
+    stub(full, (url) => (isWeek(url) ? Promise.resolve({ ok: false, status: 500, json: async () => ({ error: "scan exploded" }) }) : null))
+    render(<Usage />)
+    await waitFor(() => expect(screen.getByTestId("usage-total").textContent).toBe("1,000"))
+    fireEvent.click(screen.getByRole("tab", { name: "Week" }))
+    const alert = await screen.findByRole("alert")
+    expect(alert.textContent).toMatch(/scan exploded/)
+    expect(alert.textContent).toMatch(/showing the last answer/)
+    expect(screen.getByTestId("usage-total").textContent).toBe("1,000")
+  })
+
+  it("every cost says it is an estimate at API list prices", async () => {
+    stub(full)
+    render(<Usage />)
+    await waitFor(() => expect(screen.getByTestId("usage-total").textContent).toBe("1,000"))
+    expect(screen.getByText(/est\. · API prices/)).toBeTruthy()
+    const th = screen.getByText("Est. cost").closest("th")!
+    expect(th.getAttribute("title")).toBe("API list prices; subscription plans differ")
+    expect(screen.getByText("$2.00 est.")).toBeTruthy() // harness card
   })
 })

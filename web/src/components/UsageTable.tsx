@@ -1,9 +1,9 @@
 import { useState } from "react"
-import { fmtInt, money, totalTokens, type Tokens } from "@/lib/usage-api"
+import { EST_TIP, fmtInt, money, totalTokens, type Tokens } from "@/lib/usage-api"
 import { cn } from "@/lib/utils"
 
 export type UsageRowView = Tokens & { key: string; label: string; sub?: string; cost: number; sessions: number }
-type Col = { id: string; label: string; v: (r: UsageRowView) => number; fmt: (n: number) => string }
+type Col = { id: string; label: string; tip?: string; v: (r: UsageRowView) => number; fmt: (n: number) => string }
 
 const COLS: Col[] = [
   { id: "total", label: "Total", v: totalTokens, fmt: fmtInt },
@@ -11,7 +11,7 @@ const COLS: Col[] = [
   { id: "out", label: "Output", v: (r) => r.out, fmt: fmtInt },
   { id: "cacheWrite", label: "Cache write", v: (r) => r.cacheWrite, fmt: fmtInt },
   { id: "cacheRead", label: "Cache read", v: (r) => r.cacheRead, fmt: fmtInt },
-  { id: "cost", label: "Cost", v: (r) => r.cost, fmt: money },
+  { id: "cost", label: "Est. cost", tip: EST_TIP, v: (r) => r.cost, fmt: money },
   { id: "sessions", label: "Sessions", v: (r) => r.sessions, fmt: fmtInt },
 ]
 
@@ -19,13 +19,15 @@ const COLS: Col[] = [
  * Token columns for a list of rows (days, projects, worktrees...). Click a header to sort by it;
  * `defaultSort` "name" keeps the given order (newest day first for the daily breakdown).
  */
-export function UsageTable({ rows, nameLabel, defaultSort = "name", empty = "No usage in this range." }: { rows: UsageRowView[]; nameLabel: string; defaultSort?: string; empty?: string }) {
+export function UsageTable({ rows, nameLabel, defaultSort = "name", empty = "No usage in this range.", limit = 90 }: { rows: UsageRowView[]; nameLabel: string; defaultSort?: string; empty?: string; limit?: number }) {
   const [sort, setSort] = useState(defaultSort)
+  const [all, setAll] = useState(false)
   const col = COLS.find((c) => c.id === sort)
-  const shown = col ? [...rows].sort((a, b) => col.v(b) - col.v(a)) : rows
+  const sorted = col ? [...rows].sort((a, b) => col.v(b) - col.v(a)) : rows
+  const shown = all ? sorted : sorted.slice(0, limit)
   if (!rows.length) return <p className="py-8 text-center font-mono text-xs text-muted-foreground">{empty}</p>
-  const th = (id: string, label: string, right = true) => (
-    <th key={id} className={cn("px-3 py-2 font-normal", right ? "text-right" : "text-left")}>
+  const th = (id: string, label: string, right = true, tip?: string) => (
+    <th key={id} title={tip} className={cn("px-3 py-2 font-normal", right ? "text-right" : "text-left")}>
       <button type="button" onClick={() => setSort(id)} aria-sort={sort === id ? "descending" : undefined} className={cn("cursor-pointer hover:text-foreground", sort === id && "text-foreground")}>
         {label}
         {sort === id ? " ▾" : ""}
@@ -38,7 +40,7 @@ export function UsageTable({ rows, nameLabel, defaultSort = "name", empty = "No 
         <thead className="border-b text-xs text-muted-foreground">
           <tr>
             {th("name", nameLabel, false)}
-            {COLS.map((c) => th(c.id, c.label))}
+            {COLS.map((c) => th(c.id, c.label, true, c.tip))}
           </tr>
         </thead>
         <tbody>
@@ -57,6 +59,11 @@ export function UsageTable({ rows, nameLabel, defaultSort = "name", empty = "No 
           ))}
         </tbody>
       </table>
+      {shown.length < sorted.length && (
+        <button type="button" onClick={() => setAll(true)} className="mt-2 w-full rounded-md py-2 font-mono text-xs text-muted-foreground hover:bg-muted/40 hover:text-foreground">
+          Show all {sorted.length} rows
+        </button>
+      )}
     </div>
   )
 }
