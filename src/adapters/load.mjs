@@ -95,13 +95,15 @@ export async function loadClaude(argv, cwd = process.cwd(), home = homedir()) {
 }
 
 /**
- * The Codex CLI source: rollouts under ~/.codex/sessions, or --codex-dir <sessions dir>. On by default only
+ * The Codex CLI source: rollouts under $CODEX_HOME/sessions (default ~/.codex/sessions), or --codex-dir <sessions dir>. On by default only
  * when that directory exists (most people have no Codex); --codex-dir always turns it on; null with --no-codex.
  */
-export async function loadCodex(argv, cwd = process.cwd(), home = homedir()) {
+export async function loadCodex(argv, cwd = process.cwd(), home = homedir(), env = process.env) {
   const a = parseArgs(argv)
   if (a.noCodex) return null
-  const root = a["codex-dir"] ? resolve(cwd, a["codex-dir"]) : join(home, ".codex", "sessions")
+  // Codex itself keeps its data under $CODEX_HOME (default ~/.codex).
+  const codexHome = env.CODEX_HOME ? resolve(cwd, env.CODEX_HOME) : join(home, ".codex")
+  const root = a["codex-dir"] ? resolve(cwd, a["codex-dir"]) : join(codexHome, "sessions")
   if (!a["codex-dir"] && !isDir(root)) return null
   const { create } = await import("../sources/codex/index.mjs")
   return create({ root, hooksDir: process.env.MISSION_CONTROL_HOOKS_DIR || join(home, ".mission-control", "hooks"), cachePath: usageCachePath(home, root) })

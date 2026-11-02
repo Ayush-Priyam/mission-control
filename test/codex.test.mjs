@@ -268,3 +268,27 @@ test("v2.2 waiting: keyed waits — two open approvals need both answered; Stop 
   assert.equal(waitingFromHooks([N("a", "t1"), P()]).waiting, false, "a tool event with no id clears as before")
   assert.equal(waitingFromHooks([{ event: "Notification", message: "x" }, P("zz")]).waiting, false, "an unkeyed wait clears on any tool event")
 })
+
+test("v2.2: CODEX_HOME moves the default sessions dir; --codex-dir still wins", async () => {
+  const home = mkdtempSync(join(tmpdir(), "mc-home-"))
+  const codexHome = mkdtempSync(join(tmpdir(), "mc-codexhome-"))
+  // CODEX_HOME set but no sessions dir there: off (the ~/.codex default is not consulted)
+  mkdirSync(join(home, ".codex", "sessions"), { recursive: true })
+  assert.equal(await loadCodex([], process.cwd(), home, { CODEX_HOME: codexHome }), null)
+  mkdirSync(join(codexHome, "sessions"), { recursive: true })
+  const s = await loadCodex([], process.cwd(), home, { CODEX_HOME: codexHome })
+  assert.equal(s.describe().source, join(codexHome, "sessions"))
+  assert.equal((await loadCodex([], process.cwd(), home, {})).describe().source, join(home, ".codex", "sessions"))
+  assert.equal((await loadCodex(["--codex-dir", root], process.cwd(), home, { CODEX_HOME: codexHome })).describe().source, root)
+})
+
+test("v2.2 prices: current OpenAI models from the official pricing page (short-context Standard rates)", () => {
+  const m = (model) => openaiPrice(model)
+  assert.deepEqual(m("gpt-5.6-sol"), { input: 4, output: 20, cacheRead: 0.4, cacheWrite: 5 })
+  assert.deepEqual(m("gpt-6.1-sol"), { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 })
+  assert.deepEqual(m("gpt-5.5"), { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 5 })
+  assert.deepEqual(m("gpt-5.4-mini"), { input: 0.75, output: 4.5, cacheRead: 0.075, cacheWrite: 0.75 })
+  assert.ok(m("gpt-6-astra") && m("gpt-5.6-luna") && m("gpt-5.6-terra") && m("gpt-5.4"))
+  assert.equal(m("gpt-reserve"), null, "not on the pricing page: unpriced")
+  assert.equal(costOf("gpt-reserve", { in: 1e6, out: 1e6, cacheRead: 0, cacheWrite: 0 }), 0)
+})

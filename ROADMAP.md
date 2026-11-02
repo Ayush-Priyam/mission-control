@@ -20,8 +20,7 @@ Ideas and fixes, roughly in the order they'll land. Many came from people trying
 - "Will this finish before my usage window resets?"
 - Approve and steer from a phone (local-first PWA).
 - Rewind or fork a session from its log.
-- More readers: opencode, Pi. `CODEX_HOME` support for Codex.
-- Price table entries for newer OpenAI models.
+- More readers: opencode, Pi.
 - A terminal UI over the same data.
 
 ## Known small issues
@@ -34,3 +33,5 @@ None open right now.
 - Fixed: a subagent file that failed to read once stayed hidden until it changed; it is now retried on the next request.
 - Fixed: Haiku 3 was priced at the Haiku 3.5 rate; it now has its own list price.
 - Fixed (Codex): a sibling tool call's hook could clear a wait while another approval was still open (parallel tools). Waits are keyed by tool call id when the hook payload has one.
+- Codex: `CODEX_HOME` is honoured (sessions default to `$CODEX_HOME/sessions`).
+- Prices for newer OpenAI models (gpt-6-astra, gpt-6.1-sol, gpt-5.6-sol/terra/luna, gpt-5.5, gpt-5.4, gpt-5.4-mini) from OpenAI's pricing page, short-context Standard rates. Models not on that page stay unpriced (–).
