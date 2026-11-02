@@ -16,6 +16,7 @@ import { createChangeFeed } from "./events.mjs"
 import { apiV22 } from "./api-v22.mjs"
 import { createBudgets } from "./budgets.mjs"
 import { createWindowConfig } from "./forecast.mjs"
+import { createTitles } from "./titles.mjs"
 
 const DEFAULT_DIST = join(dirname(fileURLToPath(import.meta.url)), "..", "dist")
 
@@ -134,7 +135,7 @@ async function placeFirst(items, git, hideList, keep, limit = Infinity) {
 }
 
 async function apiV2(ctx, req, res, url, parts) {
-  const { registry, git, hide, now } = ctx
+  const { registry, git, hide, titles, now } = ctx
   const get = req.method === "GET" || req.method === "HEAD"
   const q = url.searchParams
   const all = q.get("all") === "1"
@@ -226,6 +227,12 @@ async function apiV2(ctx, req, res, url, parts) {
     if (!fn) return notFound(res)
     return sendExtra(res, await fn(id, url.searchParams))
   }
+  if (req.method === "POST" && parts[3] === "title" && parts.length === 4) {
+    const body = await readBody(req)
+    if (!body || typeof body !== "object" || (body.title != null && typeof body.title !== "string")) return json(res, { error: "title must be a string" }, 400)
+    if (!(await registry.get(source, id))) return json(res, { error: "no such item" }, 404)
+    return json(res, { title: titles.set(source, id, body.title) })
+  }
   if (req.method === "POST" && parts[3] === "action" && parts.length === 5) {
     const name = decode(parts[4])
     const fn = Object.hasOwn(src.actions ?? {}, name) ? src.actions[name] : null
@@ -292,17 +299,19 @@ const LOOPBACK = ["localhost", "127.0.0.1", "[::1]"]
  * `input` is one v1 adapter, one source, or an array of either. Every entry becomes a source;
  * the v1 routes (/api/runs, /api/run/..., /api/crew, /api/x/...) stay as aliases for the first adapter.
  */
-export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, config = null, now = () => Date.now(), loops = null, heartbeatMs = 15_000, eventsPollMs = 1000, claudeHome = null, codexHome = null, prs = null } = {}) {
+export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, config = null, titlesPath = null, now = () => Date.now(), loops = null, heartbeatMs = 15_000, eventsPollMs = 1000, claudeHome = null, codexHome = null, prs = null } = {}) {
   const entries = Array.isArray(input) ? input : [input]
   // Loop thresholds from config.json {"loops": {...}} (re-read when the file changes); `loops` injects them.
   const loopCfg = typeof loops === "function" ? loops : loops ? () => loops : createLoopConfig(config)
   const sources = entries.map((e) => (typeof e.listItems === "function" ? e : fromAdapter(e, { loops: loopCfg, now })))
-  const registry = createRegistry(sources)
+  // `titlesPath`: where page renames live; null turns renaming off. The CLI passes ~/.mission-control/titles.json.
+  const titles = createTitles(titlesPath)
+  const registry = createRegistry(sources, { titles })
   const adapter = entries.find((e) => typeof e.listRuns === "function") ?? null
   // `config`: path of config.json ({ "hide": [...] }); null reads nothing. The CLI passes ~/.mission-control/config.json.
   // `claudeHome` / `codexHome`: where the config readers look (names only); null reads nothing. The CLI passes the real ones.
   // `prs`: a createPrReader() for the per-PR usage view (null: none, so tests never run gh); budgets come from `config`.
-  const ctx = { adapter, registry, git, hide: createHide(config), now, claudeHome, codexHome, configPath: config, prs, budgets: createBudgets(config), windowConfig: createWindowConfig(config) }
+  const ctx = { adapter, registry, git, hide: createHide(config), now, claudeHome, codexHome, configPath: config, prs, budgets: createBudgets(config), windowConfig: createWindowConfig(config), titles }
   if (!existsSync(join(distDir, "index.html"))) {
     console.error(`mission control: no built page at ${join(distDir, "index.html")} — run npm run build`)
   }

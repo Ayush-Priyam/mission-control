@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react"
-import { ArrowDown, ArrowUp } from "lucide-react"
+import { ArrowDown, ArrowUp, Pencil } from "lucide-react"
 import type { ItemSummary, Status } from "@/lib/api"
 import { ago, compact, money } from "@/lib/format"
 import { toHash } from "@/lib/route"
 import { worktreeLabel } from "@/lib/tree"
 import { cn } from "@/lib/utils"
+import { RenameForm } from "@/components/RenameForm"
+import { IconAction } from "@/components/IconAction"
 import { STATUS_LABEL, STATUS_TEXT, StatusDot } from "@/components/StatusDot"
 
 export type SortKey = "title" | "where" | "harness" | "status" | "lanes" | "calls" | "cost" | "sinceChange" | "updated"
@@ -38,6 +40,8 @@ export function sortItems(items: ItemSummary[], key: SortKey, dir: SortDir): Ite
   })
 }
 
+const HOVER = "relative z-10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+
 type Col = { key: SortKey; label: string; first: SortDir; className?: string; num?: boolean }
 
 /**
@@ -50,6 +54,7 @@ export function ItemTable({
   empty = "Nothing here yet",
   cap = 100,
   now = Date.now(),
+  onChanged,
 }: {
   items: ItemSummary[]
   /** Project name before the branch (Home); a project page shows the branch alone. */
@@ -58,7 +63,10 @@ export function ItemTable({
   /** Rows shown before a "Show all" button. */
   cap?: number
   now?: number
+  /** Called after a row is renamed, to reload the list. */
+  onChanged?: () => void
 }) {
+  const [editing, setEditing] = useState<string | null>(null)
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "updated", dir: "desc" })
   const [all, setAll] = useState(false)
   const rows = useMemo(() => sortItems(items, sort.key, sort.dir), [items, sort])
@@ -113,11 +121,30 @@ export function ItemTable({
             const branch = i.branch || (showProject && folder === i.project?.name ? "" : folder)
             return (
               <tr key={`${i.source}/${i.id}`} className="group relative cursor-pointer border-b border-border/60 hover:bg-surface/60">
-                <td className="h-9 truncate px-2">
-                  {/* The row is clickable through its title link (::after covers the row). */}
-                  <a href={href} title={i.title || i.id} className="font-medium text-foreground/90 after:absolute after:inset-0 after:content-[''] group-hover:text-foreground">
-                    {i.title || i.id}
-                  </a>
+                <td className="h-9 px-2">
+                  {editing === `${i.source}/${i.id}` ? (
+                    <div className="relative z-10">
+                      <RenameForm
+                        compact
+                        source={i.source}
+                        id={i.id}
+                        title={i.title}
+                        renamed={i.originalTitle !== undefined}
+                        onDone={() => { setEditing(null); onChanged?.() }}
+                        onCancel={() => setEditing(null)}
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex min-w-0 items-center gap-1">
+                      {/* The row is clickable through its title link (::after covers the row). */}
+                      <a href={href} title={i.originalTitle ?? i.title ?? i.id} className="truncate font-medium text-foreground/90 after:absolute after:inset-0 after:content-[''] group-hover:text-foreground">
+                        {i.title || i.id}
+                      </a>
+                      <IconAction label="Rename" className={HOVER} onClick={() => setEditing(`${i.source}/${i.id}`)}>
+                        <Pencil />
+                      </IconAction>
+                    </div>
+                  )}
                 </td>
                 <td className="px-2 py-1 font-mono text-xs leading-tight text-muted-foreground" title={[i.project?.name, branch].filter(Boolean).join(" · ")}>
                   {showProject && i.project && <div className="truncate text-foreground/80">{i.project.name}</div>}
