@@ -2,7 +2,7 @@ import { useMemo } from "react"
 import type { ItemDetail, Status } from "@/lib/api"
 import { STATUS_LABEL } from "@/components/StatusDot"
 import type { LaneExtra } from "@/lib/item"
-import { bandBoxes, boundsOf, hopGeom, labelBoxes, labelText, mapModel, NODE_H, nodeWidth, type Box, type Chip, type ItemMapModel, type MapArc, type MapNode, type YouNode } from "@/lib/map"
+import { bandBoxes, boundsOf, hopGeom, labelBoxes, labelText, mapModel, NODE_H, nodeWidth, widthOf, type Box, type Chip, type ItemMapModel, type MapArc, type MapNode, type YouNode } from "@/lib/map"
 import { cn } from "@/lib/utils"
 
 export { mapModel }
@@ -115,7 +115,8 @@ function You({ you, at, w, onYou }: { you: YouNode; at: Map<string, MapNode>; w:
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 
 function Node({ n, w, word, selected, onOpen }: { n: MapNode; w: number; word: string; selected: boolean; onOpen: (n: MapNode) => void }) {
-  const chars = Math.max(6, Math.floor((w - 32) / 8.6))
+  // a node sized to its label (full screen) shows all of it; else clip to the shared width
+  const chars = n.w ? Infinity : Math.max(6, Math.floor((w - 32) / 8.6))
   return (
     <g
       role="button"
@@ -153,7 +154,7 @@ function Node({ n, w, word, selected, onOpen }: { n: MapNode; w: number; word: s
         {clip(n.label, chars)}
       </text>
       <text x={n.x - w / 2 + 24} y={n.y + 16} className={cn("font-mono text-[12px]", WORD_FILL[n.status])}>
-        {clip(word, Math.max(6, Math.floor((w - 30) / 7.3)))}
+        {n.w ? word : clip(word, Math.max(6, Math.floor((w - 30) / 7.3)))}
       </text>
       <title>{`${n.label} · ${word}`}</title>
     </g>
@@ -198,8 +199,26 @@ function TreeBus({ m }: { m: ItemMapModel }) {
  * The Map tab. Runs: the crew graph with flow, consult links, red "sent back" and blue "asked" arcs.
  * Sessions: main -> subagents as a tree. Nodes are lit by status; click one for its lane sheet.
  */
-export function ItemMap({ detail, extras, selected, onOpen, onYou, natural }: { detail: ItemDetail; extras: Map<string, LaneExtra>; selected?: string | null; onOpen: (laneIds: string[]) => void; onYou?: () => void; /** Draw 1:1 at the graph's own size (full screen); no panel height cap. */ natural?: boolean }) {
-  const m = useMemo(() => mapModel(detail), [detail])
+export function ItemMap({
+  detail,
+  extras,
+  selected,
+  onOpen,
+  onYou,
+  natural,
+  fullLabels,
+}: {
+  detail: ItemDetail
+  extras: Map<string, LaneExtra>
+  selected?: string | null
+  onOpen: (laneIds: string[]) => void
+  onYou?: () => void
+  /** Draw 1:1 at the graph's own size (full screen); no panel height cap. */
+  natural?: boolean
+  /** Size every node to its whole label, never truncated (full screen). */
+  fullLabels?: boolean
+}) {
+  const m = useMemo(() => mapModel(detail, Date.now(), { fullLabels }), [detail, fullLabels])
   if (!m.nodes.length) return <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Nothing to map: this item has no lanes.</p>
   const byId = new Map(m.nodes.map((n) => [n.id, n]))
   const w = m.mode === "tree" ? nodeWidth(m.nodes, 158) : nodeWidth(m.nodes, 150)
@@ -270,9 +289,9 @@ export function ItemMap({ detail, extras, selected, onOpen, onYou, natural }: { 
             const d = link(f)
             return d && <path key={`c${i}`} d={d} fill="none" strokeWidth={1} strokeDasharray="2 5" className="stroke-foreground/25" />
           })}
-          {m.you && <You you={m.you} at={byId} w={Math.min(w, 130)} onYou={onYou} />}
+          {m.you && <You you={m.you} at={byId} w={m.you.w ?? Math.min(w, 130)} onYou={onYou} />}
           {m.nodes.map((n) => (
-            <Node key={n.id} n={n} w={w} word={word(n)} selected={!!selected && n.lanes.includes(selected)} onOpen={open} />
+            <Node key={n.id} n={n} w={widthOf(n, w)} word={word(n)} selected={!!selected && n.lanes.includes(selected)} onOpen={open} />
           ))}
           {/* arcs and their chips over the nodes so a chip is never hidden */}
           {m.arcs.map((a, i) => (

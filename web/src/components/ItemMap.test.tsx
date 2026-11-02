@@ -38,4 +38,14 @@ describe("ItemMap", () => {
     expect(svg.style.maxHeight).not.toBe("")
     expect(svg.getAttribute("preserveAspectRatio")).toBe("xMidYMid meet")
   })
+
+  it("fullLabels draws every node label whole (the full-screen map)", () => {
+    const long = "Re-review the findings for part 7 of the implementation plan"
+    const session: ItemDetail = { ...detail, state: undefined, events: [], summary: { ...detail.summary, kind: "session" }, lanes: [{ ...lane("main", "working"), kind: "main" }, { ...lane("k1", "done"), kind: "subagent", parent: "main", label: long }] }
+    render(<ItemMap natural fullLabels detail={session} extras={new Map()} onOpen={() => {}} />)
+    expect(document.querySelector('[data-node="k1"] text')?.textContent).toBe(long)
+    cleanup()
+    render(<ItemMap detail={session} extras={new Map()} onOpen={() => {}} />)
+    expect(document.querySelector('[data-node="k1"] text')?.textContent).toMatch(/…$/)
+  })
 })

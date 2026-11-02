@@ -250,3 +250,48 @@ describe("laneLinks", () => {
     ])
   })
 })
+
+describe("fullLabels (the full-screen map)", () => {
+  const long = "Re-review the findings for part 7 of the implementation plan"
+  const session = (): ItemDetail => ({
+    summary: { source: "demo", id: "s1", kind: "session", title: "t", harness: "h", cwd: null, branch: null, live: true, status: "working", waiting: false, startedAt: null, updatedAt: null, counts: { lanes: 6, calls: 0, errors: 0 }, tokens: { in: 0, out: 0, cacheRead: 0, cacheWrite: 0 }, cost: 0 },
+    lanes: [lane("main", "working", { kind: "main" }), ...Array.from({ length: 5 }, (_, i) => lane(`k${i}`, i === 2 ? "waiting" : "done", { parent: "main", label: i === 2 ? long : `k${i}` }))],
+    events: [],
+  })
+  it("sizes each node to its whole label, so the node's text never needs a clip", async () => {
+    const { fullWidth, FULL } = await import("./map")
+    const m = mapModel(session(), Date.parse(T(11)), { fullLabels: true })
+    for (const n of m.nodes) {
+      expect(n.w).toBe(fullWidth(n.label))
+      expect(n.w!).toBeGreaterThanOrEqual(FULL.inset + FULL.end + n.label.length * FULL.labelChar)
+    }
+    const k2 = m.nodes.find((n) => n.id === "k2")!
+    expect(k2.w).toBeGreaterThan(long.length * 8.6 + 32) // the clip rule in ItemMap keeps every char at this width
+    expect(m.nodes.find((n) => n.id === "k0")!.w).toBe(Math.min(...m.nodes.map((n) => n.w!))) // short labels keep room for the status word
+    // the default model is unchanged: no own widths
+    expect(mapModel(session(), Date.parse(T(11))).nodes.every((n) => n.w === undefined)).toBe(true)
+  })
+  it("spreads a row sideways so wide nodes (and the you node) never touch; rows stay put", () => {
+    const plain = mapModel(session(), Date.parse(T(11)))
+    const m = mapModel(session(), Date.parse(T(11)), { fullLabels: true })
+    expect(m.nodes.map((n) => n.y)).toEqual(plain.nodes.map((n) => n.y))
+    const all = [...m.nodes, ...(m.you ? [m.you] : [])]
+    for (const a of all) for (const b of all) if (a !== b) expect(hits(nodeBox(a, a.w!), nodeBox(b, b.w!), 8)).toBe(false)
+    expect(m.w).toBeGreaterThan(plain.w)
+    const b = boundsOf(m, 150)
+    for (const n of all) {
+      expect(n.x - n.w! / 2).toBeGreaterThanOrEqual(b.x)
+      expect(n.x + n.w! / 2).toBeLessThanOrEqual(b.x + b.w)
+    }
+  })
+  it("a run graph spreads too, and its arcs follow the moved nodes", () => {
+    const m = mapModel(runDetail(busyEvents, busyLanes), Date.parse(T(11)), { fullLabels: true })
+    const at = new Map(m.nodes.map((n) => [n.id, n]))
+    for (const a of m.arcs) {
+      expect(a.from).toBe(at.get(a.from.id))
+      expect(a.to).toBe(at.get(a.to.id))
+    }
+    expect(m.arcs.length).toBeGreaterThan(0)
+    for (const a of m.nodes) for (const b of m.nodes) if (a !== b) expect(hits(nodeBox(a, a.w!), nodeBox(b, b.w!), 8)).toBe(false)
+  })
+})

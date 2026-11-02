@@ -23,11 +23,27 @@ export function fitView(cw: number, ch: number, vw: number, vh: number, pad = 32
   return { k, x: (vw - cw * k) / 2, y: (vh - ch * k) / 2 }
 }
 
+/** Where the overlay opens: at least `minK` zoom, centred on the first element matching one of `focus` (in order). */
+export type OverlayStart = { minK: number; focus: string[] }
+
+/**
+ * The opening view: the fit when that is already at least `minK`; else `minK`, centred on the focus point
+ * (content coordinates at scale 1) or on the content's centre.
+ */
+export function startView(cw: number, ch: number, vw: number, vh: number, start?: OverlayStart, at?: { x: number; y: number } | null) {
+  const f = fitView(cw, ch, vw, vh)
+  if (!start || f.k >= start.minK) return f
+  const k = start.minK
+  const p = at ?? { x: cw / 2, y: ch / 2 }
+  return { k, x: vw / 2 - p.x * k, y: vh / 2 - p.y * k }
+}
+
 /**
  * A graph in a full-viewport overlay: Esc or ✕ closes it, Tab stays inside, focus returns to the opener.
  * Pan by dragging, zoom with the wheel or a pinch (around the pointer) or the − / fit / + buttons.
+ * `start` opens it zoomed in on what matters instead of fitted (the fit button still fits).
  */
-export function GraphOverlay({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function GraphOverlay({ title, onClose, start, children }: { title: string; onClose: () => void; start?: OverlayStart; children: ReactNode }) {
   const dialog = useRef<HTMLDivElement>(null)
   const view = useRef<HTMLDivElement>(null)
   const content = useRef<HTMLDivElement>(null)
@@ -46,7 +62,21 @@ export function GraphOverlay({ title, onClose, children }: { title: string; onCl
     if (!v || !c) return
     setT(fitView(c.offsetWidth, c.offsetHeight, v.clientWidth, v.clientHeight))
   }, [])
-  useLayoutEffect(fit, [fit])
+  // Open once: zoomed in on the focus node when the fit would be too small to read.
+  const startRef = useRef(start)
+  useLayoutEffect(() => {
+    const v = view.current, c = content.current
+    if (!v || !c) return
+    const s = startRef.current
+    const el = s?.focus.map((q) => c.querySelector(q)).find(Boolean)
+    let at: { x: number; y: number } | null = null
+    if (el) {
+      // content is at translate(0,0) scale(1) on the first layout, so client offsets are content coordinates
+      const cr = c.getBoundingClientRect(), er = el.getBoundingClientRect()
+      at = { x: er.left + er.width / 2 - cr.left, y: er.top + er.height / 2 - cr.top }
+    }
+    setT(startView(c.offsetWidth, c.offsetHeight, v.clientWidth, v.clientHeight, s, at))
+  }, [])
 
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null

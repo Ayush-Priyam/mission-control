@@ -4,7 +4,8 @@ import type { ItemDetail, Lane, Status } from "@/lib/api"
 import { CANVAS, nodeOf, type CrewGraph, type Hop } from "@/lib/graph"
 import { byActivity, nodeStatus, runGraph } from "@/lib/item"
 
-export type MapNode = { id: string; label: string; x: number; y: number; status: Status; lanes: string[]; sub?: string }
+/** `w` is the node's own width when it is sized to its label (`fullLabels`); else the map's shared width applies. */
+export type MapNode = { id: string; label: string; x: number; y: number; status: Status; lanes: string[]; sub?: string; w?: number }
 export type MapArc = { from: MapNode; to: MapNode; kind: Hop["kind"]; labels: string[]; n: number }
 /** The owner as a node: amber "waiting" edges from lanes that need them, faint "answered" ones from lanes they answered. */
 export type YouNode = MapNode & { edges: { from: string; kind: "waiting" | "answered" }[] }
@@ -93,6 +94,8 @@ export function nodeWidth(nodes: MapNode[], max: number, h = NODE_H) {
 }
 
 export const nodeBox = (n: Pt, w: number, h = NODE_H): Box => ({ x: n.x - w / 2, y: n.y - h / 2, w, h })
+/** A node's width: its own when sized to its label, else the shared one. */
+export const widthOf = (n: Pt & { w?: number }, w: number) => n.w ?? w
 /** Two boxes overlap (with `pad` px of air between them counted as overlap). */
 export const hits = (a: Box, b: Box, pad = 3) => a.x < b.x + b.w + pad && b.x < a.x + a.w + pad && a.y < b.y + b.h + pad && b.y < a.y + a.h + pad
 
@@ -122,7 +125,7 @@ const labelW = (text: string) => Math.ceil(text.length * 7.4 + 14)
  * for a question) with a leader line back to its arc, so it never covers a node.
  */
 export function labelBoxes(m: ItemMapModel, w: number): Chip[] {
-  const nodes = [...m.nodes, ...(m.you ? [m.you] : [])].map((n) => nodeBox(n, w))
+  const nodes = [...m.nodes, ...(m.you ? [m.you] : [])].map((n) => nodeBox(n, widthOf(n, w)))
   const blocked: Box[] = [...nodes]
   // a band's "parallel · N" caption sits above it
   for (const b of bandBoxes(m, w)) if (b.first) blocked.push(bandCaption(b))
@@ -157,7 +160,7 @@ export function labelBoxes(m: ItemMapModel, w: number): Chip[] {
 /** The box that holds everything drawn (nodes, you, arcs, chips, bands), padded, at least `minW` wide. */
 export function boundsOf(m: ItemMapModel, w: number, o: { pad?: number; minW?: number; h?: number } = {}): Box {
   const pad = o.pad ?? 18, minW = o.minW ?? 760, h = o.h ?? NODE_H
-  const boxes: Box[] = [...m.nodes, ...(m.you ? [m.you] : [])].map((n) => nodeBox(n, w, h))
+  const boxes: Box[] = [...m.nodes, ...(m.you ? [m.you] : [])].map((n) => nodeBox(n, widthOf(n, w), h))
   if (h === NODE_H) boxes.push(...labelBoxes(m, w))
   for (const arc of m.arcs) {
     const g = hopGeom(arc, w, h)
@@ -190,7 +193,7 @@ export function bandBoxes(m: ItemMapModel, w: number, h = NODE_H): BandMark[] {
   const at = new Map(m.nodes.map((n) => [n.id, n]))
   const p = h / 4
   const around = (ns: MapNode[]): Box => {
-    const x0 = Math.min(...ns.map((n) => n.x)) - w / 2 - p, x1 = Math.max(...ns.map((n) => n.x)) + w / 2 + p
+    const x0 = Math.min(...ns.map((n) => n.x - widthOf(n, w) / 2)) - p, x1 = Math.max(...ns.map((n) => n.x + widthOf(n, w) / 2)) + p
     const y0 = Math.min(...ns.map((n) => n.y)) - h / 2 - p, y1 = Math.max(...ns.map((n) => n.y)) + h / 2 + p
     return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
   }
@@ -198,7 +201,7 @@ export function bandBoxes(m: ItemMapModel, w: number, h = NODE_H): BandMark[] {
     const ns = band.nodes.map((id) => at.get(id)).filter((n): n is MapNode => !!n)
     if (ns.length < 2) return []
     const all = around(ns)
-    const others = m.nodes.filter((n) => !ns.includes(n)).map((n) => nodeBox(n, w, h))
+    const others = m.nodes.filter((n) => !ns.includes(n)).map((n) => nodeBox(n, widthOf(n, w), h))
     if (!others.some((o) => hits(all, o, -2))) return [{ ...all, band, first: true }]
     const y = all.y + p / 2 // just above the highest member
     const ticks = ns.map((n) => ({ x: n.x, y: n.y - h / 2 - 2 }))
@@ -208,7 +211,7 @@ export function bandBoxes(m: ItemMapModel, w: number, h = NODE_H): BandMark[] {
     const legs: Box[] = ticks.map((t) => ({ x: t.x - 1, y, w: 2, h: Math.max(0, t.y - y) }))
     if ([line, ...legs].some((seg) => others.some((o) => hits(seg, o, -1)))) {
       return ns.map((n, i) => {
-        const b = nodeBox(n, w + 2 * p, h + 2 * p)
+        const b = nodeBox(n, widthOf(n, w) + 2 * p, h + 2 * p)
         return { ...b, band, first: i === 0 }
       })
     }
@@ -331,11 +334,50 @@ function bands(m: ItemMapModel, d: ItemDetail, now: number): Band[] {
   return out.slice(0, 2)
 }
 
-/** The model for an item: its run graph when it has one, else its lanes as a spawn tree; plus you and parallel bands. */
-export function mapModel(d: ItemDetail, now = Date.now()): ItemMapModel {
+/** Text metrics for a node's two lines: the 15px semibold label and the 12px mono status word. */
+export const FULL = { labelChar: 9, wordChar: 7.4, wordMax: 16, inset: 24, end: 16, gap: 28, min: 120 }
+
+/** The width a node needs to show its whole label (and its status word) with no truncation. */
+export const fullWidth = (label: string) => Math.max(FULL.min, Math.ceil(FULL.inset + FULL.end + Math.max(label.length * FULL.labelChar, FULL.wordMax * FULL.wordChar)))
+
+/**
+ * Size every node to its label and spread the layout sideways (one factor for the whole map, so columns stay
+ * columns) until neighbours on a row clear each other by `FULL.gap`. Rows never move.
+ */
+export function withFullLabels(m: ItemMapModel): ItemMapModel {
+  if (!m.nodes.length) return m
+  const nodes = m.nodes.map((n) => ({ ...n, w: fullWidth(n.label) }))
+  const all = [...nodes, ...(m.you ? [{ ...m.you, w: fullWidth(m.you.label) }] : [])]
+  let s = 1
+  for (const a of all) for (const b of all) {
+    if (a === b || Math.abs(a.y - b.y) >= NODE_H || a.x > b.x) continue
+    const need = (a.w + b.w) / 2 + FULL.gap
+    const dx = b.x - a.x
+    s = Math.max(s, dx > 0 ? need / dx : 1)
+  }
+  const xs = all.map((n) => n.x)
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2
+  const spread = <T extends { x: number }>(n: T): T => ({ ...n, x: cx + (n.x - cx) * s })
+  const out = nodes.map(spread)
+  const byId = new Map(out.map((n) => [n.id, n]))
+  return {
+    ...m,
+    w: m.w * s,
+    nodes: out,
+    arcs: m.arcs.map((a) => ({ ...a, from: byId.get(a.from.id) ?? a.from, to: byId.get(a.to.id) ?? a.to })),
+    ...(m.you ? { you: spread({ ...m.you, w: fullWidth(m.you.label) }) } : {}),
+  }
+}
+
+/**
+ * The model for an item: its run graph when it has one, else its lanes as a spawn tree; plus you and parallel
+ * bands. `fullLabels` sizes each node to its whole label (the full-screen map).
+ */
+export function mapModel(d: ItemDetail, now = Date.now(), o: { fullLabels?: boolean } = {}): ItemMapModel {
   const g = runGraph(d)
   const base = g ? graphModel(g, d.lanes ?? []) : treeModel(d.lanes ?? [])
   if (!base.nodes.length) return base
   const m = withYou(base, d)
-  return { ...m, bands: bands(m, d, now) }
+  const banded = { ...m, bands: bands(m, d, now) }
+  return o.fullLabels ? withFullLabels(banded) : banded
 }

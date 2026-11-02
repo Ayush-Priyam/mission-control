@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FlowStrip } from "@/components/FlowStrip"
 import { ItemMap } from "@/components/ItemMap"
-import { ExpandButton, GraphOverlay } from "@/components/GraphOverlay"
+import { ExpandButton, GraphOverlay, type OverlayStart } from "@/components/GraphOverlay"
 import { LaneTimeline } from "@/components/LaneTimeline"
 import { LaneCards } from "@/components/LaneCards"
 import { LaneSheet } from "@/components/LaneSheet"
@@ -34,6 +34,8 @@ import { BP, useMedia } from "@/lib/media"
 
 const LIVE_POLL = 2000
 const IDLE_POLL = 10000
+/** The full-screen map opens readable (≥80%) on the node that needs you, else the working one. */
+const MAP_START: OverlayStart = { minK: 0.8, focus: ['[data-node]:not([data-node="you"])[data-status="waiting"]', '[data-node][data-status="working"]'] }
 
 /** The tabs an item shows: the v2 four plus a v1 run's extras when its adapter lists them. */
 export function itemTabs(o: { v1Run: boolean; extras: string[]; events: Record<string, any>[] }): string[] {
@@ -153,10 +155,11 @@ export default function Item({ source, id, tab, call }: { source: string; id: st
             </div>
             <ItemMap detail={d} extras={extras} selected={sheet?.[0]} onOpen={setSheet} onYou={toYou} />
             {mapFull && (
-              <GraphOverlay title={`Map · ${d.summary.title || d.summary.id}`} onClose={() => setMapFull(false)}>
+              <GraphOverlay title={`Map · ${d.summary.title || d.summary.id}`} onClose={() => setMapFull(false)} start={MAP_START}>
                 <div className="p-4">
                   <ItemMap
                     natural
+                    fullLabels
                     detail={d}
                     extras={extras}
                     selected={sheet?.[0]}
