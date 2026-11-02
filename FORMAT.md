@@ -4,8 +4,8 @@ Mission Control reads work from sources. Each level asks more of the harness and
 
 | level | source | what you provide | what shows |
 |---|---|---|---|
-| 0 | Claude Code transcripts | nothing | sessions, subagent lanes, calls, tokens, estimated cost, usage |
-| 1 | hook event files | Claude Code hooks pointing at `mission-control hook <Event>` | live status and the Needs you queue |
+| 0 | Claude Code transcripts, Codex CLI rollouts | nothing | sessions, subagent lanes, calls, tokens, estimated cost, usage |
+| 1 | hook event files | Claude Code hooks pointing at `mission-control hook <Event>`, or Codex hooks pointing at `mission-control hook codex` | live status and the Needs you queue |
 | 2 | native runs | `state.json` and `runs.jsonl` in the [run format](#run-format) below | stages as lanes, timeline, crew map, waiting-on-you |
 | 3 | an adapter | a JS module (see the README) | extra tabs and actions on top of level 2 |
 
@@ -30,6 +30,10 @@ Sessions are read from `<root>/<project-slug>/<session-id>.jsonl`, where the roo
 
 Costs are API list-price estimates from token counts, not a bill.
 
+## Codex CLI fields read (level 0)
+
+Rollouts are read from `<root>/YYYY/MM/DD/rollout-*.jsonl`, where the root is `~/.codex/sessions` unless `--codex-dir` says otherwise. The records and fields used, how tokens are counted and how spawned agents become lanes are listed in [docs/codex.md](docs/codex.md#what-it-reads). Nothing is ever written back.
+
 ## Hook event files
 
 With the hooks installed (`mission-control hooks install` prints the block to merge into Claude Code's `settings.json`), each of the events `Notification`, `Stop`, `SubagentStop`, `UserPromptSubmit` and `PreToolUse` runs `mission-control hook <Event>`. The command reads Claude Code's JSON from stdin and appends one line to `<hooks dir>/<session_id>.jsonl`. The hooks dir is `~/.mission-control/hooks`, or `MISSION_CONTROL_HOOKS_DIR` when set. The directory is mode 0700 and the files 0600. A session id that is not `^[\w-][\w.-]*$` is ignored.
@@ -46,6 +50,8 @@ With the hooks installed (`mission-control hooks install` prints the block to me
 | `ts` | ISO time the line was written |
 | `message` | `Notification` only: the text, cut to 500 characters |
 | `tool` | `PreToolUse` only: the tool name |
+
+Codex hooks run `mission-control hook codex`, which writes the same line format to `<hooks dir>/codex/<session_id>.jsonl`, mapping Codex's `PermissionRequest` to `Notification` and its tool, prompt, stop and interrupt events to clearing events (the table is in [docs/codex.md](docs/codex.md#what-the-hook-records)). Each line also carries `codexEvent`, the original name.
 
 A session is **waiting** when its last `Notification` is not followed by a `PreToolUse`, `UserPromptSubmit` or `Stop`. The idle reminder Claude Code sends about a minute after a turn ("waiting for your input") is not a block: it marks the session ready, not waiting. A half-written last line is skipped.
 
