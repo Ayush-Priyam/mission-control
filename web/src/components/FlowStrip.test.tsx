@@ -100,4 +100,19 @@ describe("FlowStrip", () => {
     expect(screen.queryByRole("dialog")).toBeNull()
     expect(onPick).toHaveBeenCalledWith(["s3"])
   })
+
+  it("a strip wider than its panel fades the edge with more beyond it (the narrow-width scroll hint)", () => {
+    render(<FlowStrip detail={run} onPick={() => {}} />)
+    expect(document.querySelector("[data-fade]")).toBeNull() // fits: no hint
+    const box = document.querySelector("[data-flow-node]")!.closest("svg")!.parentElement!
+    Object.defineProperty(box, "scrollWidth", { configurable: true, value: 1400 })
+    Object.defineProperty(box, "clientWidth", { configurable: true, value: 700 })
+    fireEvent.scroll(box)
+    expect(document.querySelector('[data-fade="right"]')).toBeTruthy()
+    expect(document.querySelector('[data-fade="left"]')).toBeNull()
+    box.scrollLeft = 700
+    fireEvent.scroll(box)
+    expect(document.querySelector('[data-fade="left"]')).toBeTruthy()
+    expect(document.querySelector('[data-fade="right"]')).toBeNull()
+  })
 })

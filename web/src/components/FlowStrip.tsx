@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ItemDetail, Lane, Status } from "@/lib/api"
 import { byActivity, modelName } from "@/lib/item"
 import { statusLabel } from "@/lib/status-ui"
@@ -232,6 +232,22 @@ export function FlowStrip({ detail, now, onPick, onYou, highlight, tab = "lanes"
     const a = n.getBoundingClientRect(), b = el.getBoundingClientRect()
     el.scrollLeft += a.left - b.left - (el.clientWidth - a.width) / 2
   }, [focusId, strip.box.w])
+  // Narrow panels (≤1024 or so) clip the strip: fade the edge that has more beyond it, so it reads as scrollable.
+  const [edges, setEdges] = useState({ left: false, right: false })
+  const measure = useCallback(() => {
+    const el = box.current
+    if (!el) return
+    const left = el.scrollLeft > 1, right = el.scrollLeft + el.clientWidth < el.scrollWidth - 1
+    setEdges((e) => (e.left === left && e.right === right ? e : { left, right }))
+  }, [])
+  useEffect(() => {
+    measure()
+    const el = box.current
+    if (!el || typeof ResizeObserver === "undefined") return
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [measure, strip.box.w])
   if (!strip.m.nodes.length) return null
   const hl = nodeOfLane(strip.m.nodes, highlight)?.id ?? null
   const pick = (n: MapNode) => onPick(n.lanes.length ? n.lanes : [n.id])
@@ -263,18 +279,26 @@ export function FlowStrip({ detail, now, onPick, onYou, highlight, tab = "lanes"
         )}
         <ExpandButton onClick={() => setFull(true)} />
       </div>
-      <div ref={box} className={cn("relative overflow-x-auto px-2 py-1.5", expanded && "max-h-[70vh] overflow-y-auto")}>
-        <FlowGraph
-          m={strip.m}
-          w={strip.w}
-          box={strip.box}
-          hl={hl}
-          pick={pick}
-          onYou={onYou}
-          maxHeight={expanded ? undefined : 190}
-          onTip={(n, el) => setTip(n && el ? { n, at: tipAt(el as HTMLElement, box.current) } : null)}
-        />
-        {tip && <ChartTip at={tip.at}>{tipText(tip.n)}</ChartTip>}
+      <div className="relative">
+        <div ref={box} onScroll={measure} className={cn("relative overflow-x-auto px-2 py-1.5", expanded && "max-h-[70vh] overflow-y-auto")}>
+          <FlowGraph
+            m={strip.m}
+            w={strip.w}
+            box={strip.box}
+            hl={hl}
+            pick={pick}
+            onYou={onYou}
+            maxHeight={expanded ? undefined : 190}
+            onTip={(n, el) => setTip(n && el ? { n, at: tipAt(el as HTMLElement, box.current) } : null)}
+          />
+          {tip && <ChartTip at={tip.at}>{tipText(tip.n)}</ChartTip>}
+        </div>
+        {edges.left && <div aria-hidden data-fade="left" className="pointer-events-none absolute inset-y-0 left-0 w-10 rounded-bl-xl bg-linear-to-r from-card to-transparent" />}
+        {edges.right && (
+          <div aria-hidden data-fade="right" className="pointer-events-none absolute inset-y-0 right-0 flex w-14 items-center justify-end rounded-br-xl bg-linear-to-l from-card to-transparent pr-1.5 font-mono text-xs text-muted-foreground">
+            →
+          </div>
+        )}
       </div>
       {full && whole && (
         <GraphOverlay title={`Flow · ${detail.summary.title || detail.summary.id} · ${(detail.lanes ?? []).length} lanes`} onClose={() => setFull(false)}>
