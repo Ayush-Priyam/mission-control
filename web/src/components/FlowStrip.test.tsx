@@ -35,6 +35,17 @@ describe("FlowStrip", () => {
     expect(document.querySelector('[data-flow-node="s7"]')).toBeTruthy()
     expect(document.body.textContent).toMatch(/\+\d+ more/)
   })
+  it("hovering a lane card lights its node (a band node for a banded lane) and the links and arcs touching it", () => {
+    const { rerender } = render(<FlowStrip detail={run} onPick={() => {}} highlight={null} />)
+    expect(document.querySelectorAll("[data-hl]").length).toBe(0)
+    rerender(<FlowStrip detail={run} onPick={() => {}} highlight="setup" />) // carried by the "prep" node
+    expect(document.querySelector('[data-flow-node="prep"]')!.hasAttribute("data-hl")).toBe(true)
+    expect([...document.querySelectorAll("[data-flow-link][data-hl]")].length).toBe(1)
+    rerender(<FlowStrip detail={run} onPick={() => {}} highlight="qa" />)
+    expect(document.querySelector('[data-flow-node="qa"]')!.hasAttribute("data-hl")).toBe(true)
+    expect(document.querySelector('[data-flow-arc="sendback"]')!.hasAttribute("data-hl")).toBe(true)
+    expect(document.querySelector('[data-flow-node="prep"]')!.hasAttribute("data-hl")).toBe(false)
+  })
   it("nothing to draw for an item with no lanes", () => {
     const { container } = render(<FlowStrip detail={{ ...run, state: undefined, events: [], lanes: [] }} onPick={() => {}} />)
     expect(container.innerHTML).toBe("")

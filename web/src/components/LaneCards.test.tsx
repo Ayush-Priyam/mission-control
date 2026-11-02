@@ -116,5 +116,13 @@ describe("LaneCards", () => {
     expect(card("q3").className).toContain("mc-flash")
     expect(scroll).toHaveBeenCalled()
   })
+  it("hovering a card reports its lane (the flow strip lights its node)", () => {
+    const onHover = vi.fn()
+    render(<LaneCards now={NOW} extras={new Map()} lanes={[lane("backend", "working"), lane("qa", "idle")]} onHover={onHover} />)
+    fireEvent.mouseEnter(card("backend"))
+    expect(onHover).toHaveBeenLastCalledWith("backend")
+    fireEvent.mouseLeave(card("backend"))
+    expect(onHover).toHaveBeenLastCalledWith(null)
+  })
 })
 

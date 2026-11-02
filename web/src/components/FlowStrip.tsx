@@ -63,7 +63,11 @@ function link(a: MapNode, b: MapNode, w: number, tree: boolean) {
   return `M${p.x},${p.y} C${p.x + dx / 2},${p.y} ${q.x - dx / 2},${q.y} ${q.x},${q.y}`
 }
 
-export function FlowStrip({ detail, now, onPick, onYou }: { detail: ItemDetail; now?: number; onPick: (laneIds: string[]) => void; onYou?: () => void }) {
+/** The strip's node for a lane: the node itself, or the band node that carries it. */
+export const nodeOfLane = (nodes: MapNode[], lane: string | null | undefined) => (lane ? nodes.find((n) => n.id === lane || n.lanes.includes(lane)) ?? null : null)
+
+/** `highlight` (a lane id, from hovering its card) lights that lane's node and every link and arc touching it. */
+export function FlowStrip({ detail, now, onPick, onYou, highlight }: { detail: ItemDetail; now?: number; onPick: (laneIds: string[]) => void; onYou?: () => void; highlight?: string | null }) {
   const { m, hidden } = useMemo(() => {
     const t = detail.summary.kind === "session" ? trim(detail.lanes ?? []) : { lanes: detail.lanes ?? [], hidden: 0 }
     return { m: squash(mapModel({ ...detail, lanes: t.lanes }, now)), hidden: t.hidden }
@@ -75,6 +79,8 @@ export function FlowStrip({ detail, now, onPick, onYou }: { detail: ItemDetail; 
   const at = new Map(m.nodes.map((n) => [n.id, n]))
   const pick = (n: MapNode) => onPick(n.lanes.length ? n.lanes : [n.id])
   const chars = Math.max(4, Math.floor((w - 24) / 6.6))
+  const hl = nodeOfLane(m.nodes, highlight)?.id ?? null
+  const touches = (a: string, b: string) => hl !== null && (a === hl || b === hl)
 
   return (
     <div className="relative rounded-xl border bg-card/40 px-2 py-1.5" aria-label="Flow">
@@ -90,11 +96,13 @@ export function FlowStrip({ detail, now, onPick, onYou }: { detail: ItemDetail; 
           const a = at.get(p), b = at.get(q)
           if (!a || !b) return null
           const lit = a.status === "done" || a.status === "working" || a.status === "waiting"
-          return <path key={`f${i}`} data-flow-link d={link(a, b, w, tree)} fill="none" strokeWidth={1.1} className={lit ? "stroke-foreground/35" : "stroke-foreground/12"} markerEnd="url(#flow-arrow-flow)" />
+          const on = touches(p, q)
+          return <path key={`f${i}`} data-flow-link data-hl={on || undefined} d={link(a, b, w, tree)} fill="none" strokeWidth={on ? 2 : 1.1} className={on ? "stroke-ring" : lit ? "stroke-foreground/35" : "stroke-foreground/12"} markerEnd="url(#flow-arrow-flow)" />
         })}
         {m.arcs.map((a, i) => {
           const bad = a.kind === "sendback"
-          return <path key={`a${i}`} data-flow-arc={a.kind} d={hopGeom(a, w, H).d} fill="none" strokeWidth={1.1} className={bad ? "stroke-failed/80" : "stroke-consult/80"} markerEnd={`url(#flow-arrow-${bad ? "failed" : "consult"})`} />
+          const on = touches(a.from.id, a.to.id)
+          return <path key={`a${i}`} data-flow-arc={a.kind} data-hl={on || undefined} d={hopGeom(a, w, H).d} fill="none" strokeWidth={on ? 2.2 : 1.1} className={bad ? (on ? "stroke-failed" : "stroke-failed/80") : on ? "stroke-consult" : "stroke-consult/80"} markerEnd={`url(#flow-arrow-${bad ? "failed" : "consult"})`} />
         })}
         {m.you?.edges.map((e) => {
           const n = at.get(e.from)
@@ -117,6 +125,7 @@ export function FlowStrip({ detail, now, onPick, onYou }: { detail: ItemDetail; 
             tabIndex={0}
             data-flow-node={n.id}
             data-status={n.status}
+            data-hl={n.id === hl || undefined}
             aria-label={`${n.label}: show its card`}
             className="cursor-pointer outline-none [&:focus-visible>rect.box]:stroke-ring [&:hover>rect.box]:stroke-ring"
             onClick={() => pick(n)}
@@ -128,7 +137,7 @@ export function FlowStrip({ detail, now, onPick, onYou }: { detail: ItemDetail; 
             }}
           >
             {n.status === "working" && <rect x={n.x - w / 2} y={n.y - H / 2} width={w} height={H} rx={7} fill="none" className="mc-halo stroke-running" />}
-            <rect className={cn("box fill-card", STROKE[n.status])} x={n.x - w / 2} y={n.y - H / 2} width={w} height={H} rx={7} strokeWidth={n.status === "idle" || n.status === "done" ? 1 : 1.5} strokeDasharray={n.status === "stopped" ? "3 2" : undefined} />
+            <rect className={cn("box fill-card", n.id === hl ? "stroke-ring" : STROKE[n.status])} x={n.x - w / 2} y={n.y - H / 2} width={w} height={H} rx={7} strokeWidth={n.id === hl ? 2.2 : n.status === "idle" || n.status === "done" ? 1 : 1.5} strokeDasharray={n.status === "stopped" ? "3 2" : undefined} />
             <circle cx={n.x - w / 2 + 10} cy={n.y} r={3} className={DOT[n.status]} />
             <text x={n.x - w / 2 + 18} y={n.y + 4} className={cn("text-[11px] font-medium", n.status === "idle" || n.status === "done" ? "fill-muted-foreground" : "fill-foreground")}>
               {n.label.length > chars ? `${n.label.slice(0, chars - 1)}…` : n.label}

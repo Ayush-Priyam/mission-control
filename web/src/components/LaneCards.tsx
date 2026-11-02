@@ -192,11 +192,13 @@ function CardGrid({ lanes, render }: { lanes: Lane[]; render: (l: Lane) => React
 /**
  * The Lanes tab: a card per top-level lane, subagents nested under their parent with a count
  * (busy ones as cards, the rest as rows). A run's finished stages fold into one "Done" line.
- * Hovering a card outlines its linked cards; `focus` (from the flow strip) scrolls to a lane and flashes it.
+ * Hovering a card outlines its linked cards and reports the lane to `onHover` (the flow strip lights its node
+ * and arcs); `focus` (from the flow strip) scrolls to a lane and flashes it.
  */
-export function LaneCards({ lanes, extras, now, onOpen, links = [], focus }: { lanes: Lane[]; extras: Map<string, LaneExtra>; now: number; onOpen?: (id: string) => void; links?: LaneLink[]; focus?: { ids: string[]; n: number } | null }) {
+export function LaneCards({ lanes, extras, now, onOpen, links = [], focus, onHover }: { lanes: Lane[]; extras: Map<string, LaneExtra>; now: number; onOpen?: (id: string) => void; links?: LaneLink[]; focus?: { ids: string[]; n: number } | null; onHover?: (id: string | null) => void }) {
   const [showQuiet, setShowQuiet] = useState<Record<string, boolean>>({})
-  const [hover, setHover] = useState<string | null>(null)
+  const [hover, setHoverState] = useState<string | null>(null)
+  const setHover = (id: string | null) => { setHoverState(id); onHover?.(id) }
   const [flash, setFlash] = useState<string[]>([])
   const root = useRef<HTMLDivElement>(null)
   const labels = useMemo(() => new Map(lanes.map((l) => [l.id, l.label])), [lanes])
