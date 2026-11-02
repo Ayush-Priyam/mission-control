@@ -81,6 +81,7 @@ export default function Home() {
             <ItemTable
               items={shown}
               cap={50}
+              onChanged={recent.reload}
               now={now}
               empty={filter ? "Nothing recent matches the status filter" : "No runs or sessions yet. Start a Claude Code session or pass --runs <dir>."}
             />

@@ -1,7 +1,12 @@
 const OVERVIEW_POOL = 6
 
 /** One place that fans out over every source. Later tasks add sources by passing more to createRegistry. */
-export function createRegistry(sources) {
+export function createRegistry(sources, { titles = null } = {}) {
+  // A title the owner set on the page wins; the source's own stays as originalTitle.
+  const withOwnerEdits = (source, id, x) => {
+    const t = titles?.get(source, id)
+    return t ? { ...x, title: t, originalTitle: x.title } : x
+  }
   const byName = new Map()
   for (const s of sources) {
     // Two sources of one kind (two native dirs) keep distinct names: native, native-2, ...
@@ -22,7 +27,7 @@ export function createRegistry(sources) {
     const lists = await Promise.all(
       all().map(async (s) => {
         try {
-          const items = (await s.listItems()).map((i) => ({ ...i, source: s.name }))
+          const items = (await s.listItems()).map((i) => withOwnerEdits(s.name, i.id, { ...i, source: s.name }))
           errors.delete(s.name)
           return items
         } catch (e) {
@@ -37,7 +42,7 @@ export function createRegistry(sources) {
   async function get(source, id) {
     const s = byName.get(source)
     const item = s ? await s.getItem(id) : null
-    return item ? { ...item, summary: { ...item.summary, source: s.name } } : null
+    return item ? { ...item, summary: withOwnerEdits(s.name, id, { ...item.summary, source: s.name }) } : null
   }
 
   /**

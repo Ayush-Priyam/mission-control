@@ -182,6 +182,8 @@ export type ItemSummary = {
   id: string
   kind: "run" | "session"
   title: string
+  /** The source's own title, present when the owner renamed the item on the page. */
+  originalTitle?: string
   harness: string
   cwd: string | null
   branch: string | null
@@ -382,6 +384,18 @@ export async function postItemAction(source: string, id: string, name: string, b
   const j = await r.json().catch(() => ({}))
   if (!r.ok) throw new Error(j.error ?? j.message ?? `action ${name}: ${r.status}`)
   return j
+}
+
+/** Rename an item on the page; an empty title restores the source's own. */
+export async function postTitle(source: string, id: string, title: string) {
+  const r = await fetch(`${itemUrl(source, id)}/title`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ title }),
+  })
+  const j = await r.json().catch(() => ({}))
+  if (!r.ok) throw new Error(j.error ?? `rename: ${r.status}`)
+  return j as { title: string | null }
 }
 
 export type ActionNote = { ok: boolean; text: string }
