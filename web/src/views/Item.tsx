@@ -28,6 +28,7 @@ import { laneExtras } from "@/lib/item"
 import { laneLinks } from "@/lib/map"
 import { toHash } from "@/lib/route"
 import { cn } from "@/lib/utils"
+import { BP, useMedia } from "@/lib/media"
 
 const LIVE_POLL = 2000
 const IDLE_POLL = 10000
@@ -50,7 +51,7 @@ function Header({ d }: { d: ItemDetail }) {
   const shown = s.live && s.status !== "waiting" && s.status !== "idle" && s.status !== "failed" ? "working" : s.status
   return (
     <header className="flex flex-wrap items-center gap-x-3 gap-y-1">
-      <h1 className="min-w-0 flex-1 truncate text-lg font-bold tracking-tight" title={s.title}>
+      <h1 className="line-clamp-2 min-w-0 flex-1 text-lg font-bold tracking-tight [text-wrap:balance]" title={s.title}>
         {s.title || s.id}
       </h1>
       <span className="font-mono text-xs text-faint">
@@ -85,6 +86,7 @@ export default function Item({ source, id, tab, call }: { source: string; id: st
   const [sheet, setSheet] = useState<string[] | null>(null)
   const [focus, setFocus] = useState<{ ids: string[]; n: number } | null>(null)
   const [youFlash, setYouFlash] = useState(0)
+  const desktop = useMedia(BP.lg)
   const [hoverLane, setHoverLane] = useState<string | null>(null)
 
   const src = sources.data?.find((s) => s.name === source)
@@ -123,6 +125,7 @@ export default function Item({ source, id, tab, call }: { source: string; id: st
     <div className="mx-auto flex max-w-[1500px] flex-col gap-4">
       <Header d={d} />
       <SummaryStrip detail={d} now={now} />
+      {!desktop && <RightRail part="ask" detail={d} calls={null} actions={actions} now={now} onActed={item.reload} flash={youFlash} />}
       <div className={cn("grid gap-6", !wide && "lg:grid-cols-[minmax(0,1fr)_320px]")}>
         <Tabs value={current} onValueChange={(v) => go(String(v))} className="min-w-0">
           <TabsList variant="line" className="border-b">
@@ -192,7 +195,7 @@ export default function Item({ source, id, tab, call }: { source: string; id: st
         </Tabs>
         {!wide && (
           <div className="flex flex-col gap-4 lg:sticky lg:top-0 lg:self-start">
-            <RightRail detail={d} calls={isSession ? calls.data : null} actions={actions} now={now} onActed={item.reload} onOpen={(lane) => setSheet([lane])} flash={youFlash} />
+            <RightRail part={desktop ? "all" : "rest"} detail={d} calls={isSession ? calls.data : null} actions={actions} now={now} onActed={item.reload} onOpen={(lane) => setSheet([lane])} flash={desktop ? youFlash : 0} />
             {v1Run && (src?.extras ?? []).includes("tokens") && !tabs.includes("docs") && <TokenPanel runId={id} optional />}
           </div>
         )}

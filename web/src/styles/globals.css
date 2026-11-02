@@ -222,6 +222,9 @@ html[data-stale] :is(.mc-live, [data-live-tag], [data-status-pill]) { opacity: 0
 /* Smooth scrolling and width transitions stand still under reduced motion. */
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .motion-safe-transition { transition: none !important; } }
 
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
 /* Mono theme: status never by colour alone. Each status dot gets its own shape. */
 html[data-shapes] .mc-dot[data-status="waiting"] { border-radius: 1px; transform: rotate(45deg) scale(0.9); }
 html[data-shapes] .mc-dot[data-status="failed"] { border-radius: 1px; }

@@ -6,6 +6,7 @@ import { toHash, type Route } from "@/lib/route"
 import { doneToday, worktreeLabel } from "@/lib/tree"
 import { cn } from "@/lib/utils"
 import { workingLine } from "@/lib/status-ui"
+import { BP, useMedia } from "@/lib/media"
 import { FreshnessBadge } from "@/components/Freshness"
 import { CommandPalette, isPaletteKey } from "@/components/CommandPalette"
 import { Sidebar } from "@/components/Sidebar"
@@ -74,14 +75,14 @@ function Crumbs({ items }: { items: { label: string; href?: string }[] }) {
   return (
     <nav aria-label="Breadcrumb" className="flex h-9 min-w-0 shrink-0 items-center gap-2 overflow-hidden border-b px-5 font-mono text-xs whitespace-nowrap text-muted-foreground">
       {items.map((c, i) => (
-        <span key={i} className="flex min-w-0 items-center gap-2">
+        <span key={i} className={cn("flex min-w-0 items-center gap-2", i === items.length - 1 ? "shrink" : "shrink-[3]")}>
           {i > 0 && <span className="text-faint">/</span>}
           {c.href && i < items.length - 1 ? (
             <a href={c.href} className="inline-flex min-h-6 min-w-0 items-center truncate hover:text-foreground">
               {c.label}
             </a>
           ) : (
-            <span className="max-w-[420px] truncate text-foreground">{c.label}</span>
+            <span className="max-w-[420px] min-w-0 truncate text-foreground">{c.label}</span>
           )}
         </span>
       ))}
@@ -105,6 +106,18 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
     store(THEME_KEY, theme)
   }, [theme])
   useEffect(() => store(SIDEBAR_KEY, sidebar ? "open" : "closed"), [sidebar])
+  // Below lg the sidebar is an overlay drawer, closed by default and on every navigation.
+  const desktop = useMedia(BP.lg)
+  const [drawer, setDrawer] = useState(false)
+  const open = desktop ? sidebar : drawer
+  const routeKey = JSON.stringify(route)
+  useEffect(() => setDrawer(false), [routeKey, desktop])
+  useEffect(() => {
+    if (!drawer) return
+    const on = (e: KeyboardEvent) => e.key === "Escape" && setDrawer(false)
+    window.addEventListener("keydown", on)
+    return () => window.removeEventListener("keydown", on)
+  }, [drawer])
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
       if (isPaletteKey(e)) {
@@ -127,21 +140,22 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
         <button
           type="button"
-          onClick={() => setSidebar((s) => !s)}
-          aria-label={sidebar ? "Hide sidebar" : "Show sidebar"}
-          aria-pressed={sidebar}
-          className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+          onClick={() => (desktop ? setSidebar((s) => !s) : setDrawer((s) => !s))}
+          aria-label={open ? "Hide sidebar" : "Show sidebar"}
+          aria-pressed={open}
+          aria-controls="mc-sidebar"
+          className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
         >
           <PanelLeft className="size-4" />
         </button>
-        <a href="#/" className="mr-3 flex h-8 items-center gap-2 text-sm font-semibold tracking-tight whitespace-nowrap">
+        <a href="#/" aria-label="mission control, home" className="mr-1 flex h-8 shrink-0 items-center gap-2 text-sm font-semibold tracking-tight whitespace-nowrap lg:mr-3">
           <span className="grid size-4 place-items-center rounded-full border-[1.5px] border-foreground">
             <span className="size-1.5 rounded-full bg-foreground" />
           </span>
-          mission control
+          <span className="hidden sm:inline">mission control</span>
         </a>
         <StatusChips counts={counts} active={filter} onPick={setFilter} />
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <FreshnessBadge />
           <span data-working-line className="hidden items-center gap-1.5 font-mono text-xs whitespace-nowrap text-faint xl:flex">
             {workingLine(overview.data?.live ?? [])}
@@ -149,11 +163,12 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
           <button
             type="button"
             onClick={() => setPalette(true)}
-            className="flex h-8 w-56 items-center gap-2 rounded-md border bg-surface/60 px-2.5 text-xs text-faint hover:border-ring hover:text-muted-foreground"
+            aria-label="Search (⌘K)"
+            className="flex h-8 w-8 items-center justify-center gap-2 rounded-md border bg-surface/60 text-xs text-muted-foreground hover:border-ring hover:text-foreground lg:w-56 lg:justify-start lg:px-2.5"
           >
-            <Search className="size-3.5" />
-            <span className="flex-1 text-left">Search…</span>
-            <kbd className="rounded border px-1 font-mono text-xs">⌘K</kbd>
+            <Search className="size-3.5 shrink-0" />
+            <span className="hidden flex-1 text-left lg:inline">Search…</span>
+            <kbd className="hidden rounded border px-1 font-mono text-xs lg:inline">⌘K</kbd>
           </button>
           <button
             type="button"
@@ -166,7 +181,15 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
         </div>
       </header>
       <div className="flex min-h-0 flex-1">
-        <div inert={!sidebar} className={cn("min-h-0 overflow-hidden transition-[width] duration-150", sidebar ? "w-[264px]" : "w-0")}>
+        {!desktop && drawer && <button type="button" aria-label="Close sidebar" tabIndex={-1} onClick={() => setDrawer(false)} className="fixed inset-0 top-12 z-30 bg-background/60 backdrop-blur-[1px]" />}
+        <div
+          id="mc-sidebar"
+          inert={!open}
+          className={cn(
+            "min-h-0 overflow-hidden transition-[width] duration-150 motion-reduce:transition-none",
+            desktop ? (open ? "w-[264px]" : "w-0") : cn("fixed top-12 bottom-0 left-0 z-40 border-r bg-sidebar shadow-xl", open ? "w-[280px]" : "w-0 border-r-0"),
+          )}
+        >
           <Sidebar
             projects={tree}
             loading={projects.loading}

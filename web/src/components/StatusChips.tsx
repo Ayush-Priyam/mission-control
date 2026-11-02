@@ -28,7 +28,7 @@ export function StatusChips({
   onPick: (f: ChipFilter | null) => void
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-1.5" role="group" aria-label="Filter by status">
+    <div className="no-scrollbar flex min-w-0 items-center gap-1.5 overflow-x-auto py-1" role="group" aria-label="Filter by status">
       {CHIPS.map((c) => {
         const n = counts[c.filter]
         const on = active === c.filter
@@ -38,6 +38,7 @@ export function StatusChips({
             type="button"
             aria-pressed={on}
             onClick={() => onPick(on ? null : c.filter)}
+            title={c.label}
             className={cn(
               "flex shrink-0 items-center gap-1.5 h-7 rounded-full px-2.5 text-xs whitespace-nowrap transition-[box-shadow,opacity] hover:brightness-125",
               c.tone,
@@ -47,7 +48,7 @@ export function StatusChips({
             )}
           >
             <StatusDot status={c.dot} labelled live={c.filter === "working" && !!n} className={c.filter === "waiting" && !n ? "shadow-none" : undefined} />
-            {c.label}
+            <span className="max-xl:sr-only">{c.label}</span>
             <span className="font-mono tabular-nums">{n ?? "–"}</span>
           </button>
         )

@@ -22,7 +22,7 @@ const FLASH_MS = 1600
  * the map's "you" node) scrolls the needs-you card into view and flashes it, or the rail itself when no
  * card is shown. The flash is state, so a re-render never drops or replays it.
  */
-export function RightRail({ detail, calls, actions, now, onActed, onOpen, flash = 0 }: { detail: ItemDetail; calls: Call[] | null; actions: string[]; now: number; onActed?: () => void; onOpen?: (lane: string) => void; flash?: number }) {
+export function RightRail({ detail, calls, actions, now, onActed, onOpen, flash = 0, part = "all" }: { detail: ItemDetail; calls: Call[] | null; actions: string[]; now: number; onActed?: () => void; onOpen?: (lane: string) => void; flash?: number; /** "ask": only the needs-you card (narrow pages put it above the tabs); "rest": the rest. */ part?: "all" | "ask" | "rest" }) {
   const ask = askOf(detail)
   const rail = useRef<HTMLElement>(null)
   const [lit, setLit] = useState(false)
@@ -39,11 +39,12 @@ export function RightRail({ detail, calls, actions, now, onActed, onOpen, flash 
     const off = setTimeout(() => setLit(false), FLASH_MS)
     return () => { cancelAnimationFrame(on); clearTimeout(off) }
   }, [flash])
+  if (part === "ask" && !ask) return null
   return (
     <aside ref={rail} tabIndex={-1} data-lit={lit || undefined} className={cn("flex flex-col gap-4 rounded-xl outline-none", lit && !ask && "mc-flash")} aria-label="Item rail">
-      {ask && <NeedsYouCard key={`${ask.lane}|${ask.ts}`} source={detail.summary.source} id={detail.summary.id} ask={ask} actions={actions} now={now} onActed={onActed} flash={lit} />}
-      <HealthCard h={health(detail, calls)} live={detail.summary.live} />
-      <Findings items={findings(detail, calls ?? [])} onOpen={onOpen} />
+      {ask && part !== "rest" && <NeedsYouCard key={`${ask.lane}|${ask.ts}`} source={detail.summary.source} id={detail.summary.id} ask={ask} actions={actions} now={now} onActed={onActed} flash={lit} />}
+      {part !== "ask" && <HealthCard h={health(detail, calls)} live={detail.summary.live} />}
+      {part !== "ask" && <Findings items={findings(detail, calls ?? [])} onOpen={onOpen} />}
     </aside>
   )
 }
