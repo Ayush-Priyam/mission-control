@@ -1,6 +1,6 @@
 import { closeSync, openSync, readSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs"
 import { join, sep } from "node:path"
-import { createWaitingReader } from "../../hooks.mjs"
+import { askOf, createWaitingReader } from "../../hooks.mjs"
 import { capText, isSessionName } from "../../names.mjs"
 import { createCache } from "./cache.mjs"
 import { parseTranscript, peek, transcriptAcc, turnsAcc } from "./parse.mjs"
@@ -273,6 +273,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
     if (w?.waiting) {
       lanes[0].status = "waiting"
       lanes[0].reason = w.message ?? "Waiting for you"
+      lanes[0].ask = askOf(w)
     } else if (w?.ready) {
       lanes[0].status = "idle"
       lanes[0].reason = "ready for input"

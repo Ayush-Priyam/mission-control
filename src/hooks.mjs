@@ -2,11 +2,28 @@ import { appendFileSync, closeSync, mkdirSync, openSync, readFileSync, readSync,
 import { homedir } from "node:os"
 import { join } from "node:path"
 
-/** Claude Code hook events the dashboard listens to. */
-export const EVENTS = ["Notification", "Stop", "SubagentStop", "UserPromptSubmit", "PreToolUse"]
+/**
+ * Claude Code hook events the dashboard listens to. PermissionRequest fires the moment a permission dialog
+ * opens (a Notification of type permission_prompt only after ~6 s without typing), so it opens a wait at
+ * once; the Notification stays as the fallback for older Claude Code. PostToolUse / PostToolUseFailure /
+ * PermissionDenied mean the prompt was answered (in the terminal, too), so they clear it.
+ */
+export const EVENTS = ["Notification", "PermissionRequest", "Stop", "SubagentStop", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied"]
 const SAFE_ID = /^[\w-][\w.-]*$/
-const CLEARS = new Set(["PreToolUse", "UserPromptSubmit", "Stop"])
+const CLEARS = new Set(["PreToolUse", "UserPromptSubmit", "Stop", "PostToolUse", "PostToolUseFailure", "PermissionDenied"])
+const OPENS = new Set(["Notification", "PermissionRequest"])
 const MAX_MESSAGE = 500
+const MAX_TARGET = 120
+
+/**
+ * What a tool call is about, secret-safe: the first 120 characters of its command or file path, on one
+ * line. Nothing else from tool_input is ever kept (no file contents, no edit strings, no prompts).
+ */
+export function targetOf(toolInput) {
+  if (!toolInput || typeof toolInput !== "object") return null
+  const v = [toolInput.command, toolInput.file_path, toolInput.notebook_path, toolInput.path].find((x) => typeof x === "string" && x.trim())
+  return v ? v.replace(/\s+/g, " ").trim().slice(0, MAX_TARGET) : null
+}
 
 export const defaultHooksDir = (home = homedir()) => join(home, ".mission-control", "hooks")
 
@@ -24,6 +41,12 @@ export function recordHook({ raw, event, hooksDir = defaultHooksDir(), now = () 
     const line = { event: name, sessionId, ts: now().toISOString() }
     if (typeof input.message === "string") line.message = input.message.slice(0, MAX_MESSAGE)
     if (typeof input.tool_name === "string") line.tool = input.tool_name
+    if (typeof input.notification_type === "string") line.kind = input.notification_type.slice(0, 40)
+    if (name === "PreToolUse" || name === "PermissionRequest") {
+      const target = targetOf(input.tool_input)
+      if (target) line.target = target
+    }
+    if (name === "PermissionRequest" && !line.message) line.message = `Claude needs your permission to use ${line.tool ?? "a tool"}`
     mkdirSync(hooksDir, { recursive: true, mode: 0o700 })
     appendFileSync(join(hooksDir, `${sessionId}.jsonl`), JSON.stringify(line) + "\n", { mode: 0o600 })
     return true
@@ -45,21 +68,39 @@ export function parseHookLines(lines) {
 export const IDLE_MESSAGE = /waiting for your input/i
 
 /**
- * Waiting = the last Notification has no PreToolUse / UserPromptSubmit / Stop after it (log order).
- * An idle reminder is `ready: true` with `waiting: false`. Takes parsed events or raw lines.
- * { waiting, ready?, message?, since? }.
+ * Waiting = the last Notification or PermissionRequest has no clearing event after it (log order):
+ * PreToolUse, PostToolUse(Failure), PermissionDenied, UserPromptSubmit or Stop. A Notification that
+ * follows an open PermissionRequest is the same prompt (Claude's ~6 s reminder), not a new one: `since`
+ * stays. An idle reminder (notification_type idle_prompt, or its message) is `ready: true` with
+ * `waiting: false`; so is a Codex turn that ended (codexEvent Stop), with `turnEnd: true`.
+ * The prompt's tool and target come from its own line, else from the PreToolUse just before it.
+ * { waiting, ready?, turnEnd?, message?, since?, tool?, target? }. Takes parsed events or raw lines.
  */
 export function waitingFromHooks(lines) {
   const events = parseHookLines(lines)
-  let note = -1
-  for (let i = events.length - 1; i >= 0; i--) if (events[i].event === "Notification") { note = i; break }
-  if (note < 0) return { waiting: false }
-  for (let i = note + 1; i < events.length; i++) if (CLEARS.has(events[i].event)) return { waiting: false }
-  const n = events[note]
-  const ready = typeof n.message === "string" && IDLE_MESSAGE.test(n.message)
-  const out = ready ? { waiting: false, ready: true } : { waiting: true }
-  if (typeof n.message === "string") out.message = n.message
-  if (typeof n.ts === "string") out.since = n.ts
+  let open = null, pre = null
+  for (const e of events) {
+    const ev = e.event
+    if (OPENS.has(ev)) {
+      const msg = typeof e.message === "string" ? e.message : undefined
+      const idle = ev === "Notification" && (e.kind === "idle_prompt" || (msg !== undefined && IDLE_MESSAGE.test(msg)))
+      if (idle) { open = { ready: true, message: msg, since: e.ts }; continue }
+      if (ev === "Notification" && open?.waiting && open.from === "PermissionRequest") { open.message ??= msg; continue }
+      const tool = typeof e.tool === "string" ? e.tool : pre?.tool
+      const target = typeof e.target === "string" ? e.target : typeof e.tool === "string" && e.tool !== pre?.tool ? undefined : pre?.target
+      open = { waiting: true, from: ev, message: msg, since: e.ts, tool, target }
+    } else if (CLEARS.has(ev)) {
+      open = ev === "Stop" && e.codexEvent === "Stop" ? { ready: true, turnEnd: true, since: e.ts } : null
+      pre = ev === "PreToolUse" && e.codexEvent !== "PostToolUse" ? e : null
+    }
+  }
+  if (!open) return { waiting: false }
+  const out = open.ready ? { waiting: false, ready: true } : { waiting: true }
+  if (open.turnEnd) out.turnEnd = true
+  if (typeof open.message === "string") out.message = open.message
+  if (typeof open.since === "string") out.since = open.since
+  if (typeof open.tool === "string") out.tool = open.tool
+  if (typeof open.target === "string") out.target = open.target
   return out
 }
 
@@ -88,7 +129,7 @@ export function createWaitingReader({ tailBytes = HOOK_TAIL, onRead } = {}) {
       const text = buf.toString("utf8", 0, got)
       if (n === size) return waitingFromHooks(text)
       const events = parseHookLines(text.slice(text.indexOf("\n") + 1))
-      if (events.some((e) => e.event === "Notification" || CLEARS.has(e.event))) return waitingFromHooks(events)
+      if (events.some((e) => OPENS.has(e.event) || CLEARS.has(e.event))) return waitingFromHooks(events)
     } finally { closeSync(fd) }
     onRead?.(path, { bytes: size })
     return waitingFromHooks(readFileSync(path, "utf8"))
@@ -145,6 +186,10 @@ export function recordCodexHook({ raw, hooksDir = defaultHooksDir(), now = () =>
     if (typeof sessionId !== "string" || !SAFE_ID.test(sessionId) || typeof name !== "string" || !Object.hasOwn(CODEX_EVENTS, name)) return false
     const line = { event: CODEX_EVENTS[name], codexEvent: name, sessionId, ts: now().toISOString() }
     if (typeof input.tool_name === "string") line.tool = input.tool_name
+    if (name === "PermissionRequest" || name === "PreToolUse") {
+      const target = targetOf(input.tool_input)
+      if (target) line.target = target
+    }
     if (name === "PermissionRequest") {
       const what = typeof input.tool_input?.description === "string" ? input.tool_input.description : ""
       const tool = typeof input.tool_name === "string" ? input.tool_name : "a tool"
@@ -163,4 +208,11 @@ export function codexHooksBlock({ node = process.execPath, script }) {
   const hooks = {}
   for (const e of Object.keys(CODEX_EVENTS)) hooks[e] = [{ hooks: [{ type: "command", command: `${q(node)} ${q(script)} hook codex`, timeout: 10 }] }]
   return { hooks }
+}
+
+/** The open prompt as a lane shows it: { since?, tool?, target? } (only the keys that are known). */
+export function askOf(w) {
+  const out = {}
+  for (const k of ["since", "tool", "target"]) if (typeof w?.[k] === "string") out[k] = w[k]
+  return out
 }

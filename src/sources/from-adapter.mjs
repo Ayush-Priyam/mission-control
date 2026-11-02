@@ -93,6 +93,7 @@ function buildLanes(state, events, calls, live) {
   }
   for (const lane of lanes) {
     if (stop && stop.stage === lane.id && (lane.status === "waiting" || lane.status === "stopped") && typeof stop.detail === "string") lane.reason = stop.detail
+    if (stop && stop.stage === lane.id && lane.status === "waiting" && typeof stop.ts === "string") lane.ask = { since: stop.ts }
   }
   const byId = new Map(lanes.map((l) => [l.id, l]))
   for (const e of events) {

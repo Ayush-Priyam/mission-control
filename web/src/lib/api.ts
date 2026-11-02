@@ -200,6 +200,8 @@ export type Lane = {
   model?: string
   nowDoing?: { name: string; kind: string; summary: string; ts: string }
   reason?: string
+  /** The open prompt of a waiting lane: when it was asked, the tool and its command or path. */
+  ask?: { since?: string; tool?: string; target?: string }
   calls: number
   errors: number
   tokens: Tokens
@@ -233,7 +235,8 @@ export type Turn = { i: number; role: "user" | "assistant"; ts: string | null; t
 export type TurnPage = { lane: string; total: number; start: number; turns: Turn[] }
 export type ItemDetail = { summary: ItemSummary; lanes: Lane[]; events: Record<string, any>[]; state?: Record<string, any> }
 type Where = { source: string; id: string; title: string; cwd: string | null; branch: string | null; harness: string; updatedAt: string | null; project?: Placed }
-export type NeedsYou = Where & { lane: string; detail: string }
+/** `since`, `tool`, `target`: the prompt's identity (when it was asked, the tool and its command or path), when known. */
+export type NeedsYou = Where & { lane: string; detail: string; since?: string | null; tool?: string | null; target?: string | null }
 export type LiveLane = Where & {
   lane: string
   label: string

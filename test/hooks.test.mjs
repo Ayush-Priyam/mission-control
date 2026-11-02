@@ -5,7 +5,8 @@ import { appendFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readd
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { createWaitingReader, waitingFromHooks } from "../src/hooks.mjs"
+import { createWaitingReader, recordHook, targetOf, waitingFromHooks } from "../src/hooks.mjs"
+import { createServer } from "../src/server.mjs"
 import create from "../src/sources/claude-code/index.mjs"
 import { createRegistry } from "../src/sources/registry.mjs"
 
@@ -27,11 +28,11 @@ test("hook: a Notification on stdin writes one line, no stdout, exit 0", () => {
   assert.ok(!Number.isNaN(Date.parse(l.ts)))
 })
 
-test("hook: tool name is recorded for PreToolUse", () => {
+test("hook: tool name and a short target are recorded for PreToolUse, never the rest of tool_input", () => {
   const dir = tmp()
-  run(["hook", "PreToolUse"], JSON.stringify({ session_id: "s", hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "secret" } }), dir)
+  run(["hook", "PreToolUse"], JSON.stringify({ session_id: "s", hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "ls", description: "secret" } }), dir)
   const l = JSON.parse(readFileSync(join(dir, "s.jsonl"), "utf8"))
-  assert.equal(l.tool, "Bash")
+  assert.deepEqual([l.tool, l.target], ["Bash", "ls"])
   assert.ok(!JSON.stringify(l).includes("secret"))
 })
 
@@ -57,11 +58,11 @@ test("waitingFromHooks: Notification then PreToolUse is not waiting; Notificatio
   assert.equal(waitingFromHooks(`${JSON.stringify(n)}\n{"half`).waiting, true)
 })
 
-test("hooks install: valid JSON with the five events and absolute node + script", () => {
+test("hooks install: valid JSON with every listened event (PermissionRequest included) and absolute node + script", () => {
   const r = run(["hooks", "install"], "", tmp())
   assert.equal(r.status, 0)
   const { hooks } = JSON.parse(r.stdout)
-  assert.deepEqual(Object.keys(hooks), ["Notification", "Stop", "SubagentStop", "UserPromptSubmit", "PreToolUse"])
+  assert.deepEqual(Object.keys(hooks), ["Notification", "PermissionRequest", "Stop", "SubagentStop", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied"])
   for (const [e, v] of Object.entries(hooks)) {
     const h = v[0].hooks[0]
     assert.equal(h.type, "command")
@@ -191,4 +192,78 @@ test("I3: hook logs are cached by size+mtime and read from the tail when large",
   assert.equal(read(dir, "s").waiting, true)
   assert.deepEqual(reads.slice(2), [1024, statSync(file).size])
   assert.deepEqual(read(dir, "missing"), { waiting: false })
+})
+
+// ---- v2.1 item 1: stale prompt safety and prompt identity ----
+
+test("hook line: PreToolUse and PermissionRequest keep tool + the first 120 chars of the command or path, nothing else of tool_input", () => {
+  const dir = tmp()
+  const long = `npm test -- --grep ${"x".repeat(200)}`
+  assert.ok(recordHook({ hooksDir: dir, raw: JSON.stringify({ session_id: "s", hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: long, description: "SECRET-DESC" } }) }))
+  assert.ok(recordHook({ hooksDir: dir, raw: JSON.stringify({ session_id: "s", hook_event_name: "PermissionRequest", tool_name: "Write", tool_input: { file_path: "/work/shop/.env", content: "TOKEN=SECRET-CONTENT" } }) }))
+  const [pre, perm] = readFileSync(join(dir, "s.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l))
+  assert.deepEqual([pre.tool, pre.target], ["Bash", long.slice(0, 120)])
+  assert.deepEqual([perm.event, perm.tool, perm.target, perm.message], ["PermissionRequest", "Write", "/work/shop/.env", "Claude needs your permission to use Write"])
+  const text = readFileSync(join(dir, "s.jsonl"), "utf8")
+  assert.ok(!text.includes("SECRET"), "no description, content or other tool_input fields")
+  assert.equal(targetOf({ command: "a\n  b" }), "a b")
+  assert.equal(targetOf({ content: "x" }), null)
+})
+
+test("waitingFromHooks: PermissionRequest opens at once; the ~6 s Notification after it is the same prompt; PostToolUse clears", () => {
+  const pre = { event: "PreToolUse", ts: "2026-11-02T10:00:00.000Z", tool: "Bash", target: "npm test" }
+  const perm = { event: "PermissionRequest", ts: "2026-11-02T10:00:01.000Z", tool: "Bash", target: "npm test", message: "Claude needs your permission to use Bash" }
+  const note6 = { event: "Notification", ts: "2026-11-02T10:00:07.000Z", kind: "permission_prompt", message: "Claude needs your permission to use Bash" }
+  assert.deepEqual(waitingFromHooks([pre, perm]), { waiting: true, message: perm.message, since: perm.ts, tool: "Bash", target: "npm test" })
+  assert.equal(waitingFromHooks([pre, perm, note6]).since, perm.ts, "the reminder does not make it a new prompt")
+  assert.deepEqual(waitingFromHooks([pre, perm, { event: "PostToolUse", ts: "2026-11-02T10:00:09.000Z", tool: "Bash" }]), { waiting: false })
+  assert.deepEqual(waitingFromHooks([pre, perm, { event: "PermissionDenied" }]), { waiting: false })
+  // An older Claude Code without PermissionRequest: the Notification takes tool and target from the PreToolUse before it.
+  assert.deepEqual(waitingFromHooks([pre, note6]), { waiting: true, message: note6.message, since: note6.ts, tool: "Bash", target: "npm test" })
+  // A second prompt after the first was answered is new: its own since, tool and target.
+  const pre2 = { event: "PreToolUse", ts: "2026-11-02T10:01:00.000Z", tool: "Edit", target: "/work/shop/a.ts" }
+  const perm2 = { event: "PermissionRequest", ts: "2026-11-02T10:01:01.000Z", tool: "Edit", target: "/work/shop/a.ts" }
+  const w = waitingFromHooks([pre, perm, { event: "PostToolUse" }, pre2, perm2])
+  assert.deepEqual([w.since, w.tool, w.target], [perm2.ts, "Edit", "/work/shop/a.ts"])
+  // idle_prompt by type is ready, not waiting
+  assert.deepEqual(waitingFromHooks([{ event: "Notification", kind: "idle_prompt", ts: "2026-11-02T10:05:00.000Z", message: "Claude is idle" }]), { waiting: false, ready: true, message: "Claude is idle", since: "2026-11-02T10:05:00.000Z" })
+})
+
+async function overviewFrom(root, hooksDir, now) {
+  const dist = tmp()
+  writeFileSync(join(dist, "index.html"), "<!doctype html>")
+  const srv = await createServer([create({ root, hooksDir, now: () => now })], { port: 0, distDir: dist, git: stubGit, now: () => now })
+  try {
+    const r = await fetch(`http://127.0.0.1:${srv.port}/api/overview`, { headers: { host: `127.0.0.1:${srv.port}` } })
+    return await r.json()
+  } finally { await srv.close() }
+}
+const stubGit = { resolve: async (cwd) => ({ commonDir: `${cwd}/.git`, toplevel: cwd }), worktrees: async (c) => [{ path: c.replace(/\/\.git$/, ""), branch: "main" }], status: async () => null }
+
+test("stale prompt: permission prompt -> dashboard down -> answered in the terminal -> dashboard starts: not in Needs you", async () => {
+  const { root, hooksDir, log } = fixture(null, { logMtime: T - 5000 })
+  const hook = (o) => appendFileSync(join(hooksDir, "sess1.jsonl"), JSON.stringify({ sessionId: "sess1", ...o }) + "\n")
+  // Claude asks to run a command: tool_use in the log, then PreToolUse and PermissionRequest hooks.
+  appendFileSync(log, JSON.stringify({ type: "assistant", timestamp: new Date(T).toISOString(), message: { id: "m1", role: "assistant", content: [{ type: "tool_use", id: "tu1", name: "Bash", input: { command: "rm -rf build" } }] } }) + "\n")
+  hook({ event: "PreToolUse", ts: new Date(T).toISOString(), tool: "Bash", target: "rm -rf build" })
+  hook({ event: "PermissionRequest", ts: new Date(T + 500).toISOString(), tool: "Bash", target: "rm -rf build", message: "Claude needs your permission to use Bash" })
+  utimesSync(log, T / 1000, T / 1000)
+  const up = await overviewFrom(root, hooksDir, T + 5000)
+  assert.deepEqual(up.needsYou.map((n) => [n.id, n.tool, n.target, n.since]), [["sess1", "Bash", "rm -rf build", new Date(T + 500).toISOString()]])
+  // Dashboard is down (no server). The person answers in the terminal: the tool runs, Claude carries on.
+  appendFileSync(log, JSON.stringify({ type: "user", timestamp: new Date(T + 30_000).toISOString(), message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu1", content: "ok" }] } }) + "\n")
+  hook({ event: "PostToolUse", ts: new Date(T + 30_000).toISOString(), tool: "Bash" })
+  appendFileSync(log, JSON.stringify({ type: "assistant", timestamp: new Date(T + 32_000).toISOString(), message: { id: "m2", role: "assistant", content: [{ type: "text", text: "cleaned" }] } }) + "\n")
+  utimesSync(log, (T + 32_000) / 1000, (T + 32_000) / 1000)
+  // A fresh dashboard (empty caches) starts after all of that.
+  const after = await overviewFrom(root, hooksDir, T + 40_000)
+  assert.deepEqual([after.needsYou.length, after.counts.waiting], [0, 0])
+})
+
+test("stale prompt: answered while the dashboard was down and the hooks predate PostToolUse: the log lines alone clear it", async () => {
+  const { root, hooksDir, log } = fixture(notified, { logMtime: T - 5000 })
+  assert.equal((await overviewFrom(root, hooksDir, T + 5000)).needsYou.length, 1)
+  appendFileSync(log, JSON.stringify({ type: "user", timestamp: new Date(T + 20_000).toISOString(), message: { role: "user", content: [{ type: "tool_result", tool_use_id: "x", content: "ok" }] } }) + "\n")
+  utimesSync(log, (T + 20_000) / 1000, (T + 20_000) / 1000)
+  assert.equal((await overviewFrom(root, hooksDir, T + 40_000)).needsYou.length, 0)
 })

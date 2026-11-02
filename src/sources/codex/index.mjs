@@ -1,6 +1,6 @@
 import { closeSync, openSync, readSync, readdirSync, realpathSync, statSync } from "node:fs"
 import { join, sep } from "node:path"
-import { createWaitingReader } from "../../hooks.mjs"
+import { askOf, createWaitingReader } from "../../hooks.mjs"
 import { capText, isSessionName } from "../../names.mjs"
 import { createCache } from "../claude-code/cache.mjs"
 import { costOf } from "../claude-code/prices.mjs"
@@ -221,7 +221,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, onPa
     for (const l of lanes) { add(tokens, l.tokens); cost += l.cost; errors += l.errors }
     const running = liveAt(lastMs)
     const w = waitingOf(r)
-    if (w?.waiting) { lanes[0].status = "waiting"; lanes[0].reason = w.message ?? "Waiting for you" }
+    if (w?.waiting) { lanes[0].status = "waiting"; lanes[0].reason = w.message ?? "Waiting for you"; lanes[0].ask = askOf(w) }
     else if (w?.ready) { lanes[0].status = "idle"; lanes[0].reason = "ready for input" }
     const meta = mp.meta
     const summary = {

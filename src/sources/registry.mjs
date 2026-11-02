@@ -70,7 +70,12 @@ export function createRegistry(sources) {
       const d = details[k]
       if (i.status === "waiting") {
         const lane = d?.lanes.find((l) => l.status === "waiting")
-        needsYou.push({ source: i.source, id: i.id, ...where(i), lane: lane?.id ?? "", detail: lane?.reason ?? "" })
+        const ask = lane?.ask ?? {}
+        needsYou.push({
+          source: i.source, id: i.id, ...where(i), lane: lane?.id ?? "", detail: lane?.reason ?? "",
+          // The prompt's identity: when it was asked, and the tool and target it is about (when known).
+          since: ask.since ?? null, tool: ask.tool ?? null, target: ask.target ?? null,
+        })
       }
       for (const l of d?.lanes ?? []) {
         if (l.status !== "working") continue
