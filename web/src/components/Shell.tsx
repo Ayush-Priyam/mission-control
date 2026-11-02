@@ -102,7 +102,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
   const theme = useTheme()
   const [sidebar, setSidebar] = useState(() => stored(SIDEBAR_KEY) !== "closed")
   const [palette, setPalette] = useState(false)
-  const { projects, visible: tree, hiddenCount, showHidden, setShowHidden, overview, filter, setFilter } = useShared()
+  const { projects, visible: tree, hiddenCount, showHidden, setShowHidden, overview, filter, setFilter, resetView } = useShared()
   const sources = useSources()
   const budgets = useBudgets(browserTz())
   // The item route's summary, placed in its project: for the crumbs and the sidebar selection.
@@ -158,7 +158,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
         >
           <PanelLeft className="size-4" />
         </button>
-        <a href="#/" aria-label="mission control, home" className="mr-1 flex h-8 shrink-0 items-center gap-2 text-sm font-semibold tracking-tight whitespace-nowrap lg:mr-3">
+        <a href="#/" onClick={resetView} aria-label="mission control, home" className="mr-1 flex h-8 shrink-0 items-center gap-2 text-sm font-semibold tracking-tight whitespace-nowrap lg:mr-3">
           <span className="grid size-4 place-items-center rounded-full border-[1.5px] border-brand">
             <span className="size-1.5 rounded-full bg-brand" />
           </span>
