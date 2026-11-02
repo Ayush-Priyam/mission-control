@@ -32,16 +32,19 @@ export function mix(a: string, b: string, t: number): string {
 
 /**
  * `fg` moved toward black or white (whichever gives more contrast with every `bgs`) just far enough
- * to reach `min` against all of them. `adjusted` says whether it had to move.
+ * to reach `min` against all of them. `adjusted` says whether it had to move; `ok` is false when even
+ * pure black or white falls short (mid-grey surfaces), and the colour returned is then the best try.
  */
-export function ensureContrast(fg: string, bgs: string[], min: number): { color: string; adjusted: boolean } {
+export function ensureContrast(fg: string, bgs: string[], min: number): { color: string; adjusted: boolean; ok: boolean } {
   const ok = (c: string) => bgs.every((b) => contrast(c, b) >= min)
-  if (ok(fg)) return { color: fg.toLowerCase(), adjusted: false }
+  if (ok(fg)) return { color: fg.toLowerCase(), adjusted: false, ok: true }
   const darkBg = bgs.reduce((s, b) => s + luminance(b), 0) / bgs.length < 0.18
   const target = darkBg ? "#ffffff" : "#000000"
   for (let t = 0.02; t <= 1.0001; t += 0.02) {
     const c = mix(fg, target, t)
-    if (ok(c)) return { color: c, adjusted: true }
+    if (ok(c)) return { color: c, adjusted: true, ok: true }
   }
-  return { color: target, adjusted: true }
+  // neither end clears every surface: take whichever extreme is worst-case better
+  const worst = (c: string) => Math.min(...bgs.map((b) => contrast(c, b)))
+  return { color: worst("#ffffff") >= worst("#000000") ? "#ffffff" : "#000000", adjusted: true, ok: false }
 }

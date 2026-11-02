@@ -81,22 +81,23 @@ export const TEXT_TOKENS = ["--foreground", "--muted-foreground", "--faint", "--
 export const MARK_TOKENS = ["--done", "--focus", "--running", "--needs-you", "--failed", "--consult", "--stopped"]
 export const SURFACES = ["--background", "--card", "--muted"]
 
-/** The token map for one mode of a spec, contrast-checked; `adjusted` lists tokens that had to move. */
-export function buildTokens(spec: ThemeSpec, mode: Mode): { tokens: Tokens; adjusted: string[] } {
+/**
+ * The token map for one mode of a spec, contrast-checked; `adjusted` lists tokens that had to move and
+ * `unmet` those that still fall short (no colour reaches the ratio on these surfaces).
+ */
+export function buildTokens(spec: ThemeSpec, mode: Mode): { tokens: Tokens; adjusted: string[]; unmet: string[] } {
   const s = spec.base[mode]
   const st = spec.status[mode]
   const adjusted: string[] = []
+  const unmet: string[] = []
   const bgs = [s.bg, s.card, s.muted]
-  const text = (name: string, c: string) => {
-    const r = ensureContrast(c, bgs, 4.5)
+  const check = (name: string, r: ReturnType<typeof ensureContrast>) => {
     if (r.adjusted) adjusted.push(name)
+    if (!r.ok) unmet.push(name)
     return r.color
   }
-  const mark = (name: string, c: string) => {
-    const r = ensureContrast(c, [s.bg, s.card], 3)
-    if (r.adjusted) adjusted.push(name)
-    return r.color
-  }
+  const text = (name: string, c: string) => check(name, ensureContrast(c, bgs, 4.5))
+  const mark = (name: string, c: string) => check(name, ensureContrast(c, [s.bg, s.card], 3))
   const brand = text("--brand", spec.accent[mode])
   const brandFg = contrast(brand, "#ffffff") >= contrast(brand, "#000000") ? "#ffffff" : "#09090b"
   const fg = text("--foreground", s.fg)
@@ -154,7 +155,7 @@ export function buildTokens(spec: ThemeSpec, mode: Mode): { tokens: Tokens; adju
     "--sidebar-ring": focus,
   }
   series.forEach((c, i) => (t[`--chart-${i + 1}`] = c))
-  return { tokens: t, adjusted: [...new Set(adjusted)] }
+  return { tokens: t, adjusted: [...new Set(adjusted)], unmet: [...new Set(unmet)] }
 }
 
 /** Every contrast pair a theme must meet, with its ratio. */
@@ -172,7 +173,7 @@ export function contrastPairs(t: Tokens): { fg: string; bg: string; ratio: numbe
 
 export type CustomTheme =
   | { kind: "pick"; base: BaseId; accent: string }
-  | { kind: "iterm"; name: string; spec: ThemeSpec; warnings: string[] }
+  | { kind: "iterm"; name: string; spec: ThemeSpec; warnings: string[]; /** tokens no colour could bring to contrast on this background */ unmet?: string[] }
 
 export const DEFAULT_CUSTOM: CustomTheme = { kind: "pick", base: "neutral", accent: "#7c3aed" }
 
@@ -241,8 +242,8 @@ export function itermTheme(name: string, c: Record<string, string>): CustomTheme
     llm: c["Ansi 5 Color"] ?? base.llm,
   }
   const spec: ThemeSpec = { base: { light: surface, dark: surface }, accent: { light: c["Cursor Color"] ?? status.consult, dark: c["Cursor Color"] ?? status.consult }, status: { light: status, dark: status } }
-  const warnings = buildTokens(spec, mode).adjusted
-  return { kind: "iterm", name, spec, warnings }
+  const { adjusted: warnings, unmet } = buildTokens(spec, mode)
+  return { kind: "iterm", name, spec, warnings, ...(unmet.length ? { unmet } : {}) }
 }
 
 // ---- Persistence + application ----------------------------------------------------------------
@@ -305,7 +306,8 @@ const perMode = (o: any, ok: (v: any) => boolean) => !!o && typeof o === "object
 export function validCustom(c: any): CustomTheme | null {
   if (!c || typeof c !== "object") return null
   if (c.kind === "pick") return (["neutral", "warm", "cool"] as const).includes(c.base) && isHex(c.accent) ? { kind: "pick", base: c.base, accent: c.accent } : null
-  if (c.kind !== "iterm" || typeof c.name !== "string" || !Array.isArray(c.warnings) || !c.warnings.every((w: unknown) => typeof w === "string")) return null
+  const strings = (v: unknown) => Array.isArray(v) && v.every((w) => typeof w === "string")
+  if (c.kind !== "iterm" || typeof c.name !== "string" || !strings(c.warnings) || (c.unmet !== undefined && !strings(c.unmet))) return null
   const sp = c.spec
   if (!sp || typeof sp !== "object") return null
   const ok =

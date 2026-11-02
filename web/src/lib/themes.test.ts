@@ -14,10 +14,16 @@ describe("contrast", () => {
     expect(contrast("#a1a1aa", "#ffffff")).toBeCloseTo(2.56, 2)
   })
   it("ensureContrast moves a colour only as far as needed", () => {
-    expect(ensureContrast("#15803d", ["#ffffff"], 4.5)).toEqual({ color: "#15803d", adjusted: false })
+    expect(ensureContrast("#15803d", ["#ffffff"], 4.5)).toEqual({ color: "#15803d", adjusted: false, ok: true })
     const r = ensureContrast("#a1a1aa", ["#ffffff", "#f4f4f5"], 4.5)
     expect(r.adjusted).toBe(true)
     expect(contrast(r.color, "#f4f4f5")).toBeGreaterThanOrEqual(4.5)
+    expect(r.ok).toBe(true)
+  })
+  it("ensureContrast says ok:false when neither black nor white reaches the ratio on every surface", () => {
+    const r = ensureContrast("#888888", ["#777777", "#707070"], 4.5)
+    expect(r).toMatchObject({ adjusted: true, ok: false })
+    expect(["#000000", "#ffffff"]).toContain(r.color)
   })
 })
 
@@ -120,5 +126,15 @@ describe("storedTheme", () => {
     const good = itermTheme("Solar", { "Background Color": "#002b36", "Foreground Color": "#eee8d5" })
     expect(custom(JSON.stringify(good))).toEqual(good)
     localStorage.clear()
+  })
+})
+
+describe("an iTerm theme on a mid-grey background", () => {
+  it("lists the tokens that cannot reach contrast, and the picker shows them", async () => {
+    const t = itermTheme("Grey", { "Background Color": "#777777", "Foreground Color": "#000000" })
+    expect(t.kind === "iterm" && t.unmet?.length).toBeGreaterThan(0)
+    expect(t.kind === "iterm" && t.unmet).toContain("--foreground")
+    const ok = itermTheme("Solar", { "Background Color": "#002b36", "Foreground Color": "#eee8d5" })
+    expect(ok.kind === "iterm" && ok.unmet).toBeUndefined()
   })
 })

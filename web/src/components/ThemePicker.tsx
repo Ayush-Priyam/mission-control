@@ -75,6 +75,7 @@ export function ThemePicker({ theme }: { theme: ThemeState }) {
 
   const presets = Object.entries(PRESETS) as [Exclude<PresetId, "custom">, (typeof PRESETS)["mission"]][]
   const warnings = custom.kind === "iterm" ? custom.warnings : []
+  const unmet = custom.kind === "iterm" ? (custom.unmet ?? []) : []
 
   return (
     <div ref={box} className="relative">
@@ -168,6 +169,11 @@ export function ThemePicker({ theme }: { theme: ThemeState }) {
                 <input type="file" accept=".itermcolors,application/xml,text/xml" onChange={(e) => void onFile(e)} className="sr-only" />
               </label>
               {error && <p role="alert" className="text-failed">{error}</p>}
+              {unmet.length > 0 && (
+                <p role="alert" data-unmet className="text-failed">
+                  This background is too mid-grey for readable text: {unmet.map((w) => w.replace(/^--/, "")).join(", ")} stay below contrast. Pick a darker or lighter theme.
+                </p>
+              )}
               {warnings.length > 0 && (
                 <p role="status" className="text-muted-foreground">
                   Adjusted for contrast: {warnings.map((w) => w.replace(/^--/, "")).join(", ")}.

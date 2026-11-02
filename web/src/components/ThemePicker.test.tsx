@@ -95,4 +95,17 @@ describe("theme picker", () => {
     expect(screen.getByRole("alert").textContent).toMatch(/at most 256 KB/)
     expect(localStorage.getItem(KEYS.custom)).not.toMatch(/huge/)
   })
+
+  it("an imported theme no colour can fix shows a contrast warning", async () => {
+    render(<Harness />)
+    fireEvent.click(screen.getByRole("button", { name: "Theme" }))
+    fireEvent.click(screen.getByRole("radio", { name: /^Custom/ }))
+    const c = (r: number, g: number, b: number) => `<dict><key>Red Component</key><real>${r}</real><key>Green Component</key><real>${g}</real><key>Blue Component</key><real>${b}</real></dict>`
+    const xml = `<?xml version="1.0"?><plist version="1.0"><dict><key>Background Color</key>${c(0.467, 0.467, 0.467)}<key>Foreground Color</key>${c(0, 0, 0)}</dict></plist>`
+    const f = new File([xml], "grey.itermcolors", { type: "application/xml" })
+    await act(async () => {
+      fireEvent.change(document.querySelector<HTMLInputElement>('input[type="file"]')!, { target: { files: [f] } })
+    })
+    expect(document.querySelector("[data-unmet]")?.textContent).toMatch(/foreground/)
+  })
 })
