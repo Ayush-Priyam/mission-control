@@ -340,3 +340,16 @@ export async function postItemAction(source: string, id: string, name: string, b
   if (!r.ok) throw new Error(j.error ?? j.message ?? `action ${name}: ${r.status}`)
   return j
 }
+
+export type ActionNote = { ok: boolean; text: string }
+
+/**
+ * What an action's answer means for the person who clicked. A source that resumes the run says
+ * `resumed: false` (with `error`) when the resume could not start: the action landed, the run did not move.
+ */
+export function actionNote(done: string, result: any): ActionNote {
+  if (result && result.resumed === false) {
+    return { ok: false, text: `${done}, but the run could not resume${result.error ? `: ${result.error}` : "."}` }
+  }
+  return { ok: true, text: `${done}.` }
+}

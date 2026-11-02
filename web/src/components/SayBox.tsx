@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { postAction } from "@/lib/api"
+import { actionNote, postAction } from "@/lib/api"
 
 export type Say = { stage: string; text: string } | { error: string }
 
@@ -49,9 +49,9 @@ export function SayBox({
     setBusy(true)
     setNote(null)
     try {
-      await postAction(runId, "say", m)
+      const n = actionNote(`Sent to ${m.stage}`, await postAction(runId, "say", m))
       set("")
-      setNote({ ok: true, text: `Sent to ${m.stage}.` })
+      setNote(n)
       onSent?.(m)
     } catch (e: any) {
       setNote({ ok: false, text: String(e?.message ?? e) })

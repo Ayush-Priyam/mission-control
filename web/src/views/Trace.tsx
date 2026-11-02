@@ -36,7 +36,8 @@ const tick = (ms: number) => {
   if (h) return `${h}h${m % 60 ? ` ${m % 60}m` : ""}`
   return `${m}m${s % 60 ? ` ${s % 60}s` : ""}`
 }
-const money = (c: number) => (c > 0 && c < 0.01 ? `$${c.toFixed(3)}` : `$${(c || 0).toFixed(2)}`)
+/** Every cost is an estimate at API list prices (ruling V9). */
+const money = (c: number) => `${c > 0 && c < 0.01 ? `$${c.toFixed(3)}` : `$${(c || 0).toFixed(2)}`} est.`
 const toks = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n || 0))
 
 /** Axis domain: a round number of 4–6 ticks just past the end. */
@@ -156,7 +157,7 @@ function Stats({ tr, wall }: { tr: TraceData; wall: number }) {
   const n = tr.breaks.length
   const cells: { k: string; v: string | number; tip?: string; sub?: string; lsub?: string; bad?: boolean }[] = [
     { k: "DURATION", v: dur(T.durationMs), lsub: "active", tip: n ? `Active time. Wall clock ${dur(wall)}, with ${n} idle break${n > 1 ? "s" : ""} folded to 4s each` : "Active time" },
-    { k: "COST", v: money(T.cost) },
+    { k: "COST", v: money(T.cost), tip: "API list prices; subscription plans differ" },
     { k: "TOKENS", v: toks(T.tokensIn + T.tokensOut), lsub: "incl. cache reads", tip: `${toks(T.tokensIn)} in (fresh, cache writes and cache reads) · ${toks(T.tokensOut)} out. The crew footer leaves cache reads out.` },
     { k: "LLM CALLS", v: T.llmCalls },
     { k: "TOOL CALLS", v: T.toolCalls },
