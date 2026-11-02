@@ -5,3 +5,4 @@ web/.vitest/
 examples/claude/
 examples/hooks/
 examples/runs/2026110[2]-*/
+brag-output*/
