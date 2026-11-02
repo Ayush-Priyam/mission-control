@@ -161,7 +161,7 @@ async function apiV2(ctx, req, res, url, parts) {
     return json(res, {})
   }
   if (req.method === "POST" && parts[0] === "settings" && parts[1] === "test" && parts.length === 2) {
-    const via = testNotify({ title: "Test", subtitle: "Mission control", message: "Notifications work. Clicking opens the dashboard.", url: "#/", group: "test" })
+    const via = testNotify({ title: "Test", subtitle: "Mission control", message: "notifications work; a click opens the dashboard", url: "#/", group: "test" })
     return via ? json(res, { via }) : json(res, { error: "notifications are off in this server" }, 501)
   }
   if (parts[0] === "settings" && parts.length === 1) {
@@ -173,15 +173,18 @@ async function apiV2(ctx, req, res, url, parts) {
     if (req.method !== "POST") return false
     const body = await readBody(req)
     const keys = Object.keys(body ?? {})
-    const ok = (k) => (k === "retentionDays" ? Number.isInteger(body[k]) : ["notify", "notifyDone", "autostart"].includes(k) && typeof body[k] === "boolean")
+    const ok = (k) =>
+      k === "retentionDays" ? Number.isInteger(body[k])
+      : k === "notifyDismiss" ? Number.isInteger(body[k]) && body[k] >= 0 && body[k] <= 600
+      : ["notify", "notifyDone", "autostart"].includes(k) && typeof body[k] === "boolean"
     if (!keys.length || !keys.every(ok)) {
-      return json(res, { error: "send notify, notifyDone and/or autostart as booleans, retentionDays as a whole number" }, 400)
+      return json(res, { error: "send notify, notifyDone, autostart as booleans; retentionDays, notifyDismiss (0-600 s) as whole numbers" }, 400)
     }
     if (body.retentionDays !== undefined) {
       if (!retention) return json(res, { error: "no Claude Code config to change" }, 501)
       retention.set(body.retentionDays)
     }
-    if (keys.some((k) => k === "notify" || k === "notifyDone")) settings.set(body)
+    if (keys.some((k) => k === "notify" || k === "notifyDone" || k === "notifyDismiss")) settings.set(body)
     let restart = false
     if (typeof body.autostart === "boolean") {
       if (!autostart) return json(res, { error: "start at login is off" }, 501)
@@ -471,7 +474,7 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
       const fallback = typeof notifier === "function" ? notifier : macNotify
       notifyVia = (m) => {
         const via = notifyClients.size ? `page (${notifyClients.size})` : "macOS"
-        if (notifyClients.size) send("notify", m, notifyClients)
+        if (notifyClients.size) send("notify", { ...m, dismissAfter: settings.get().notifyDismiss }, notifyClients)
         else fallback(m)
         noteLog(`notify ${m.title}: ${m.subtitle ?? ""} via ${via}`)
         return via

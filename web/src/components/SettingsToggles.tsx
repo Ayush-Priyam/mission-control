@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react"
-import { Bell, BellOff, History, Info, Power } from "lucide-react"
+import { Bell, BellOff, History, Info, Power, Timer } from "lucide-react"
 import { postSettings, postTestNotification, useSettings, type Settings } from "@/lib/api"
 import { InfoTip } from "@/components/IconAction"
 import { askNotifyPermission, notifyPermission } from "@/lib/notify"
@@ -104,7 +104,8 @@ export function SettingsToggles() {
   const notifyDone = s.data.notifyDone ?? false
   const autostart = s.data.autostart ?? { supported: false, enabled: false }
   const retention = s.data.retention ?? null
-  const change = async (patch: { notify?: boolean; notifyDone?: boolean; autostart?: boolean; retentionDays?: number }) => {
+  const dismiss = s.data.notifyDismiss ?? 10
+  const change = async (patch: { notify?: boolean; notifyDone?: boolean; notifyDismiss?: number; autostart?: boolean; retentionDays?: number }) => {
     setBusy(true)
     setNote(null)
     try {
@@ -151,6 +152,21 @@ export function SettingsToggles() {
       >
         {toggle(notify, "Needs you", "When a session needs you: a permission prompt or a question", () => change({ notify: !notify }))}
         {toggle(notifyDone, "Done", "When a session finishes your prompt and is ready for the next one", () => change({ notifyDone: !notifyDone }))}
+        <label className={line} title="How long a browser notification stays on screen before it closes itself">
+          <Timer />
+          <span className="flex-1">Dismiss after</span>
+          <select
+            aria-label="Dismiss notifications after"
+            disabled={busy}
+            value={String(dismiss)}
+            onChange={(e) => change({ notifyDismiss: Number(e.target.value) })}
+            className="rounded bg-transparent text-right text-foreground outline-none"
+          >
+            {[...new Set([5, 10, 30, 60, 0, dismiss])].map((d) => (
+              <option key={d} value={d}>{d === 0 ? "stay" : d < 60 ? `${d}s` : `${d / 60} min`}</option>
+            ))}
+          </select>
+        </label>
         <div className={line}>
           <Bell />
           <span className="flex-1">Browser</span>

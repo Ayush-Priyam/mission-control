@@ -15,7 +15,7 @@ export async function askNotifyPermission() {
   return p
 }
 
-type Payload = { title: string; subtitle?: string; message?: string; url?: string; group?: string }
+type Payload = { title: string; subtitle?: string; message?: string; where?: string; url?: string; group?: string; dismissAfter?: number }
 
 /** Tell the server what happened to a notification, for its log (~/.mission-control/logs/notifications.log). */
 function ack(m: { group?: string } | null, result: string) {
@@ -32,9 +32,12 @@ function show(m: Payload) {
     // The tag keeps one notification per session; renotify alerts again when it replaces one (a tag alone
     // replaces silently), and requireInteraction keeps it on screen until clicked or dismissed (otherwise a
     // macOS banner slides away at once).
-    const n = new Notification(m.subtitle ? `${m.title}: ${m.subtitle}` : m.title, {
-      body: m.message ?? "", tag: m.group, renotify: !!m.group, requireInteraction: true,
+    // Title: the session's name. Body: what happened, then where (the browser adds the site below).
+    const n = new Notification(m.subtitle || m.title, {
+      body: [m.subtitle ? `${m.title} · ${m.message ?? ""}` : (m.message ?? ""), m.where].filter(Boolean).join("\n"),
+      tag: m.group, renotify: !!m.group, requireInteraction: true,
     } as NotificationOptions)
+    if (m.dismissAfter && m.dismissAfter > 0) setTimeout(() => n.close(), m.dismissAfter * 1000)
     n.onshow = () => ack(m, "shown")
     n.onerror = () => ack(m, "error")
     n.onclick = () => {
