@@ -4,6 +4,9 @@ import { CallDetail } from "@/components/CallDetail"
 import { CallList, KIND, chipCounts, filterCalls, type Chip } from "@/components/CallList"
 import { useCalls, useItem, type Call, type ItemDetail, type Lane, type Status } from "@/lib/api"
 import { StatusDot } from "@/components/StatusDot"
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
+import { BP, useMedia } from "@/lib/media"
+import { statusLabel } from "@/lib/status-ui"
 import { cn } from "@/lib/utils"
 import { Plug, X, Zap } from "lucide-react"
 
@@ -55,6 +58,7 @@ export default function Calls({ source, id, sessionHref, timelineHref, call, det
   const detail = shared ? given : item.data
   const calls = shared ? { data: givenCalls ?? null, loading: givenCalls == null && !callsError, error: callsError ?? null } : fetched
 
+  const wide = useMedia(BP["2xl"])
   const [lane, setLane] = useState<string | null>(null)
   const [chip, setChip] = useState<Chip>("all")
   const [q, setQ] = useState("")
@@ -96,10 +100,24 @@ export default function Calls({ source, id, sessionHref, timelineHref, call, det
   const cost = (current ? [current] : lanes).reduce((n, l) => n + (l.cost ?? 0), 0)
   const models = [...new Set((current ? [current] : lanes).map((l) => l.model).filter(Boolean))]
 
+  const detailPanel = selected ? (
+    <CallDetail
+      call={selected}
+      laneLabel={laneLabel}
+      sessionHref={toSession(selected)}
+      timelineHref={toTimeline(selected)}
+      onClose={() => setPicked(null)}
+      onOpenLane={(l) => {
+        setLane(l)
+        if (!wide) setPicked(null) // the sheet closes so the narrowed list shows
+      }}
+    />
+  ) : null
+
   return (
-    <div className="grid h-full min-h-0 grid-cols-[230px_minmax(0,1fr)_380px] overflow-hidden">
-      {/* lanes */}
-      <div className="flex min-h-0 flex-col border-r p-3 text-sm">
+    <div className="grid h-full min-h-0 grid-cols-1 overflow-hidden xl:grid-cols-[200px_minmax(0,1fr)] 2xl:grid-cols-[230px_minmax(0,1fr)_380px]">
+      {/* lanes: a column from xl, a select above the list below that */}
+      <div className="hidden min-h-0 flex-col border-r p-3 text-sm xl:flex">
         <div className="px-2 py-1 text-xs tracking-wide text-muted-foreground uppercase">Lanes</div>
         <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto" role="list" aria-label="Lanes">
           <LaneRow label="All lanes" count={all.length} on={lane === null} onClick={() => setLane(null)} />
@@ -129,8 +147,24 @@ export default function Calls({ source, id, sessionHref, timelineHref, call, det
       </div>
 
       {/* calls */}
-      <div className="flex min-h-0 flex-col p-4">
-        <div className="flex items-center justify-between gap-3">
+      <div className="flex min-h-0 min-w-0 flex-col p-4">
+        <label className="mb-3 flex items-center gap-2 text-xs text-muted-foreground xl:hidden">
+          Lane
+          <select
+            aria-label="Lane"
+            value={lane ?? ""}
+            onChange={(e) => setLane(e.target.value || null)}
+            className="h-8 min-w-0 flex-1 rounded-md border bg-card px-2 text-sm text-foreground sm:max-w-xs"
+          >
+            <option value="">All lanes · {all.length}</option>
+            {lanes.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.label} · {statusLabel(l.status)} · {perLane.get(l.id) ?? 0}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0 truncate font-semibold">
             {current ? current.label : "All lanes"}{" "}
             <span className="text-sm font-normal text-muted-foreground">
@@ -143,7 +177,7 @@ export default function Calls({ source, id, sessionHref, timelineHref, call, det
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search name, summary or server…"
-              className="h-8 w-64 rounded-md border bg-muted/40 px-3 pr-7 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring"
+              className="h-8 w-56 max-w-full rounded-md border bg-muted/40 px-3 pr-7 text-sm placeholder:text-muted-foreground focus-visible:border-ring lg:w-64"
             />
             {q && (
               <button aria-label="Clear search" onClick={() => setQ("")} className="absolute top-2 right-2 text-muted-foreground">
@@ -190,21 +224,19 @@ export default function Calls({ source, id, sessionHref, timelineHref, call, det
         />
       </div>
 
-      {/* detail */}
-      <div className="min-h-0 overflow-y-auto border-l p-4">
-        {selected ? (
-          <CallDetail
-            call={selected}
-            laneLabel={laneLabel}
-            sessionHref={toSession(selected)}
-            timelineHref={toTimeline(selected)}
-            onClose={() => setPicked(null)}
-            onOpenLane={(l) => setLane(l)}
-          />
-        ) : (
-          <div className="pt-1 text-sm text-muted-foreground">Pick a call to see its arguments and result.</div>
-        )}
-      </div>
+      {/* detail: a third column from 2xl, a sheet that opens on selection below that */}
+      {wide ? (
+        <div className="min-h-0 overflow-y-auto border-l p-4">
+          {detailPanel ?? <div className="pt-1 text-sm text-muted-foreground">Pick a call to see its arguments and result.</div>}
+        </div>
+      ) : (
+        <Sheet open={!!selected} onOpenChange={(o) => !o && setPicked(null)}>
+          <SheetContent side="right" className="w-full overflow-y-auto p-4 sm:max-w-lg">
+            <SheetTitle className="sr-only">Selected call</SheetTitle>
+            {detailPanel}
+          </SheetContent>
+        </Sheet>
+      )}
     </div>
   )
 }

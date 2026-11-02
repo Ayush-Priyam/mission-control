@@ -27,13 +27,14 @@ function serve(item: object, list: object[]) {
   return fetch
 }
 const chip = (name: RegExp) => screen.getByRole("button", { name })
-const rows = () => screen.queryAllByRole("option").map((r) => r.textContent)
+const callRows = () => { const box = screen.queryByRole("listbox", { name: "Calls" }); return box ? within(box).queryAllByRole("option") : [] }
+const rows = () => callRows().map((r) => r.textContent)
 
 describe("Calls tab", () => {
   it("loads the item and its calls, newest first, with counts per chip", async () => {
     const fetch = serve({ summary: { source: "claude-code", id: "s1", title: "t", live: false, status: "idle" }, lanes }, calls)
     render(<Calls source="claude-code" id="s1" />)
-    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(6))
+    await waitFor(() => expect(callRows()).toHaveLength(6))
     expect(fetch.mock.calls.map((c) => c[0]).sort()).toEqual(["/api/item/claude-code/s1", "/api/item/claude-code/s1/calls"])
     expect(rows()[0]).toContain("parser in src/")
     expect(chip(/^All 6$/)).toBeTruthy()
@@ -47,7 +48,7 @@ describe("Calls tab", () => {
   it("a lane narrows the counts; chips and search narrow the rows", async () => {
     serve({ summary: { source: "claude-code", id: "s1", title: "t", live: false, status: "idle" }, lanes }, calls)
     render(<Calls source="claude-code" id="s1" />)
-    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(6))
+    await waitFor(() => expect(callRows()).toHaveLength(6))
     fireEvent.click(within(screen.getByRole("list", { name: "Lanes" })).getByText("Review parser"))
     expect(chip(/^All 2$/)).toBeTruthy()
     expect(chip(/Errors 0/)).toBeTruthy()
@@ -66,7 +67,7 @@ describe("Calls tab", () => {
   it("picking a call shows its arguments and result, and an agent call links to its lane", async () => {
     serve({ summary: { source: "claude-code", id: "s1", title: "t", live: false, status: "idle" }, lanes }, calls)
     render(<Calls source="claude-code" id="s1" timelineHref={(c) => `#/t/${c.id}`} />)
-    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(6))
+    await waitFor(() => expect(callRows()).toHaveLength(6))
     fireEvent.click(screen.getByText("notes.md"))
     const d = screen.getByLabelText("Call detail")
     expect(d.textContent).toContain('"file_path": "notes.md"')
@@ -90,7 +91,7 @@ describe("Calls tab", () => {
     const fetch = serve({}, [])
     const detail = { summary: { source: "claude-code", id: "s1", title: "t", live: true, status: "working" }, lanes } as any
     render(<Calls source="claude-code" id="s1" detail={detail} calls={calls as any} />)
-    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(6))
+    await waitFor(() => expect(callRows()).toHaveLength(6))
     expect(fetch).not.toHaveBeenCalled()
   })
 
@@ -101,7 +102,7 @@ describe("Calls tab", () => {
     render(<Calls source="claude-code" id="s1" detail={detail} calls={null} callsError="HTTP 500" />)
     expect(screen.getByRole("alert").textContent).toContain("HTTP 500")
     expect(screen.queryByText(/Loading calls/)).toBeNull()
-    expect(screen.queryAllByRole("option")).toHaveLength(0)
+    expect(callRows()).toHaveLength(0)
   })
 })
 

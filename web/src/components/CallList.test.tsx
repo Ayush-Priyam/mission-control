@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { Call } from "@/lib/api"
-import { CallList, chipCounts, filterCalls, fmtDuration, windowRange } from "./CallList"
+import { CallList, chipCounts, filterCalls, fmtDuration, moveIndex, optionId, windowRange } from "./CallList"
 
 afterEach(cleanup)
 
@@ -72,7 +72,7 @@ describe("CallList", () => {
     const rows = screen.getAllByRole("option")
     expect(rows.length).toBeGreaterThan(0)
     expect(rows.length).toBeLessThan(100)
-    expect(screen.getByRole("listbox").getAttribute("aria-rowcount")).toBe("1200")
+    expect(rows[0].getAttribute("aria-setsize")).toBe("1200")
   })
   it("selects a call on click and marks it", () => {
     const onSelect = vi.fn()
@@ -94,5 +94,47 @@ describe("CallList", () => {
   it("shows an empty state", () => {
     render(<CallList calls={[]} selectedId={null} onSelect={() => {}} empty="No calls match." />)
     expect(screen.getByText("No calls match.")).toBeTruthy()
+  })
+})
+
+describe("call list keyboard (listbox with aria-activedescendant)", () => {
+  it("moveIndex: arrows clamp at the ends, Home/End jump, other keys do nothing", () => {
+    expect(moveIndex("ArrowDown", -1, 3)).toBe(0)
+    expect(moveIndex("ArrowDown", 2, 3)).toBe(2)
+    expect(moveIndex("ArrowUp", 0, 3)).toBe(0)
+    expect(moveIndex("Home", 2, 3)).toBe(0)
+    expect(moveIndex("End", 0, 3)).toBe(2)
+    expect(moveIndex("a", 0, 3)).toBeNull()
+    expect(moveIndex("ArrowDown", -1, 0)).toBeNull()
+  })
+  it("the list takes focus; arrows move the active row, Enter opens it", () => {
+    const onSelect = vi.fn()
+    render(<CallList calls={calls} selectedId={null} onSelect={onSelect} />)
+    const box = screen.getByRole("listbox")
+    expect(box.tabIndex).toBe(0)
+    fireEvent.focus(box)
+    expect(box.getAttribute("aria-activedescendant")).toBe(optionId("c1"))
+    fireEvent.keyDown(box, { key: "ArrowDown" })
+    fireEvent.keyDown(box, { key: "ArrowDown" })
+    expect(box.getAttribute("aria-activedescendant")).toBe(optionId("c3"))
+    expect(document.getElementById(optionId("c3"))?.getAttribute("role")).toBe("option")
+    fireEvent.keyDown(box, { key: "End" })
+    expect(box.getAttribute("aria-activedescendant")).toBe(optionId("c7"))
+    fireEvent.keyDown(box, { key: "Home" })
+    fireEvent.keyDown(box, { key: "Enter" })
+    expect(onSelect).toHaveBeenLastCalledWith("c1")
+    expect(onSelect).toHaveBeenCalledTimes(1) // arrows only move; Enter opens
+  })
+  it("windowed: End renders and scrolls to the last row so the active option exists in the DOM", () => {
+    const many = Array.from({ length: 1200 }, (_, i) => mk(i))
+    render(<CallList calls={many} selectedId={null} onSelect={() => {}} />)
+    const box = screen.getByRole("listbox")
+    Object.defineProperty(box, "clientHeight", { value: 600, configurable: true })
+    fireEvent.focus(box)
+    fireEvent.keyDown(box, { key: "End" })
+    const id = box.getAttribute("aria-activedescendant")!
+    expect(id).toBe(optionId("c1199"))
+    expect(document.getElementById(id)).toBeTruthy()
+    expect(box.scrollTop).toBeGreaterThan(40000)
   })
 })
