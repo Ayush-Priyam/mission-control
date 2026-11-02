@@ -410,9 +410,11 @@ export async function postTitle(source: string, id: string, title: string) {
 export type Settings = {
   notify: boolean
   notifyDone?: boolean
+  autostart: { supported: boolean; enabled: boolean; managed?: boolean; label?: string }
+  restarting?: boolean
 }
 export const useSettings = () => useFetch<Settings>("/api/settings")
-export async function postSettings(patch: { notify?: boolean; notifyDone?: boolean }) {
+export async function postSettings(patch: { notify?: boolean; notifyDone?: boolean; autostart?: boolean }) {
   const r = await fetch("/api/settings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(patch) })
   const j = await r.json().catch(() => ({}))
   if (!r.ok) throw new Error(j.error ?? `settings: ${r.status}`)

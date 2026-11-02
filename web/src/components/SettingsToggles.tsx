@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Bell, BellOff, Info } from "lucide-react"
+import { Bell, BellOff, Info, Power } from "lucide-react"
 import { postSettings, postTestNotification, useSettings } from "@/lib/api"
 import { InfoTip } from "@/components/IconAction"
 import { askNotifyPermission, notifyPermission } from "@/lib/notify"
@@ -9,7 +9,15 @@ const BROWSER_INFO =
   "Lets this page show the notifications. Clicking one opens that session here. Without it, macOS shows them, but a click does nothing. Works while a dashboard tab is open, even in the background."
 const row = "flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left hover:bg-sidebar-accent/60 hover:text-muted-foreground disabled:opacity-50 [&_svg]:size-3"
 
-/** Sidebar switches: notifications (needs you, done), the browser permission and a test. */
+/** Waits for the dashboard to answer again (launchd's copy taking over the port), then reloads the page. */
+async function reloadWhenBack() {
+  for (let i = 0; i < 60; i++) {
+    await new Promise((r) => setTimeout(r, 1000))
+    try { if ((await fetch("/api/sources")).ok) return location.reload() } catch { /* still restarting */ }
+  }
+}
+
+/** Sidebar switches: notifications (needs you, done), the browser permission and a test, and start at login. */
 export function SettingsToggles() {
   const s = useSettings()
   const [note, setNote] = useState<string | null>(null)
@@ -18,11 +26,18 @@ export function SettingsToggles() {
   if (typeof s.data?.notify !== "boolean") return null // not loaded, or a server without settings
   const { notify } = s.data
   const notifyDone = s.data.notifyDone ?? false
-  const change = async (patch: { notify?: boolean; notifyDone?: boolean }) => {
+  const autostart = s.data.autostart ?? { supported: false, enabled: false }
+  const change = async (patch: { notify?: boolean; notifyDone?: boolean; autostart?: boolean }) => {
     setBusy(true)
     setNote(null)
     try {
-      await postSettings(patch)
+      const r = await postSettings(patch)
+      if (r.restarting) {
+        setNote("restarting under launchd…")
+        await reloadWhenBack()
+        return
+      }
+      if (patch.autostart === false) setNote("won't start at next login")
       s.reload()
     } catch (e) {
       setNote(String((e as Error).message ?? e))
@@ -73,6 +88,9 @@ export function SettingsToggles() {
           browser blocked notifications: macOS ones show, without a click action
         </span>
       )}
+      {autostart.supported &&
+        toggle(autostart.enabled, "Start at login", `Start this dashboard at login and restart it if it stops (LaunchAgent ${autostart.label ?? ""})`,
+          () => change({ autostart: !autostart.enabled }), <Power />)}
       {note && <span className="px-1 text-[11px]">{note}</span>}
     </div>
   )

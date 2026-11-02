@@ -138,7 +138,7 @@ async function placeFirst(items, git, hideList, keep, limit = Infinity) {
 }
 
 async function apiV2(ctx, req, res, url, parts) {
-  const { registry, git, hide, titles, marks, settings, testNotify, now } = ctx
+  const { registry, git, hide, titles, marks, settings, autostart, onRestart, testNotify, now } = ctx
   const get = req.method === "GET" || req.method === "HEAD"
   const q = url.searchParams
   const all = q.get("all") === "1"
@@ -156,14 +156,23 @@ async function apiV2(ctx, req, res, url, parts) {
     return via ? json(res, { via }) : json(res, { error: "notifications are off in this server" }, 501)
   }
   if (parts[0] === "settings" && parts.length === 1) {
-    if (get) return json(res, settings.get())
+    const view = () => ({ ...settings.get(), autostart: autostart?.status() ?? { supported: false, enabled: false } })
+    if (get) return json(res, view())
     if (req.method !== "POST") return false
     const body = await readBody(req)
     const keys = Object.keys(body ?? {})
-    if (!keys.length || !keys.every((k) => ["notify", "notifyDone"].includes(k) && typeof body[k] === "boolean")) {
-      return json(res, { error: "send notify and/or notifyDone as booleans" }, 400)
+    if (!keys.length || !keys.every((k) => ["notify", "notifyDone", "autostart"].includes(k) && typeof body[k] === "boolean")) {
+      return json(res, { error: "send notify, notifyDone and/or autostart as booleans" }, 400)
     }
-    return json(res, settings.set(body))
+    if (keys.some((k) => k !== "autostart")) settings.set(body)
+    let restart = false
+    if (typeof body.autostart === "boolean") {
+      if (!autostart) return json(res, { error: "start at login is off" }, 501)
+      restart = (await autostart.set(body.autostart)).restart
+    }
+    json(res, { ...view(), restarting: restart })
+    if (restart) setTimeout(() => onRestart?.(), 300)
+    return
   }
   if (get && parts[0] === "sources" && parts.length === 1) {
     await registry.list() // refresh per-source errors
@@ -327,7 +336,7 @@ const LOOPBACK = ["localhost", "127.0.0.1", "[::1]"]
  * `input` is one v1 adapter, one source, or an array of either. Every entry becomes a source;
  * the v1 routes (/api/runs, /api/run/..., /api/crew, /api/x/...) stay as aliases for the first adapter.
  */
-export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, config = null, titlesPath = null, marksPath = null, settingsPath = null, notifier = false, now = () => Date.now(), loops = null, heartbeatMs = 15_000, eventsPollMs = 1000, claudeHome = null, codexHome = null, prs = null } = {}) {
+export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, config = null, titlesPath = null, marksPath = null, settingsPath = null, autostart = null, onRestart = null, notifier = false, now = () => Date.now(), loops = null, heartbeatMs = 15_000, eventsPollMs = 1000, claudeHome = null, codexHome = null, prs = null } = {}) {
   const entries = Array.isArray(input) ? input : [input]
   // Loop thresholds from config.json {"loops": {...}} (re-read when the file changes); `loops` injects them.
   const loopCfg = typeof loops === "function" ? loops : loops ? () => loops : createLoopConfig(config)
@@ -341,7 +350,7 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
   // `config`: path of config.json ({ "hide": [...] }); null reads nothing. The CLI passes ~/.mission-control/config.json.
   // `claudeHome` / `codexHome`: where the config readers look (names only); null reads nothing. The CLI passes the real ones.
   // `prs`: a createPrReader() for the per-PR usage view (null: none, so tests never run gh); budgets come from `config`.
-  const ctx = { adapter, registry, git, hide: createHide(config), now, claudeHome, codexHome, configPath: config, prs, budgets: createBudgets(config), windowConfig: createWindowConfig(config), titles, marks, settings, testNotify: (m) => notifyVia?.(m) ?? null }
+  const ctx = { adapter, registry, git, hide: createHide(config), now, claudeHome, codexHome, configPath: config, prs, budgets: createBudgets(config), windowConfig: createWindowConfig(config), titles, marks, settings, autostart, onRestart, testNotify: (m) => notifyVia?.(m) ?? null }
   if (!existsSync(join(distDir, "index.html"))) {
     console.error(`mission control: no built page at ${join(distDir, "index.html")} — run npm run build`)
   }

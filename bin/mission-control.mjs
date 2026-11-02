@@ -31,6 +31,7 @@ if (argv[0] === "hooks" && argv[1] === "install") {
 const { spawn } = await import("node:child_process")
 const { createServer } = await import("../src/server.mjs")
 const { defaultConfigPath } = await import("../src/hidden.mjs")
+const { createAutostart } = await import("../src/autostart.mjs")
 const { loadClaude, loadCodex, loadSources, parseArgs } = await import("../src/adapters/load.mjs")
 let args
 try { args = parseArgs(argv) } catch (e) {
@@ -76,6 +77,9 @@ try {
     port, config, claudeHome: home, codexHome, prs,
     titlesPath: stateFile("titles.json"), marksPath: stateFile("marks.json"), settingsPath: stateFile("settings.json"),
     notifier: process.platform === "darwin",
+    // Not for a stand-in home (the demo): the agent would go in the real ~/Library/LaunchAgents.
+    autostart: port && !altHome ? createAutostart({ port, argv, script: fileURLToPath(import.meta.url) }) : null,
+    onRestart: () => process.exit(0), // launchd's copy takes the port once this one is gone
   })
 } catch { process.exit(1) }
 
