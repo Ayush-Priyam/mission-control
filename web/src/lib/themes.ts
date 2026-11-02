@@ -294,14 +294,36 @@ export function applyTheme(spec: ThemeSpec, mode: Mode, preset: PresetId = "miss
   write(KEYS.vars, JSON.stringify({ preset, light, dark, shapes: !!spec.shapes }))
 }
 
-/** The stored appearance (default dark), preset (default mission) and custom theme. */
+const HEX = /^#[0-9a-f]{6}$/i
+const isHex = (v: unknown): v is string => typeof v === "string" && HEX.test(v)
+const SURFACE_KEYS: (keyof Surface)[] = ["bg", "card", "muted", "border", "input", "fg", "mutedFg", "faint", "hover", "sidebar"]
+const STATUS_KEYS: (keyof StatusSet)[] = ["running", "needsYou", "failed", "consult", "stopped", "done", "tool", "llm"]
+const allHex = (o: any, keys: string[]) => !!o && typeof o === "object" && keys.every((k) => isHex(o[k]))
+const perMode = (o: any, ok: (v: any) => boolean) => !!o && typeof o === "object" && ok(o.light) && ok(o.dark)
+
+/** A stored custom theme, checked field by field (every colour #rrggbb); null when anything is off. */
+export function validCustom(c: any): CustomTheme | null {
+  if (!c || typeof c !== "object") return null
+  if (c.kind === "pick") return (["neutral", "warm", "cool"] as const).includes(c.base) && isHex(c.accent) ? { kind: "pick", base: c.base, accent: c.accent } : null
+  if (c.kind !== "iterm" || typeof c.name !== "string" || !Array.isArray(c.warnings) || !c.warnings.every((w: unknown) => typeof w === "string")) return null
+  const sp = c.spec
+  if (!sp || typeof sp !== "object") return null
+  const ok =
+    perMode(sp.base, (v) => allHex(v, SURFACE_KEYS)) &&
+    perMode(sp.status, (v) => allHex(v, STATUS_KEYS)) &&
+    perMode(sp.accent, isHex) &&
+    (sp.series === undefined || perMode(sp.series, (v) => Array.isArray(v) && v.length > 0 && v.every(isHex))) &&
+    (sp.shapes === undefined || typeof sp.shapes === "boolean")
+  return ok ? (c as CustomTheme) : null
+}
+
+/** The stored appearance (default dark), preset (default mission) and custom theme (DEFAULT_CUSTOM when missing or corrupt). */
 export function storedTheme(): { appearance: Appearance; preset: PresetId; custom: CustomTheme } {
   const a = read(KEYS.appearance)
   const p = read(KEYS.preset)
   let custom = DEFAULT_CUSTOM
   try {
-    const c = JSON.parse(read(KEYS.custom) ?? "null")
-    if (c && (c.kind === "pick" || c.kind === "iterm")) custom = c
+    custom = validCustom(JSON.parse(read(KEYS.custom) ?? "null")) ?? DEFAULT_CUSTOM
   } catch {}
   return {
     appearance: a === "light" || a === "system" ? a : "dark",

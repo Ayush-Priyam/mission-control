@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import { contrast, ensureContrast } from "./contrast"
-import { BASES, buildTokens, contrastPairs, customSpec, itermTheme, parseItermColors, parseThemeParam, PRESETS, type Mode } from "./themes"
+import { BASES, buildTokens, contrastPairs, customSpec, DEFAULT_CUSTOM, itermTheme, KEYS, parseItermColors, parseThemeParam, PRESETS, storedTheme, type Mode } from "./themes"
 
 const MODES: Mode[] = ["light", "dark"]
 
@@ -94,5 +94,31 @@ describe("?theme= parameter", () => {
     expect(parseThemeParam("blossom")).toEqual({ preset: "blossom", appearance: undefined })
     expect(parseThemeParam("mint-dark")).toEqual({ preset: "mint", appearance: "dark" })
     expect(parseThemeParam("bogus")).toEqual({})
+  })
+})
+
+describe("storedTheme", () => {
+  const custom = (v: string) => {
+    localStorage.clear()
+    localStorage.setItem(KEYS.custom, v)
+    return storedTheme().custom
+  }
+  it("falls back to the default custom theme when the stored one is corrupt or the wrong shape", () => {
+    expect(custom("{not json")).toEqual(DEFAULT_CUSTOM)
+    expect(custom(JSON.stringify({ kind: "pick", base: "neutral", accent: "red" }))).toEqual(DEFAULT_CUSTOM)
+    expect(custom(JSON.stringify({ kind: "pick", base: "lava", accent: "#ff0000" }))).toEqual(DEFAULT_CUSTOM)
+    expect(custom(JSON.stringify({ kind: "iterm", name: "x", warnings: [], spec: {} }))).toEqual(DEFAULT_CUSTOM)
+    const good = itermTheme("Solar", { "Background Color": "#002b36", "Foreground Color": "#eee8d5" })
+    const bad = JSON.parse(JSON.stringify(good))
+    bad.spec.base.dark.bg = "url(javascript:alert(1))"
+    expect(custom(JSON.stringify(bad))).toEqual(DEFAULT_CUSTOM)
+    expect(custom(JSON.stringify({ kind: "iterm" }))).toEqual(DEFAULT_CUSTOM)
+    expect(custom("42")).toEqual(DEFAULT_CUSTOM)
+  })
+  it("keeps a valid stored custom theme", () => {
+    expect(custom(JSON.stringify({ kind: "pick", base: "cool", accent: "#ffff00" }))).toEqual({ kind: "pick", base: "cool", accent: "#ffff00" })
+    const good = itermTheme("Solar", { "Background Color": "#002b36", "Foreground Color": "#eee8d5" })
+    expect(custom(JSON.stringify(good))).toEqual(good)
+    localStorage.clear()
   })
 })
