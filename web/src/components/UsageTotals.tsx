@@ -1,6 +1,7 @@
+import { Strip, StripCell } from "@/components/Panel"
 import { compact, EST_TIP, fmtInt, money, totalTokens, type Usage } from "@/lib/usage"
 
-/** The headline: total tokens for the range, estimated cost under it, and the four token kinds. */
+/** The range's numbers as a summary strip (the item page's style): total, estimated cost, the four token kinds, sessions. */
 export function UsageTotals({ totals, label }: { totals: Usage["totals"]; label: string }) {
   const total = totalTokens(totals)
   const parts: [string, number, string][] = [
@@ -10,26 +11,22 @@ export function UsageTotals({ totals, label }: { totals: Usage["totals"]; label:
     ["Cache read", totals.cacheRead, "Tokens served from the prompt cache (billed far lower)"],
   ]
   return (
-    <section aria-label="Usage totals" className="flex flex-col items-center gap-1 py-2 text-center">
-      <h2 className="font-mono text-xs tracking-widest text-muted-foreground">TOTAL TOKENS · {label.toUpperCase()}</h2>
-      <p data-testid="usage-total" className="text-[clamp(2.25rem,6vw,4.25rem)] font-extrabold leading-none tracking-tight tabular-nums">
-        {fmtInt(total)}
-      </p>
-      <p className="mt-2 font-mono text-xl font-bold text-foreground" title={EST_TIP}>
-        {money(totals.cost)} <span className="text-xs font-normal text-muted-foreground">est. · API prices</span>
-      </p>
-      <dl className="mt-3 flex flex-wrap justify-center gap-x-5 gap-y-1 font-mono text-xs text-muted-foreground">
+    <section aria-label="Usage totals" className="flex flex-col gap-2">
+      <h2 className="font-mono text-xs text-muted-foreground">Total tokens · {label}</h2>
+      <Strip className="grid-cols-2 sm:grid-cols-4 xl:grid-cols-7">
+        <StripCell k="Total tokens" tip={`${fmtInt(total)} tokens`}>
+          <span data-testid="usage-total">{fmtInt(total)}</span>
+        </StripCell>
+        <StripCell k="Cost" tip={EST_TIP} sub="est. · API prices">
+          {money(totals.cost)}
+        </StripCell>
         {parts.map(([k, v, tip]) => (
-          <div key={k} className="flex gap-1.5" title={tip}>
-            <dt>{k}</dt>
-            <dd className="text-foreground">{compact(v)}</dd>
-          </div>
+          <StripCell key={k} k={k} tip={tip}>
+            {compact(v)}
+          </StripCell>
         ))}
-        <div className="flex gap-1.5">
-          <dt>Sessions</dt>
-          <dd className="text-foreground">{fmtInt(totals.sessions)}</dd>
-        </div>
-      </dl>
+        <StripCell k="Sessions">{fmtInt(totals.sessions)}</StripCell>
+      </Strip>
     </section>
   )
 }

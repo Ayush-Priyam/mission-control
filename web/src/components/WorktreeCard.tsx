@@ -5,6 +5,7 @@ import { rollupCounts, worktreeLabel } from "@/lib/tree"
 import { cn } from "@/lib/utils"
 import { doingIcon } from "@/components/LiveActivity"
 import { StatusDot } from "@/components/StatusDot"
+import { shortCommand } from "@/lib/live"
 
 /** One worktree: branch, dirty files, ahead/behind, its live lanes and when it last moved. */
 export function WorktreeCard({
@@ -70,13 +71,13 @@ export function WorktreeCard({
             return (
               <li key={`${l.id}/${l.lane}`} className="flex min-w-0 items-center gap-1.5 font-mono text-xs text-muted-foreground">
                 <StatusDot status="working" className="size-1.5" />
-                <span className="shrink-0 text-running">{l.label}</span>
+                <span className="shrink-0 text-foreground">{l.label}</span>
                 <Icon aria-hidden className="size-3 shrink-0 text-faint" />
-                <span className="truncate">{l.nowDoing ? `${l.nowDoing.name} ${l.nowDoing.summary}` : "thinking…"}</span>
+                <span className="truncate" title={l.nowDoing ? `${l.nowDoing.name} ${l.nowDoing.summary}` : undefined}>{l.nowDoing ? `${l.nowDoing.name} ${shortCommand(l.nowDoing.summary)}` : "thinking…"}</span>
               </li>
             )
           })}
-          {lanes.length > 3 && <li className="font-mono text-xs text-faint">+ {lanes.length - 3} more live</li>}
+          {lanes.length > 3 && <li className="font-mono text-xs text-faint">+ {lanes.length - 3} more working</li>}
         </ul>
       )}
       <div className="mt-auto flex items-center justify-between gap-2 text-xs">
@@ -88,7 +89,6 @@ export function WorktreeCard({
           ))}
         </span>
         <span className="font-mono text-faint">
-          {lanes.length ? <span className="text-running">{lanes.length} live · </span> : null}
           {c.items} {c.items === 1 ? "item" : "items"}
         </span>
       </div>

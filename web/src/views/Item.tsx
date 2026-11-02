@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { Retry } from "@/components/Retry"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -108,7 +109,7 @@ export default function Item({ source, id, tab, call }: { source: string; id: st
     return (
       <Alert variant="destructive">
         <AlertTitle>Could not load {source} · {id}</AlertTitle>
-        <AlertDescription>{item.error ?? "no such item"}</AlertDescription>
+        <AlertDescription className="flex flex-wrap items-center gap-3">{item.error ?? "no such item"}<Retry onRetry={item.reload} /></AlertDescription>
       </Alert>
     )
 
@@ -150,7 +151,7 @@ export default function Item({ source, id, tab, call }: { source: string; id: st
           <TabsContent value="calls" className="pt-4">
             {current === "calls" && (
               <div className="h-[78vh] min-h-[520px] overflow-hidden rounded-xl border bg-card/30">
-                <Calls source={source} id={id} call={call} detail={d} calls={calls.data ?? null} callsError={calls.error} />
+                <Calls source={source} id={id} call={call} detail={d} calls={calls.data ?? null} callsError={calls.error} onRetry={calls.reload} />
               </div>
             )}
           </TabsContent>

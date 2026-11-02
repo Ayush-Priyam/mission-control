@@ -26,3 +26,27 @@ describe("usage table", () => {
     expect(screen.getAllByRole("row")).toHaveLength(121)
   })
 })
+
+describe("chart keyboard (roving focus)", () => {
+  it("rovingKey moves by one in a bar row and by a week in the heatmap, clamped", async () => {
+    const { rovingKey } = await import("@/lib/roving")
+    expect(rovingKey("ArrowRight", 0, 10)).toBe(1)
+    expect(rovingKey("ArrowLeft", 0, 10)).toBe(0)
+    expect(rovingKey("ArrowDown", 3, 10)).toBeNull() // a single row has no up/down
+    expect(rovingKey("ArrowRight", 3, 30, 7)).toBe(10)
+    expect(rovingKey("ArrowDown", 3, 30, 7)).toBe(4)
+    expect(rovingKey("End", 3, 30, 7)).toBe(29)
+  })
+  it("trend bars are buttons with their values, one tab stop, a tooltip on focus", async () => {
+    const { TrendBars } = await import("./TrendBars")
+    const days = ["2026-11-01", "2026-11-02"].map((day, i) => ({ day, in: 100 * (i + 1), out: 0, cacheRead: 0, cacheWrite: 0, cost: 0.5, sessions: 1 }))
+    render(<TrendBars days={days as any} />)
+    const bars = screen.getAllByRole("button")
+    expect(bars.map((b) => b.tabIndex)).toEqual([-1, 0])
+    expect(bars[1].getAttribute("aria-label")).toContain("2026-11-02: 200 tokens")
+    fireEvent.focus(bars[1])
+    expect(screen.getByRole("tooltip").textContent).toContain("2026-11-02 · 200 tokens")
+    fireEvent.keyDown(bars[1], { key: "ArrowLeft" })
+    expect(document.activeElement).toBe(bars[0])
+  })
+})

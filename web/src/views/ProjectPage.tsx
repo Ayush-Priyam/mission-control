@@ -1,29 +1,22 @@
 import { useMemo, useState } from "react"
-import { useProject, type ItemSummary, type ProjectNode } from "@/lib/api"
-import { useNow } from "@/lib/format"
+import { useProject, type ItemSummary, type ProjectNode, type Status } from "@/lib/api"
+import { ago, useNow } from "@/lib/format"
 import { useShared } from "@/lib/projects-context"
 import { toHash } from "@/lib/route"
-import { matchesFilter, worktreeLabel } from "@/lib/tree"
+import { matchesFilter, rollupCounts, worktreeLabel } from "@/lib/tree"
 import { ItemTable } from "@/components/ItemTable"
 import { WorktreeCard } from "@/components/WorktreeCard"
+import { Panel, Strip, StripCell } from "@/components/Panel"
+import { Retry } from "@/components/Retry"
+import { StatusDot } from "@/components/StatusDot"
+import { STATUS_UI } from "@/lib/status-ui"
+import { cn } from "@/lib/utils"
 
 /** A project's items, each carrying its worktree's branch when it has none of its own. */
 export function projectItems(p: ProjectNode, worktree?: string): ItemSummary[] {
   return p.worktrees
     .filter((w) => worktree === undefined || w.path === worktree)
     .flatMap((w) => w.items.map((i) => ({ ...i, branch: i.branch ?? w.branch, project: { key: p.key, name: p.name, worktree: w.path } })))
-}
-
-function Section({ title, aside, children }: { title: string; aside?: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <section className="flex flex-col gap-3">
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-sm font-semibold">{title}</h2>
-        {aside}
-      </div>
-      {children}
-    </section>
-  )
 }
 
 /**
@@ -41,7 +34,14 @@ export default function ProjectPage({ projectKey, worktree }: { projectKey: stri
 
   if (!p) {
     if (project.error)
-      return <p className="text-sm text-failed">{/404/.test(project.error) ? "No such project (it has no sessions or runs now)." : `Could not load the project: ${project.error}`}</p>
+      return /404/.test(project.error) ? (
+        <p className="text-sm text-muted-foreground">No such project (it has no sessions or runs now).</p>
+      ) : (
+        <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-failed">
+          Could not load the project: {project.error}
+          <Retry onRetry={project.reload} />
+        </div>
+      )
     return <div className="h-40 animate-pulse rounded-xl border bg-card/50" aria-label="loading project" />
   }
 
@@ -52,14 +52,17 @@ export default function ProjectPage({ projectKey, worktree }: { projectKey: stri
   const shownCards = idleShown || worktree !== undefined ? cards : used
   const totals = p.worktrees.reduce((n, w) => n + w.counts.items, 0)
 
+  const sum = (k: Status) => cards.reduce((n, w) => n + w.counts[k], 0)
+  const last = cards.map((w) => w.updatedAt).filter((t): t is string => !!t).sort().at(-1) ?? null
+  const status = rollupCounts(cards.map((w) => w.counts))
+  const live = cards.some((w) => w.live)
+  const dirty = cards.reduce((n, w) => n + (w.dirty ?? 0), 0)
+
   return (
-    <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-1">
-        <div className="flex items-baseline gap-3">
-          <h1 className="text-lg font-semibold tracking-tight">{wt ? worktreeLabel(wt) : p.name}</h1>
-          {p.hidden && <span className="rounded bg-secondary px-1.5 py-0.5 font-mono text-xs text-muted-foreground">hidden by default</span>}
-        </div>
-        <p className="font-mono text-xs text-faint">
+    <div className="flex flex-col gap-4">
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <h1 className="min-w-0 truncate text-lg font-bold tracking-tight">{wt ? worktreeLabel(wt) : p.name}</h1>
+        <span className="min-w-0 truncate font-mono text-xs text-faint">
           {wt ? (
             <>
               <a href={toHash({ view: "project", key: p.key })} className="hover:text-foreground">
@@ -68,42 +71,56 @@ export default function ProjectPage({ projectKey, worktree }: { projectKey: stri
               · {wt.path}
             </>
           ) : (
-            <>
-              {p.path || "(no folder)"} · {p.worktrees.length} worktree{p.worktrees.length === 1 ? "" : "s"} · {totals} item{totals === 1 ? "" : "s"}
-            </>
+            p.path || "(no folder)"
           )}
-        </p>
+        </span>
+        {p.hidden && <span className="rounded bg-secondary px-1.5 py-0.5 font-mono text-xs text-muted-foreground">hidden by default</span>}
+        <span className={cn("ml-auto flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-xs", STATUS_UI[status].border, STATUS_UI[status].text)}>
+          <StatusDot status={status} live={live} labelled />
+          {STATUS_UI[status].label}
+        </span>
       </header>
+
+      <Strip label="Project summary" className="grid-cols-2 sm:grid-cols-4 xl:grid-cols-8">
+        <StripCell k={wt ? "Worktree" : "Worktrees"}>{wt ? 1 : p.worktrees.length}</StripCell>
+        <StripCell k="Runs + sessions">{wt ? wt.counts.items : totals}</StripCell>
+        <StripCell k="Needs you" className={sum("waiting") ? "text-needs-you" : undefined}>{sum("waiting")}</StripCell>
+        <StripCell k="Working" className={sum("working") ? "text-running" : undefined}>{sum("working")}</StripCell>
+        <StripCell k="Lanes working" className={lanes.length ? "text-running" : undefined}>{lanes.filter((l) => !wt || l.project?.worktree === wt.path).length}</StripCell>
+        <StripCell k="Failed" className={sum("failed") ? "text-failed" : undefined}>{sum("failed")}</StripCell>
+        <StripCell k="Changed files" tip="Uncommitted files over these worktrees">{dirty ? `±${dirty}` : "0"}</StripCell>
+        <StripCell k="Last activity" tip={last ?? undefined}>{last ? ago(last, now) : "–"}</StripCell>
+      </Strip>
 
       {worktree !== undefined && !wt && <p className="text-sm text-muted-foreground">This worktree has no runs or sessions now.</p>}
 
       {shownCards.length > 0 && (
-        <Section
+        <Panel
           title={wt ? "Worktree" : "Worktrees"}
+          count={wt ? undefined : shownCards.length}
           aside={
             idle > 0 && (
-              <button type="button" onClick={() => setIdleShown((v) => !v)} className="font-mono text-xs text-faint hover:text-foreground">
+              <button type="button" onClick={() => setIdleShown((v) => !v)} className="min-h-6 font-mono text-xs text-faint hover:text-foreground">
                 {idleShown ? "hide idle worktrees" : `+ ${idle} idle worktree${idle === 1 ? "" : "s"}`}
               </button>
             )
           }
+          bodyClassName="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3"
         >
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {shownCards.map((w) => (
-              <WorktreeCard key={w.path} projectKey={p.key} w={w} lanes={lanes.filter((l) => l.project?.worktree === w.path)} now={now} />
-            ))}
-          </div>
-        </Section>
+          {shownCards.map((w) => (
+            <WorktreeCard key={w.path} projectKey={p.key} w={w} lanes={lanes.filter((l) => l.project?.worktree === w.path)} now={now} />
+          ))}
+        </Panel>
       )}
 
-      <Section
+      <Panel
         title="Runs and sessions"
+        count={items.length}
         aside={filter && <span className="font-mono text-xs text-faint">filtered by the status chip</span>}
+        bodyClassName="p-2"
       >
-        <div className="rounded-xl border bg-card p-2">
-          <ItemTable items={items} showProject={false} now={now} empty={filter ? "Nothing here matches the status filter" : "No runs or sessions yet"} />
-        </div>
-      </Section>
+        <ItemTable items={items} showProject={false} now={now} empty={filter ? "Nothing here matches the status filter" : "No runs or sessions yet"} />
+      </Panel>
     </div>
   )
 }

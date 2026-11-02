@@ -77,7 +77,7 @@ describe("Usage page", () => {
     render(<Usage />)
     await waitFor(() => expect(screen.getByTestId("usage-total").textContent).toBe("1,000"))
     const monthSpan = screen.getByLabelText("Usage totals").querySelector("h2")!.textContent!
-    expect(monthSpan).toMatch(/LAST 30 DAYS/)
+    expect(monthSpan).toMatch(/last 30 days/)
     fireEvent.click(screen.getByRole("tab", { name: "Week" }))
     await waitFor(() => expect(screen.getByLabelText("Totals").getAttribute("aria-busy")).toBe("true"))
     const label = screen.getByLabelText("Usage totals").querySelector("h2")!.textContent!
@@ -115,7 +115,7 @@ describe("Usage page", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Week" }))
     await waitFor(() => expect(screen.getByLabelText("Harnesses").getAttribute("aria-busy")).toBe("true"))
     expect(screen.getByLabelText("Totals").getAttribute("aria-busy")).toBeNull()
-    expect(screen.getByLabelText("Usage totals").querySelector("h2")!.textContent).toMatch(/LAST 7 DAYS/)
+    expect(screen.getByLabelText("Usage totals").querySelector("h2")!.textContent).toMatch(/last 7 days/)
     const h = screen.getByLabelText("Harnesses").textContent!
     expect(h).toMatch(/\d{4}-\d{2}-\d{2} → \d{4}-\d{2}-\d{2} · loading…/)
     const monthFrom = new URL(String(vi.mocked(fetch).mock.calls[0][0]), "http://x").searchParams.get("from")!

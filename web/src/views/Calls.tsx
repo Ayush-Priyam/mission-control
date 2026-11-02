@@ -4,6 +4,7 @@ import { CallDetail } from "@/components/CallDetail"
 import { CallList, KIND, chipCounts, filterCalls, type Chip } from "@/components/CallList"
 import { useCalls, useItem, type Call, type ItemDetail, type Lane, type Status } from "@/lib/api"
 import { StatusDot } from "@/components/StatusDot"
+import { Retry } from "@/components/Retry"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { BP, useMedia } from "@/lib/media"
 import { statusLabel } from "@/lib/status-ui"
@@ -45,10 +46,12 @@ type Props = {
   calls?: Call[] | null
   /** Why the given calls failed to load (shown instead of an empty list). */
   callsError?: string | null
+  /** Fetch the given calls again (the item page's loader). */
+  onRetry?: () => void
 }
 
 /** Calls tab: lanes on the left, filtered calls in the middle, the picked call on the right. */
-export default function Calls({ source, id, sessionHref, timelineHref, call, detail: given, calls: givenCalls, callsError }: Props) {
+export default function Calls({ source, id, sessionHref, timelineHref, call, detail: given, calls: givenCalls, callsError, onRetry }: Props) {
   const shared = given !== undefined
   const [poll, setPoll] = useState(0) // poll only while the item is live
   const item = useItem(source, shared ? null : id, poll)
@@ -88,8 +91,9 @@ export default function Calls({ source, id, sessionHref, timelineHref, call, det
   const toSession = sessionHref ?? (() => `${base}/chat`)
   const toTimeline = timelineHref ?? (() => `${base}/timeline`)
 
-  if (item.error && !detail) return <div className="p-6 text-sm text-muted-foreground">Could not load this item ({item.error}).</div>
-  if (calls.error && !calls.data) return <div role="alert" className="p-6 text-sm text-failed">Could not load calls ({calls.error}).</div>
+  const retry = onRetry ?? (() => (item.reload(), fetched.reload()))
+  if (item.error && !detail) return <div className="flex items-center gap-3 p-6 text-sm text-muted-foreground">Could not load this item ({item.error}).<Retry onRetry={retry} /></div>
+  if (calls.error && !calls.data) return <div role="alert" className="flex items-center gap-3 p-6 text-sm text-failed">Could not load calls ({calls.error}).<Retry onRetry={retry} /></div>
   if (!detail || (calls.loading && !calls.data)) return <div className="p-6 text-sm text-muted-foreground">Loading calls…</div>
 
   const used = {

@@ -5,15 +5,9 @@ import { EST_TIP, estCost, span, summarize } from "@/lib/item"
 import { STATUS_TEXT } from "@/components/StatusDot"
 import { statusTitle } from "@/lib/status-ui"
 import { cn } from "@/lib/utils"
+import { Strip, StripCell } from "@/components/Panel"
 
-function Cell({ k, children, tip, className }: { k: string; children: ReactNode; tip?: string; className?: string }) {
-  return (
-    <div className="min-w-0 bg-card px-3 py-2.5" title={tip}>
-      <div className="text-xs text-muted-foreground">{k}</div>
-      <div className={cn("mt-0.5 truncate text-lg font-semibold tracking-tight tabular-nums", className)}>{children}</div>
-    </div>
-  )
-}
+const Cell = StripCell
 
 /** The row of numbers on top of an item: status, running, lanes, duration, calls, errors, tokens, cache, cost, models. */
 export function SummaryStrip({ detail, now }: { detail: ItemDetail; now: number }) {
@@ -33,7 +27,7 @@ export function SummaryStrip({ detail, now }: { detail: ItemDetail; now: number 
       L.total
     )
   return (
-    <section aria-label="Summary" className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-5 xl:grid-cols-10">
+    <Strip label="Summary" className="grid-cols-2 sm:grid-cols-5 xl:grid-cols-10">
       <Cell k="Status" className={cn("text-sm", STATUS_TEXT[s.status])}>
         {statusTitle(s.status)}
       </Cell>
@@ -53,6 +47,6 @@ export function SummaryStrip({ detail, now }: { detail: ItemDetail; now: number 
       <Cell k="Models" className="font-mono text-xs leading-snug font-normal whitespace-normal">
         {s.models.length ? s.models.join(" · ") : "–"}
       </Cell>
-    </section>
+    </Strip>
   )
 }
