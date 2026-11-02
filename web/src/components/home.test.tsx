@@ -105,6 +105,14 @@ describe("ItemTable sorting", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show all 130" }))
     expect(screen.getAllByRole("row")).toHaveLength(131)
   })
+  // minor 5: an unopened session (partial totals) shows "–", not 0 calls and $0.
+  it("shows – for calls and cost of a session whose totals are not known yet", () => {
+    render(<ItemTable items={[item("u", { partial: true }), item("o", { title: "opened", counts: { lanes: 1, calls: 7, errors: 0 } })]} />)
+    const cells = (title: string) => within(screen.getByText(title).closest("tr")!).getAllByRole("cell").map((c) => c.textContent)
+    // columns: title, where, harness, status, lanes, calls, cost, updated
+    expect(cells("title u").slice(5, 7)).toEqual(["–", "–"])
+    expect(cells("opened")[5]).toBe("7")
+  })
 })
 
 describe("LiveActivity", () => {

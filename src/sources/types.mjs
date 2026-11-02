@@ -22,6 +22,7 @@
  * @property {{ lanes: number, calls: number, errors: number }} counts
  * @property {Tokens} tokens
  * @property {number} cost
+ * @property {boolean} [partial]  calls, errors, tokens and cost are not known yet (a session not opened since its files changed)
  *
  * @typedef {Object} Lane
  * @property {string} id

@@ -93,5 +93,15 @@ describe("Calls tab", () => {
     await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(6))
     expect(fetch).not.toHaveBeenCalled()
   })
+
+  // minor 6: a failed calls load is an error, not "no calls".
+  it("shows the calls load error instead of an empty list", async () => {
+    serve({}, [])
+    const detail = { summary: { source: "claude-code", id: "s1", title: "t", live: false, status: "idle" }, lanes } as any
+    render(<Calls source="claude-code" id="s1" detail={detail} calls={null} callsError="HTTP 500" />)
+    expect(screen.getByRole("alert").textContent).toContain("HTTP 500")
+    expect(screen.queryByText(/Loading calls/)).toBeNull()
+    expect(screen.queryAllByRole("option")).toHaveLength(0)
+  })
 })
 

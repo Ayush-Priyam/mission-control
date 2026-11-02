@@ -175,6 +175,8 @@ export type ItemSummary = {
   counts: { lanes: number; calls: number; errors: number }
   tokens: Tokens
   cost: number
+  /** Calls, errors, tokens and cost are not known yet (listed from file heads only). */
+  partial?: boolean
   /** Set by /api/items: the project and worktree the item's cwd belongs to. */
   project?: Placed
   /** Its project is hidden (noise) by default. */

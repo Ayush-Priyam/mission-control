@@ -128,10 +128,10 @@ export function ItemTable({
                 </td>
                 <td className="px-2 text-right font-mono tabular-nums text-muted-foreground">{i.counts.lanes}</td>
                 <td className="px-2 text-right font-mono tabular-nums text-muted-foreground">
-                  {i.counts.calls}
-                  {i.counts.errors > 0 && <span className="ml-1 text-failed">!{i.counts.errors}</span>}
+                  {i.partial ? <span title="not counted until the session is opened">–</span> : i.counts.calls}
+                  {!i.partial && i.counts.errors > 0 && <span className="ml-1 text-failed">!{i.counts.errors}</span>}
                 </td>
-                <td className="px-2 text-right font-mono tabular-nums text-muted-foreground">{money(i.cost)}</td>
+                <td className="px-2 text-right font-mono tabular-nums text-muted-foreground">{i.partial ? "–" : money(i.cost)}</td>
                 <td className="px-2 text-right font-mono tabular-nums text-faint" title={i.updatedAt ?? undefined}>
                   {ago(i.updatedAt, now)}
                 </td>

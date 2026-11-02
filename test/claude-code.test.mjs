@@ -85,10 +85,11 @@ test("tokens count once per assistant message id; cost uses the price table", as
   assert.deepEqual(summary.tokens, { in: 4200, out: 730, cacheRead: 18100, cacheWrite: 500 })
   // After an open, the list carries the totals too.
   const s = src()
-  assert.equal((await s.listItems()).find((i) => i.id === "s1").counts.calls, 0)
+  const unopened = (await s.listItems()).find((i) => i.id === "s1")
+  assert.deepEqual([unopened.counts.calls, unopened.partial], [0, true]) // the page shows "–"
   await s.getItem("s1")
   const listed = (await s.listItems()).find((i) => i.id === "s1")
-  assert.deepEqual([listed.counts.calls, listed.counts.errors, listed.tokens.in], [6, 1, 4200])
+  assert.deepEqual([listed.counts.calls, listed.counts.errors, listed.tokens.in, listed.partial], [6, 1, 4200, undefined])
 })
 
 test("prices: family match, table values, unknown model is free", () => {

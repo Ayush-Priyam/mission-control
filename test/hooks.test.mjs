@@ -124,9 +124,9 @@ test("source: idle reminder is ready, not waiting: status idle, reason, not in n
   const { root, hooksDir } = fixture(withNote("Claude is waiting for your input"), { logMtime: T - 5000 })
   const src = create({ root, hooksDir, now: () => T + 10_000 })
   const [item] = await src.listItems()
-  assert.deepEqual([item.status, item.waiting], ["idle", false])
+  assert.deepEqual([item.status, item.waiting, item.live], ["idle", false, false]) // minor 4: ready is not LIVE
   const got = await src.getItem("sess1")
-  assert.deepEqual([got.summary.status, got.summary.waiting, got.lanes[0].status, got.lanes[0].reason], ["idle", false, "idle", "ready for input"])
+  assert.deepEqual([got.summary.status, got.summary.waiting, got.summary.live, got.lanes[0].status, got.lanes[0].reason], ["idle", false, false, "idle", "ready for input"])
   const ov = await createRegistry([src]).overview()
   assert.deepEqual([ov.counts.waiting, ov.needsYou.length], [0, 0])
 })

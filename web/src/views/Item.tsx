@@ -54,9 +54,9 @@ function Header({ d }: { d: ItemDetail }) {
         {s.harness} · {s.kind}
         {s.branch ? ` · ${s.branch}` : ""}
       </span>
-      <span className={cn("flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[11px]", s.live ? "border-running/40 text-running" : STATUS_TEXT[s.status])}>
-        <StatusDot status={s.live && s.status !== "waiting" ? "working" : s.status} />
-        {s.live ? (s.status === "waiting" ? "LIVE · needs you" : "LIVE") : STATUS_LABEL[s.status]}
+      <span className={cn("flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[11px]", s.live && s.status !== "idle" ? "border-running/40 text-running" : STATUS_TEXT[s.status])}>
+        <StatusDot status={s.live && s.status !== "waiting" && s.status !== "idle" ? "working" : s.status} />
+        {s.live && s.status !== "idle" ? (s.status === "waiting" ? "LIVE · needs you" : "LIVE") : STATUS_LABEL[s.status]}
       </span>
     </header>
   )
@@ -147,7 +147,7 @@ export default function Item({ source, id, tab, call }: { source: string; id: st
           <TabsContent value="calls" className="pt-4">
             {current === "calls" && (
               <div className="h-[78vh] min-h-[520px] overflow-hidden rounded-xl border bg-card/30">
-                <Calls source={source} id={id} call={call} detail={d} calls={calls.data ?? (calls.error ? [] : null)} />
+                <Calls source={source} id={id} call={call} detail={d} calls={calls.data ?? null} callsError={calls.error} />
               </div>
             )}
           </TabsContent>

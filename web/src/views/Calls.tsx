@@ -47,10 +47,12 @@ type Props = {
   /** The item and its calls when the page already polls them (the item page): no second poller. */
   detail?: ItemDetail | null
   calls?: Call[] | null
+  /** Why the given calls failed to load (shown instead of an empty list). */
+  callsError?: string | null
 }
 
 /** Calls tab: lanes on the left, filtered calls in the middle, the picked call on the right. */
-export default function Calls({ source, id, sessionHref, timelineHref, call, detail: given, calls: givenCalls }: Props) {
+export default function Calls({ source, id, sessionHref, timelineHref, call, detail: given, calls: givenCalls, callsError }: Props) {
   const shared = given !== undefined
   const [poll, setPoll] = useState(0) // poll only while the item is live
   const item = useItem(source, shared ? null : id, poll)
@@ -58,7 +60,7 @@ export default function Calls({ source, id, sessionHref, timelineHref, call, det
   const live = item.data?.summary.live === true
   useEffect(() => setPoll(live ? LIVE_POLL : 0), [live])
   const detail = shared ? given : item.data
-  const calls = shared ? { data: givenCalls ?? null, loading: givenCalls == null, error: null } : fetched
+  const calls = shared ? { data: givenCalls ?? null, loading: givenCalls == null && !callsError, error: callsError ?? null } : fetched
 
   const [lane, setLane] = useState<string | null>(null)
   const [chip, setChip] = useState<Chip>("all")
@@ -90,6 +92,7 @@ export default function Calls({ source, id, sessionHref, timelineHref, call, det
   const toTimeline = timelineHref ?? (() => `${base}/timeline`)
 
   if (item.error && !detail) return <div className="p-6 text-sm text-muted-foreground">Could not load this item ({item.error}).</div>
+  if (calls.error && !calls.data) return <div role="alert" className="p-6 text-sm text-failed">Could not load calls ({calls.error}).</div>
   if (!detail || (calls.loading && !calls.data)) return <div className="p-6 text-sm text-muted-foreground">Loading calls…</div>
 
   const used = {

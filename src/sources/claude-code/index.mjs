@@ -281,7 +281,8 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
       source: "claude-code", id: s.id, kind: "session",
       title: mp.meta.title ?? s.id, harness: "claude-code",
       cwd: mp.meta.cwd, branch: mp.meta.branch,
-      live: running, status: w?.waiting ? "waiting" : w?.ready ? "idle" : running ? "working" : "idle", waiting: !!w?.waiting,
+      // A session the hooks call ready (idle reminder) is not live, whatever its file times say.
+      live: running && !w?.ready, status: w?.waiting ? "waiting" : w?.ready ? "idle" : running ? "working" : "idle", waiting: !!w?.waiting,
       startedAt: mp.firstTs, updatedAt: iso(lastMs),
       counts: { lanes: lanes.length, calls: calls.length, errors },
       tokens, cost,
@@ -316,10 +317,11 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
             source: "claude-code", id: s.id, kind: "session",
             title: h.title ?? s.id, harness: "claude-code",
             cwd: h.cwd, branch: h.branch,
-            live, status: w?.waiting ? "waiting" : w?.ready ? "idle" : live ? "working" : "idle", waiting: !!w?.waiting,
+            live: live && !w?.ready, status: w?.waiting ? "waiting" : w?.ready ? "idle" : live ? "working" : "idle", waiting: !!w?.waiting,
             startedAt: h.startedAt, updatedAt: iso(lastMs),
             counts: { lanes: 1 + subs.length, calls: done?.counts.calls ?? 0, errors: done?.counts.errors ?? 0 },
             tokens: done?.tokens ?? zero(), cost: done?.cost ?? 0,
+            ...(done ? {} : { partial: true }), // totals appear once the session is opened
           })
         } catch { /* one unreadable file must not hide the rest */ }
       }
