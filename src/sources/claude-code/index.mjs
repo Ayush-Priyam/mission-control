@@ -16,7 +16,7 @@ const TAIL_BYTES = 64 * 1024
 const WAIT_EXPIRY_MS = 12 * 3600 * 1000
 const CLEAR_GAP_MS = 2000
 const HEAD_BYTES = 64 * 1024
-const TITLE_TAIL = 256 * 1024 // Claude Code re-appends its /rename line every few turns, so the newest sits near the end
+const TITLE_TAIL = 256 * 1024 // Claude Code re-appends its /rename and generated-title lines every few turns, so the newest sit near the end
 const HEAD_MAX = 1024 * 1024 // read forward this far for the first line carrying a cwd
 const SESSIONS = 256 // parsed sessions kept, whatever their lane count
 const SESSION_TEXT = 200_000 // getSession returns at most this many bytes
@@ -44,7 +44,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
   const readWaiting = createWaitingReader() // hook logs, cached by size+mtime, tail-read when large
   const lastTurns = createCache(4096) // path|size|mtime -> newest turn time in the tail of a main log
   const peeked = createCache(8192) // path|size|mtime -> peek of the head, so warm lists skip file reads
-  const renamed = createCache(8192) // path|size|mtime -> newest /rename title in the tail (or null)
+  const tailTitles = createCache(8192) // path|size|mtime -> title from the tail: /rename, else generated (or null)
   const opened = new Map() // id -> { lastMs, summary } of sessions already fully parsed, for list totals
   let liveFiles = [] // main logs of sessions live or waiting at the last listing, for /api/events
   let realRoot = null
@@ -180,8 +180,11 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
     } catch { return 0 } finally { if (fd !== undefined) closeSync(fd) }
   }
 
-  /** The newest /rename title (a custom-title line) in the tail of a main log, or null. */
-  function renamedTitle(file, size) {
+  /**
+   * The title from the tail of a main log: the newest /rename (custom-title line), else the newest title
+   * Claude Code generated (ai-title line); null when neither is there. Both are re-appended every few turns.
+   */
+  function tailTitle(file, size) {
     let fd
     try {
       fd = openSync(file, "r")
@@ -189,14 +192,17 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
       const buf = Buffer.alloc(n)
       readSync(fd, buf, 0, n, size - n)
       const lines = buf.toString("utf8").split("\n")
+      let ai = null
       for (let i = lines.length - 1; i >= 0; i--) {
-        if (!lines[i].includes('"custom-title"')) continue
+        const l = lines[i]
+        if (!l.includes('"custom-title"') && (ai || !l.includes('"ai-title"'))) continue
         try {
-          const j = JSON.parse(lines[i])
+          const j = JSON.parse(l)
           if (j?.type === "custom-title" && typeof j.customTitle === "string" && j.customTitle.trim()) return j.customTitle.trim()
+          if (j?.type === "ai-title" && typeof j.aiTitle === "string" && j.aiTitle.trim()) ai = j.aiTitle.trim()
         } catch { /* half-written or cut first line */ }
       }
-      return null
+      return ai
     } catch { return null } finally { if (fd !== undefined) closeSync(fd) }
   }
 
@@ -385,6 +391,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
       ...readyOf(w),
     }
     if (mp.meta.version) summary.version = mp.meta.version
+    if (mp.meta.recap) summary.recap = mp.meta.recap
     opened.set(s.id, { lastMs, summary })
     return { summary, lanes, calls, events: [] }
   }
@@ -408,8 +415,8 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
           for (const f of subs) lastMs = Math.max(lastMs, confined(join(root, s.slug, s.id, "subagents", f.name))?.st.mtimeMs ?? 0)
           const pk = cache.key(c.real, c.st)
           const h = peeked.get(pk) ?? peeked.set(pk, peekFile(c, s.slug))
-          let rt = renamed.get(pk)
-          if (rt === undefined) rt = renamed.set(pk, renamedTitle(c.real, c.st.size))
+          let rt = tailTitles.get(pk)
+          if (rt === undefined) rt = tailTitles.set(pk, tailTitle(c.real, c.st.size))
           const o = opened.get(s.id)
           const done = o && o.lastMs === lastMs ? o.summary : null
           const live = liveAt(lastMs)

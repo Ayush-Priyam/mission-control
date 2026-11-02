@@ -174,16 +174,20 @@ test("robustness: missing root, empty and garbage files never throw", async () =
   assert.deepEqual([item.lanes.length, item.summary.counts.calls], [1, 0])
 })
 
-test("a /rename past the 64 KB head titles the session; the newest rename wins", async () => {
+test("a /rename, else Claude Code's generated title, past the 64 KB head titles the session", async () => {
   const r = mkdtempSync(join(tmpdir(), "mc-cc-"))
   mkdirSync(join(r, "-p"))
   const user = (text) => JSON.stringify({ type: "user", cwd: "/work", timestamp: "2026-01-01T00:00:00Z", message: { role: "user", content: text } })
   const rename = (t) => JSON.stringify({ type: "custom-title", customTitle: t, sessionId: "s" })
   const filler = Array.from({ length: 100 }, () => user("x".repeat(1000)))
-  writeFileSync(join(r, "-p", "s.jsonl"), [user("a long first prompt"), rename("old"), ...filler, rename("day0paywall"), user("more")].join("\n") + "\n")
+  const ai = (t) => JSON.stringify({ type: "ai-title", aiTitle: t })
+  writeFileSync(join(r, "-p", "s.jsonl"), [user("a long first prompt"), rename("old"), ...filler, rename("day0paywall"), ai("Paywall work"), user("more")].join("\n") + "\n")
+  writeFileSync(join(r, "-p", "g.jsonl"), [user("a long first prompt"), ...filler, ai("Generated title")].join("\n") + "\n")
   const s = create({ root: r })
-  assert.equal((await s.listItems())[0].title, "day0paywall")
+  const titles = Object.fromEntries((await s.listItems()).map((i) => [i.id, i.title]))
+  assert.deepEqual(titles, { s: "day0paywall", g: "Generated title" }) // /rename beats Claude Code's own title
   assert.equal((await s.getItem("s")).summary.title, "day0paywall")
+  assert.equal((await s.getItem("g")).summary.title, "Generated title")
 })
 
 test("open state from <config>/sessions/<pid>.json: busy is working, a dead pid or no file is closed", async () => {
@@ -205,6 +209,12 @@ test("open state from <config>/sessions/<pid>.json: busy is working, a dead pid 
   assert.deepEqual(ready, { busy: false, idle: true, dead: false, none: false, parked: false }) // open and not busy is Ready at once
   assert.equal((await s.getItem("parked")).summary.parkedInto, "busy")
   assert.equal((await s.getItem("busy")).summary.resume, `cd /w && CLAUDE_CONFIG_DIR=${cfg} claude --resume busy`)
+})
+
+test("parseTranscript: the newest away_summary is the recap, without the /config hint", () => {
+  const recap = (t, ts) => JSON.stringify({ type: "system", subtype: "away_summary", content: `${t} (disable recaps in /config)`, timestamp: ts })
+  const p = parseTranscript([recap("old", "2026-11-01T00:00:00Z"), recap("Tests pass; next, commit.", "2026-11-02T00:00:00Z")].join("\n"))
+  assert.deepEqual(p.meta.recap, { text: "Tests pass; next, commit.", ts: "2026-11-02T00:00:00Z" })
 })
 
 test("parseTranscript: half-written last line is skipped", () => {

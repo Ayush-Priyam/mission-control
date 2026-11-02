@@ -212,6 +212,8 @@ export type ItemSummary = {
   parkedInto?: string
   /** The earlier session id of the same chat. */
   continuedFrom?: string
+  /** Claude Code's latest recap of the session (written when you come back to it), item detail only. */
+  recap?: { text: string; ts: string | null }
   /** Shell command that resumes the session in its folder (Claude Code only). */
   resume?: string
   /** Pinned by the owner: listed first. */

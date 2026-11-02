@@ -31,7 +31,7 @@ import { useCalls, useCapabilities, useExtra, useItem, useSources, type ItemDeta
 import { useItemConfig, useItemConflicts } from "@/lib/api-v22"
 import { SameFileWarnings } from "@/components/SameFileWarnings"
 import { extraTabs, normaliseDiff, normaliseTasks, qaRows, runChanges } from "@/lib/extras"
-import { useNow } from "@/lib/format"
+import { ago, useNow } from "@/lib/format"
 import { crewCards, crewGraph, currentStop } from "@/lib/graph"
 import { laneExtras } from "@/lib/item"
 import { laneLinks } from "@/lib/map"
@@ -175,6 +175,12 @@ export default function Item({ source, id, tab, call }: { source: string; id: st
   return (
     <div className="mx-auto flex max-w-[1500px] flex-col gap-4">
       <Header d={d} onRenamed={item.reload} />
+      {d.summary.recap && (
+        <section aria-label="Recap" className="rounded-lg border bg-card px-3 py-2 text-sm">
+          <span className="mr-2 font-mono text-xs text-faint">recap{d.summary.recap.ts ? ` · ${ago(d.summary.recap.ts, now)} ago` : ""}</span>
+          {d.summary.recap.text}
+        </section>
+      )}
       <SummaryStrip detail={d} now={now} />
       {!desktop && <RightRail part="ask" detail={d} calls={null} actions={actions} now={now} onActed={item.reload} flash={youFlash} />}
       <div className={cn("grid gap-6", !wide && "lg:grid-cols-[minmax(0,1fr)_320px]")}>
