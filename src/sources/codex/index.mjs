@@ -122,8 +122,12 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, onPa
 
   const liveAt = (ms) => now() - ms <= LIVE_MS
 
-  /** Newest response item or typed user message (ms) in the tail of a rollout: the session moved on. */
-  function lastTurnMs(file, size) {
+  /**
+   * Newest record (ms) in the tail of a rollout that shows the session moved on: any response item or typed
+   * user message; with `callId` (a wait on one tool call) only that call's output or a typed user message, so
+   * a sibling tool finishing in parallel does not end the wait.
+   */
+  function lastTurnMs(file, size, callId = null) {
     let fd
     try {
       fd = openSync(file, "r")
@@ -135,7 +139,9 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, onPa
         if (!line.includes('"timestamp"')) continue
         try {
           const j = JSON.parse(line)
-          if (j && (j.type === "response_item" || (j.type === "event_msg" && j.payload?.type === "user_message"))) best = Math.max(best, Date.parse(j.timestamp) || 0)
+          const typed = j?.type === "event_msg" && j.payload?.type === "user_message"
+          const item = j?.type === "response_item" && (!callId || (/_output$/.test(j.payload?.type ?? "") && j.payload?.call_id === callId))
+          if (typed || item) best = Math.max(best, Date.parse(j.timestamp) || 0)
         } catch { /* half-written or cut first line */ }
       }
       return best
@@ -156,8 +162,8 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, onPa
     const since = Date.parse(w.since)
     if (Number.isFinite(since)) {
       if (now() - since > WAIT_EXPIRY_MS) return null
-      const k = cache.key(r.c.real, r.c.st)
-      const last = lastTurns.get(k) ?? lastTurns.set(k, lastTurnMs(r.c.real, r.c.st.size))
+      const k = `${cache.key(r.c.real, r.c.st)}|${w.callId ?? ""}`
+      const last = lastTurns.get(k) ?? lastTurns.set(k, lastTurnMs(r.c.real, r.c.st.size, w.callId ?? null))
       if (last > since + CLEAR_GAP_MS) return null
     }
     return w

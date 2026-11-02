@@ -158,10 +158,15 @@ It keeps the event name, session id, time, a `Notification` message cut to 500 c
 - **Ready**: about a minute after a turn ends Claude Code sends an idle reminder ("Claude is waiting for your input"). That is not a block: the session is shown as idle with "ready for input", not in Needs you.
 - A wait also clears when the session's transcript gets a newer message (you answered in the terminal), and it expires after 12 hours.
 
+## Turns and the usage window
+
+The Turns tab lists each assistant message (one per message id) with its input, cache read, cache write and output tokens, context size and estimated cost, with compaction markers and a short "why expensive" hint. The Usage page estimates your current rolling usage window from these logs (see the README's [Usage-window estimate](../README.md#usage-window-estimate)); it is an estimate with a window and limit you set, never Anthropic's actual limits.
+
 ## Privacy
 
 - Everything stays on your machine. The server binds to `127.0.0.1` and `::1` only and refuses other hosts; the page loads nothing from the internet.
 - `~/.claude` is only read, never written. Session file names are confined to the projects directory; `..` and symlinks out of it are refused.
+- For the Calls tab's "Config vs calls", configured names are read and nothing else: MCP server names from `~/.claude.json` and the project's `.mcp.json`, enabled plugin names from `~/.claude/settings.json` and the project's `.claude/settings*.json`, and skill folder names under `~/.claude/skills` and the project's `.claude/skills`. Commands, URLs, env values, headers and tokens are never returned or stored.
 - The only files written are the hook logs (`~/.mission-control/hooks`) and a usage cache (`~/.mission-control/cache`, mode 0600, holds project paths and session ids, no conversation text). Delete either at any time.
 - Costs are estimates from token counts at API list prices, not your bill. A Claude plan is billed differently.
 

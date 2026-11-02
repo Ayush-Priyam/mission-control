@@ -20,7 +20,13 @@ gen.stdout.on("data", (d) => {
   const server = spawn(process.execPath, [join(root, "bin", "mission-control.mjs"), "--claude-dir", "examples/claude", "--runs", "examples/runs", "--no-codex", "--port", port, ...(noOpen ? ["--no-open"] : [])], {
     cwd: root,
     stdio: "inherit",
-    env: { ...process.env, MISSION_CONTROL_HOOKS_DIR: join(root, "examples", "hooks") },
+    // The demo reads its own synthetic home and config, never yours.
+    env: {
+      ...process.env,
+      MISSION_CONTROL_HOOKS_DIR: join(root, "examples", "hooks"),
+      MISSION_CONTROL_HOME: join(root, "examples", "demo-home"),
+      MISSION_CONTROL_DEMO_PRS: join(root, "examples", "demo-prs.json"),
+    },
   })
   server.on("exit", (code) => { gen.kill(); process.exit(code ?? 0) })
   process.on("SIGINT", () => { server.kill("SIGINT"); gen.kill() })

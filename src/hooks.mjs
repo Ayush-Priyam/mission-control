@@ -71,9 +71,11 @@ export function waitingFromHooks(lines) {
   const out = ready ? { waiting: false, ready: true } : { waiting: true }
   if (typeof n.message === "string") out.message = n.message
   if (typeof n.ts === "string") out.since = n.ts
-  // The oldest still-open keyed wait is what blocks the session: report it.
+  // The oldest still-open keyed wait is what blocks the session: report it, with its call id.
   const first = [...open.values()][0]
   if (first !== n && first.callId) { if (typeof first.message === "string") out.message = first.message; if (typeof first.ts === "string") out.since = first.ts }
+  const shown = first !== n && first.callId ? first : n
+  if (typeof shown.callId === "string" && shown.callId) out.callId = shown.callId
   return out
 }
 
