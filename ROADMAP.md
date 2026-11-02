@@ -13,20 +13,26 @@ Ideas and fixes, roughly in the order they'll land. Many came from people trying
 ## Later
 
 - Answer prompts from the browser (allow / deny / pick an option) through the hooks, not by reading the terminal screen.
-- Calls joined to config: MCP servers and skills that are loaded but never used, or used and failing.
-- Why a turn was expensive: per-turn context, cache and compaction view.
-- Two agents editing the same file in different worktrees: warning on the project page.
-- Cost per task, PR or worktree with budget alerts.
-- "Will this finish before my usage window resets?"
+- Cost per task (spec-kit task, Ronin stage).
 - Approve and steer from a phone (local-first PWA).
 - Rewind or fork a session from its log.
-- More readers: opencode, Pi. `CODEX_HOME` support for Codex.
-- Price table entries for newer OpenAI models.
+- More readers: opencode, Pi.
 - A terminal UI over the same data.
 
 ## Known small issues
 
-- Usage page leaves blank space under the harness cards at some widths; one empty cell on phones.
-- A subagent file that fails to read once stays hidden until it changes.
-- Haiku 3 is priced at the Haiku 3.5 rate.
-- Codex: a sibling tool call's hook can clear a wait while another approval is still open (parallel tools).
+None open right now.
+
+## Done in v2.2
+
+- Fixed: the Usage page left blank space under the harness cards at some widths, and one empty cell on phones.
+- Fixed: a subagent file that failed to read once stayed hidden until it changed; it is now retried on the next request.
+- Fixed: Haiku 3 was priced at the Haiku 3.5 rate; it now has its own list price.
+- Fixed (Codex): a sibling tool call's hook could clear a wait while another approval was still open (parallel tools). Waits are keyed by tool call id when the hook payload has one.
+- Codex: `CODEX_HOME` is honoured (sessions default to `$CODEX_HOME/sessions`).
+- Prices for newer OpenAI models (gpt-6-astra, gpt-6.1-sol, gpt-5.6-sol/terra/luna, gpt-5.5, gpt-5.4, gpt-5.4-mini) from OpenAI's pricing page, short-context Standard rates. Models not on that page stay unpriced (–).
+- Calls joined to config: the Calls tab lists each configured MCP server and skill as used, loaded but not used, or failing (by error rate); the project page names MCP servers no recent session called. Config files are read for names only.
+- Same-file warning: two sessions or runs of one project (any worktrees) that edited the same repo-relative path within 30 minutes show a warning on the project page and on both items' rails.
+- Turns view: each assistant turn's input, cache read, cache write and output tokens with an estimated cost, sortable by cost, with markers where the context dropped sharply (compaction) and a short "why expensive" hint. Claude Code and Codex.
+- Cost per pull request (branches mapped to PRs through `gh`, cached, optional) and budgets per project, worktree or branch in `~/.mission-control/config.json`, with bars on the Usage page and a top-bar chip at 80% and 100%.
+- Usage-window estimate (Claude Code): the current rolling window from local logs, with "at this rate you hit the limit in ~1h 40m" when you set your own limit in `config.json` (`usageWindow`), or "no limit set". Always labelled an estimate; it never claims Anthropic's actual limits.

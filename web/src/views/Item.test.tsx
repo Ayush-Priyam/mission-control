@@ -86,5 +86,6 @@ describe("itemTabs", () => {
     expect(itemTabs({ v1Run: false, extras: ["tasks", "diff"], events: [] })).toEqual(["lanes", "map", "calls", "timeline", "chat"])
     expect(itemTabs({ v1Run: true, extras: ["tasks", "diff", "doc"], events: [] })).toEqual(["lanes", "map", "calls", "timeline", "chat", "board", "diff", "docs"])
     expect(itemTabs({ v1Run: false, extras: [], events: [{ type: "qa", rows: [] }] })).toContain("qa")
+    expect(itemTabs({ v1Run: false, extras: [], events: [], turns: true })).toEqual(["lanes", "map", "calls", "timeline", "turns", "chat"])
   })
 })

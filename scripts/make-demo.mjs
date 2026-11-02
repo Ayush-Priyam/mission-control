@@ -37,19 +37,25 @@ let mid = 0, tid = 0
 /** One transcript writer: lines in Claude Code's format (one line per content block, usage repeated). */
 function transcript({ sessionId, cwd, branch, sidechain = false, start }) {
   const lines = []
-  let t = start, ctx = between(4000, 9000)
+  let t = start, ctx = between(4000, 9000), extraWrite = 0
   const base = (type, extra) => ({ type, timestamp: iso(t), cwd, gitBranch: branch, sessionId, version: "2.1.0", ...(sidechain ? { isSidechain: true } : {}), ...extra })
   const w = {
     lines,
     get t() { return t },
     gap(ms) { t += ms; return w },
+    /** The next turn writes `n` new tokens of context (a big file read, a pasted log). */
+    grow(n) { extraWrite += n; return w },
+    /** The context is compacted to about `n` tokens before the next turn. */
+    compact(n) { ctx = n; return w },
     user(text) { lines.push(base("user", { message: { role: "user", content: text } })); return w },
     /** blocks: [{ text } | { tool, input, result?, error?, ms? }]; each tool block gets its result after it ran. */
     turn(model, blocks, { think = 4000 } = {}) {
       t += think
       const id = `msg_${String(++mid).padStart(4, "0")}`
       ctx += between(800, 3200)
-      const usage = { input_tokens: between(300, 1800), output_tokens: between(120, 1400), cache_read_input_tokens: ctx, cache_creation_input_tokens: between(200, 2500) }
+      const usage = { input_tokens: between(300, 1800), output_tokens: between(120, 1400), cache_read_input_tokens: ctx, cache_creation_input_tokens: between(200, 2500) + extraWrite }
+      ctx += extraWrite
+      extraWrite = 0
       const results = []
       for (const b of blocks) {
         if (b.text) { lines.push(base("assistant", { message: { id, model, usage, content: [{ type: "text", text: b.text }] } })); continue }
@@ -120,8 +126,9 @@ function build() {
     tx.turn(OPUS, [skill("brainstorming"), mcp("docs", "query-docs", { libraryId: "/org/router", query: "nested routes" }, "routing docs")])
     tx.turn(OPUS, [read("/work/shop/src/routes.ts"), read("/work/shop/src/cart/store.ts"), grep("useCart")])
     tx.turn(SONNET, [edit("/work/shop/src/cart/CartPage.tsx", ["", "export function CartPage() {}"]), edit("/work/shop/src/routes.ts", ["/cart-old", "/cart"])])
-    tx.turn(SONNET, [bash("npm test -- cart", "", "FAIL cart.test.ts: expected total 42, got 40")])
-    tx.turn(SONNET, [edit("/work/shop/src/cart/store.ts", ["sum + price", "sum + price * qty"]), bash("npm test -- cart", "12 passed")])
+    tx.grow(48000).turn(SONNET, [bash("npm test -- cart", "", "FAIL cart.test.ts: expected total 42, got 40")])
+    tx.turn(SONNET, [read("/work/shop/src/cart/cart.test.ts")])
+    tx.compact(9000).turn(SONNET, [edit("/work/shop/src/cart/store.ts", ["sum + price", "sum + price * qty"]), bash("npm test -- cart", "12 passed")])
     const rev = subagent({ parent: tx, id: "a1", type: "code-reviewer", description: "Review the cart changes against the plan", model: "sonnet", steps: [[read("/work/shop/src/cart/CartPage.tsx"), read("/work/shop/src/cart/store.ts")], [grep("TODO"), { text: "Two small notes, no blockers." }]] })
     tx.turn(OPUS, [rev.call])
     tx.turn(SONNET, [bash("npm run lint", "", "src/cart/CartPage.tsx: unused import"), edit("/work/shop/src/cart/CartPage.tsx", ["import x", ""]), bash("npm run lint", "clean")])
@@ -234,6 +241,20 @@ function build() {
     sessions[id] = writeSession(cwd, id, tx, { summary: "Fix checkout total rounding", endMs: now - 15000 })
   }
 
+  // --- a recent session on main that edited the same file as the live one (same-file warning)
+  {
+    const cwd = "/work/api", id = "sess-api-hotfix"
+    const tx = transcript({ sessionId: id, cwd, branch: "main", start: now - 28 * MIN })
+    tx.user("hotfix: the limiter header is missing on 429 responses")
+    tx.turn(SONNET, [read("/work/api/src/middleware/rateLimit.ts")])
+    tx.turn(SONNET, [edit("/work/api/src/middleware/rateLimit.ts", ["res.status(429)", "res.set('Retry-After', s).status(429)"]), bash("npm test -- rateLimit", "4 passed")])
+    tx.turn(SONNET, [{ text: "Header added; tests pass." }])
+    const shift = now - 9 * MIN - tx.t
+    for (const l of tx.lines) l.timestamp = iso(Date.parse(l.timestamp) + shift)
+    tx.gap(shift)
+    sessions[id] = writeSession(cwd, id, tx, { summary: "Retry-After header on 429", endMs: now - 9 * MIN })
+  }
+
   // --- the LIVE session: last turn 20 s ago, one subagent still running
   {
     const cwd = "/work/api", id = "sess-api-live"
@@ -254,6 +275,27 @@ function build() {
   return sessions
 }
 let liveTarget = null
+
+/** A synthetic home for the config readers and a config.json with budgets and a usage window. */
+function buildHome() {
+  const home = join(out, "demo-home")
+  rmSync(home, { recursive: true, force: true })
+  mkdirSync(join(home, ".claude"), { recursive: true })
+  writeFileSync(join(home, ".claude.json"), JSON.stringify({ mcpServers: { docs: { command: "docs-mcp" }, browser: { command: "browser-mcp" }, tracker: { command: "tracker-mcp" } } }, null, 2))
+  for (const sk of ["brainstorming", "test-driven-development", "deploy-checklist", "release-notes"]) {
+    mkdirSync(join(home, ".claude", "skills", sk), { recursive: true })
+    writeFileSync(join(home, ".claude", "skills", sk, "SKILL.md"), `---\nname: ${sk}\n---\n`)
+  }
+  mkdirSync(join(home, ".mission-control"), { recursive: true })
+  writeFileSync(join(home, ".mission-control", "config.json"), JSON.stringify({
+    budgets: [{ scope: "project", match: "api", daily: 0.75 }, { scope: "branch", match: "feat/*", weekly: 20 }, { scope: "worktree", match: "shop", monthly: 40 }],
+    usageWindow: { hours: 5, limitTokens: 120000 },
+  }, null, 2))
+  writeFileSync(join(out, "demo-prs.json"), JSON.stringify([
+    { headRefName: "feat/rate-limit", number: 57, title: "Per-key rate limiting", state: "OPEN" },
+    { headRefName: "feat/search", number: 42, title: "Search endpoint and search bar", state: "OPEN" },
+  ]))
+}
 
 // ---------------------------------------------------------------- native runs (Ronin-style)
 
@@ -390,6 +432,7 @@ function buildRuns() {
 // ---------------------------------------------------------------- go
 
 const sessions = build()
+buildHome()
 const busy = buildRuns()
 console.log(`demo data in ${out}: ${Object.keys(sessions).length} sessions, 5 runs, 1 waiting, 1 ready, 1 looping`)
 

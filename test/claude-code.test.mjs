@@ -105,7 +105,7 @@ test("I4 prices: by family and version, list-price estimate", () => {
     "claude-opus-4-1-20250805": "opus-4", "claude-opus-4-1": "opus-4", "claude-opus-4-20250514": "opus-4", "claude-3-opus-20240229": "opus-4",
     "claude-opus-4-5-20251101": "opus", "claude-opus-4-6": "opus", "claude-opus-5-5": "opus", "claude-opus-5": "opus", opus: "opus", "Opus 4.5": "opus",
     "claude-sonnet-4-5": "sonnet", "claude-3-7-sonnet-20250219": "sonnet", sonnet: "sonnet",
-    "claude-3-5-haiku-20241022": "haiku-3", "claude-haiku-4-5-20251001": "haiku", haiku: "haiku",
+    "claude-3-5-haiku-20241022": "haiku-3-5", "claude-3-haiku-20240307": "haiku-3", "claude-haiku-4-5-20251001": "haiku", haiku: "haiku",
     "gpt-x": null, "": null,
   }
   for (const [m, f] of Object.entries(cases)) assert.equal(family(m), f, m)
@@ -120,6 +120,9 @@ test("I4 prices: by family and version, list-price estimate", () => {
   assert.deepEqual(pair("claude-sonnet-4-5"), [3, 15])
   assert.deepEqual(pair("claude-3-5-haiku-20241022"), [0.8, 4])
   assert.deepEqual(pair("claude-haiku-4-5"), [1, 5])
+  // Haiku 3 has its own (lower) list price, with its published cache rates
+  assert.deepEqual(pair("claude-3-haiku-20240307"), [0.25, 1.25])
+  near(costOf("claude-3-haiku-20240307", { in: 0, out: 0, cacheRead: 1e6, cacheWrite: 1e6 }), 0.03 + 0.3)
   near(costOf("claude-opus-5-5", { in: 0, out: 0, cacheRead: 1e6, cacheWrite: 1e6 }), 5 * 0.1 + 5 * 1.25)
 })
 
@@ -306,4 +309,17 @@ test("minor 8: a transcript is read in chunks, never as one string, and getSessi
   const sess = await s.getSession("big", "main.jsonl")
   assert.equal(sess.truncated, true)
   assert.equal(Buffer.byteLength(sess.text) <= 200_000 + 3, true)
+})
+
+test("v2.2: a subagent file that fails to read once is retried on the next call, not hidden until it changes", async (t) => {
+  if (process.getuid?.() === 0) return t.skip("root reads anything")
+  const b = bigSession(1)
+  const { chmodSync } = await import("node:fs")
+  const s = create({ root: b.root })
+  chmodSync(b.sub(0), 0o000)
+  try {
+    assert.equal((await s.getItem("big")).lanes.length, 1, "unreadable subagent is left out")
+  } finally { chmodSync(b.sub(0), 0o644) }
+  // Same size and mtime as before (chmod changes neither): the lane must still appear now.
+  assert.equal((await s.getItem("big")).lanes.length, 2)
 })

@@ -14,13 +14,20 @@ import {
   type By, type Group, type Range, type SeriesDay, type Usage as UsageData,
 } from "@/lib/usage"
 import { cn } from "@/lib/utils"
+import { BudgetBars } from "@/components/Budgets"
+import { useBudgets, usePrUsage, useUsageWindow, type PrRow } from "@/lib/api-v22"
+import { UsageWindowCard } from "@/components/UsageWindowCard"
 
-export type TableTab = "day" | "project" | "worktree" | "branch"
+/** A PR as a table row: "#42 title", with project and branch under it. */
+export const prRow = (r: PrRow): UsageRowView => ({ ...r, label: `#${r.pr.number} ${r.pr.title}`, sub: `${r.projectName} · ${r.branch}${r.pr.state ? ` · ${r.pr.state}` : ""}` })
+
+export type TableTab = "day" | "project" | "worktree" | "branch" | "pr"
 const TABLES: { id: TableTab; label: string; name: string }[] = [
   { id: "day", label: "Daily breakdown", name: "Date" },
   { id: "project", label: "Projects", name: "Project" },
   { id: "worktree", label: "Worktrees", name: "Worktree" },
   { id: "branch", label: "Branches", name: "Branch" },
+  { id: "pr", label: "Pull requests", name: "Pull request" },
 ]
 const HARNESS_NAMES: Record<string, string> = { "claude-code": "Claude Code", ronin: "Ronin", codex: "Codex", "spec-kit": "Spec Kit" }
 const harnessName = (k: string) => HARNESS_NAMES[k] ?? k
@@ -56,7 +63,10 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
   const main = useUsage(url("model"), poll)
   const harness = useUsage(url("harness"), poll)
   const half = useUsage(url("harness", { from: shiftDay(today, -(HEAT_DAYS - 1)), to: today }), poll)
-  const grouped = useUsage(table === "day" ? null : url(table), poll)
+  const grouped = useUsage(table === "day" || table === "pr" ? null : url(table as By), poll)
+  const prs = usePrUsage(table === "pr" ? dates : null, tz)
+  const budgets = useBudgets(tz)
+  const usageWindow = useUsageWindow(tz)
 
   const partial = [main, harness, half].some((r) => r.data && !r.data.complete)
   useEffect(() => setScanning(partial), [partial])
@@ -94,7 +104,7 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
   const firstDay = (range === "all" ? u.series : halfSeries)[0]?.day
 
   const dailyRows: UsageRowView[] = [...u.series].reverse().map((d) => ({ ...d, key: d.day, label: d.day }))
-  const tableRows = table === "day" ? dailyRows : (grouped.data?.groups ?? []).map((g) => groupRow(g, table))
+  const tableRows = table === "day" ? dailyRows : table === "pr" ? (Array.isArray(prs.data?.rows) ? prs.data.rows : []).map(prRow) : (grouped.data?.groups ?? []).map((g) => groupRow(g, table))
   const tableMeta = TABLES.find((t) => t.id === table)!
   const toTable = () => {
     setTable("day")
@@ -133,8 +143,15 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
       <div aria-label="Totals" {...busy(main.stale)}>
         <UsageTotals totals={u.totals} label={main.stale ? spanOf(u) : RANGE_LABEL[range]} />
       </div>
+      {usageWindow.data && "available" in usageWindow.data && <UsageWindowCard w={usageWindow.data} />}
+      {Array.isArray(budgets.data?.budgets) && budgets.data.budgets.length > 0 && (
+        <Panel title="Budgets" aside={<span className="font-mono text-xs text-faint">est. · from config.json</span>}>
+          <BudgetBars budgets={budgets.data.budgets} />
+        </Panel>
+      )}
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+      {/* items-start: each panel keeps its own height, so the shorter one leaves no blank band inside its card */}
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
         <Panel
           title="Split"
           aside={
@@ -235,7 +252,14 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
           </div>
         </div>
         <div className="p-2 sm:p-3">
-          {table !== "day" && !grouped.data ? (
+          {table === "pr" ? (
+            !prs.data ? (
+              <Skeleton className="h-40 w-full" />
+            ) : (
+              <UsageTable key={`pr-${range}`} rows={Array.isArray(prs.data.rows) ? tableRows : []} nameLabel={tableMeta.name} defaultSort="cost"
+                empty={prs.data.gh ? "No branch in this range maps to a pull request." : "Pull requests come from the GitHub CLI (gh); it is not installed or not logged in here."} />
+            )
+          ) : table !== "day" && !grouped.data ? (
             grouped.error ? (
               <div className="flex items-center gap-3 p-3 font-mono text-xs text-failed">
                 {grouped.error}

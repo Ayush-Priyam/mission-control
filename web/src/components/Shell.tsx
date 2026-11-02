@@ -13,6 +13,9 @@ import { useTheme } from "@/lib/use-theme"
 import { CommandPalette, isPaletteKey } from "@/components/CommandPalette"
 import { Sidebar } from "@/components/Sidebar"
 import { chipCounts, StatusChips } from "@/components/StatusChips"
+import { BudgetChip } from "@/components/Budgets"
+import { useBudgets } from "@/lib/api-v22"
+import { browserTz } from "@/lib/api"
 
 const SIDEBAR_KEY = "mission-control-sidebar"
 
@@ -96,6 +99,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
   const [palette, setPalette] = useState(false)
   const { projects, visible: tree, hiddenCount, showHidden, setShowHidden, overview, filter, setFilter } = useShared()
   const sources = useSources()
+  const budgets = useBudgets(browserTz())
   // The item route's summary, placed in its project: for the crumbs and the sidebar selection.
   const isItem = route.view === "item"
   const found = useItems(isItem ? { all: true, source: route.source, id: route.id } : {}, isItem, false)
@@ -152,6 +156,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
         </a>
         <StatusChips counts={counts} active={filter} onPick={setFilter} />
         <div className="ml-auto flex shrink-0 items-center gap-2">
+          <BudgetChip budgets={budgets.data?.budgets} />
           <FreshnessBadge />
           <span data-working-line className="hidden items-center gap-1.5 border-l pl-2 font-mono text-xs whitespace-nowrap text-faint xl:flex">
             {workingLine(overview.data?.live ?? [])}

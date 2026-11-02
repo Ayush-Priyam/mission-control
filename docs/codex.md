@@ -14,15 +14,16 @@ npm run build
 node bin/mission-control.mjs
 ```
 
-Codex is on whenever `~/.codex/sessions` exists, and sits next to Claude Code if you use both. Open `http://localhost:4319`; Codex sessions carry the harness `codex`.
+Codex is on whenever `$CODEX_HOME/sessions` exists (`CODEX_HOME` defaults to `~/.codex`, as in Codex itself), and sits next to Claude Code if you use both. Open `http://localhost:4319`; Codex sessions carry the harness `codex`.
 
 ```bash
-node bin/mission-control.mjs --codex-dir /work/codex-home/sessions   # Codex home elsewhere (CODEX_HOME)
+CODEX_HOME=/work/codex-home node bin/mission-control.mjs              # Codex home elsewhere
+node bin/mission-control.mjs --codex-dir /work/codex-home/sessions   # or name the sessions dir directly
 node bin/mission-control.mjs --no-claude                              # Codex only
 node bin/mission-control.mjs --no-codex                               # leave Codex out
 ```
 
-`--codex-dir` takes the `sessions` directory itself, and turns Codex on even when `~/.codex` does not exist.
+`--codex-dir` takes the `sessions` directory itself, wins over `CODEX_HOME`, and turns Codex on even when that directory's parent does not exist.
 
 ## What it reads
 
@@ -67,7 +68,11 @@ Spawned agents never appear as sessions of their own on the home page.
 
 ## Costs
 
-Costs are API list-price estimates, marked "est." on the page. OpenAI prices are a dated table in `src/sources/claude-code/prices.mjs` (for example `gpt-5` at $1.25 per million input tokens, $0.125 cached, $10 output). Only model ids in that table are priced, after dropping a date suffix such as `-2025-08-07`. Any other id, including a newer version, costs 0 and shows as "–" (no price) rather than borrowing an older model's price. If you use Codex with a ChatGPT plan you are not billed per token at all; the number shows what the same tokens would cost on the API.
+Costs are API list-price estimates, marked "est." on the page. OpenAI prices are a dated table in `src/sources/claude-code/prices.mjs` (for example `gpt-5` at $1.25 per million input tokens, $0.125 cached, $10 output; `gpt-5.6-sol` at $4 / $0.40 cached / $20, with a cache write at the listed 30-minute rate of $5). Newer models are taken from OpenAI's pricing page at the short-context (up to 272K input) Standard rate; longer prompts are billed higher by OpenAI and are underestimated here. Only model ids in that table are priced, after dropping a date suffix such as `-2025-08-07`. Any other id, including a newer version, costs 0 and shows as "–" (no price) rather than borrowing an older model's price. If you use Codex with a ChatGPT plan you are not billed per token at all; the number shows what the same tokens would cost on the API.
+
+## Turns
+
+The Turns tab lists one row per `token_count` event (a model call): input, cached input, cache write and output tokens with an estimated cost, sortable by cost, with a marker where the context dropped sharply.
 
 ## Needs you: Codex hooks
 
@@ -180,20 +185,21 @@ Every entry runs `mission-control hook codex`. It reads Codex's JSON, maps the e
 | Codex event | recorded as | effect |
 |---|---|---|
 | `PermissionRequest` | `Notification`, with a message naming the tool and its description | the session is waiting on you |
-| `PreToolUse`, `PostToolUse` | `PreToolUse` | clears a wait (the tool was approved and runs) |
+| `PreToolUse`, `PostToolUse` | `PreToolUse` | clears the wait for the same tool call (the tool was approved and runs) |
 | `UserPromptSubmit` | `UserPromptSubmit` | clears a wait |
 | `Stop` | `Stop` | clears a wait; the turn ended, so the session is **Ready** for 30 minutes |
 | `Interrupt` | `Stop` | clears a wait (you interrupted it); not ready |
 | `SubagentStop` | `SubagentStop` | recorded, no effect on waiting |
 
-Other events (`SessionStart`, `SessionEnd`, compaction) are ignored. Only the event, session id, time, tool name, the approval message and, for `PermissionRequest` and `PreToolUse`, a short target (the first 120 characters of the command or file path) are kept; other tool inputs and outputs are not stored. The hook never prints and always exits 0.
+Other events (`SessionStart`, `SessionEnd`, compaction) are ignored. Only the event, session id, time, tool name, the tool call id (when the payload has `tool_use_id` or `call_id`), the approval message and, for `PermissionRequest` and `PreToolUse`, a short target (the first 120 characters of the command or file path) are kept; other tool inputs and outputs are not stored. The hook never prints and always exits 0.
 
 ```jsonl
-{"event":"Notification","codexEvent":"PermissionRequest","sessionId":"0199a1b2-...","ts":"2026-11-02T10:01:00.000Z","tool":"Bash","message":"Codex needs your approval to use Bash: install dependencies"}
-{"event":"PreToolUse","codexEvent":"PostToolUse","sessionId":"0199a1b2-...","ts":"2026-11-02T10:01:20.000Z","tool":"Bash"}
+{"event":"Notification","codexEvent":"PermissionRequest","sessionId":"0199a1b2-...","ts":"2026-11-02T10:01:00.000Z","tool":"Bash","callId":"call_a1","message":"Codex needs your approval to use Bash: install dependencies"}
+{"event":"PreToolUse","codexEvent":"PostToolUse","sessionId":"0199a1b2-...","ts":"2026-11-02T10:01:05.000Z","tool":"Read","callId":"call_b2"}
+{"event":"PreToolUse","codexEvent":"PreToolUse","sessionId":"0199a1b2-...","ts":"2026-11-02T10:01:20.000Z","tool":"Bash","callId":"call_a1"}
 ```
 
-A wait also clears when the rollout gets a newer response item (Codex moved on), and it expires after 12 hours.
+Waits are kept per tool call: with parallel tools, a sibling call starting or finishing (`call_b2` above) does not clear the approval still open for `call_a1`; a hook line without a call id clears every wait, as before. A wait also clears when the rollout gets a newer response item (Codex moved on), and it expires after 12 hours.
 
 ### What is not covered
 
@@ -205,7 +211,7 @@ A wait also clears when the rollout gets a newer response item (Codex moved on),
 ## Privacy
 
 - Everything stays on your machine. The server binds to `127.0.0.1` and `::1` only; the page loads nothing from the internet.
-- `~/.codex` is only read, never written. Only `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` files are opened, and symlinks out of the sessions directory are refused. `auth.json`, `config.toml`, the SQLite databases and `history.jsonl` are never read.
+- `~/.codex` (or `$CODEX_HOME`) is only read, never written. Rollouts are read from `sessions/YYYY/MM/DD/rollout-*.jsonl`, and symlinks out of the sessions directory are refused. `config.toml` is scanned for `[mcp_servers.<name>]` table names only (for the Calls tab's "Config vs calls"); no value in it is read. `auth.json`, the SQLite databases and `history.jsonl` are never read.
 - The only files written are the hook logs (`~/.mission-control/hooks/codex`) and a usage cache (`~/.mission-control/cache`, mode 0600: project paths, session ids and token sums, no conversation text).
 
 ## Troubleshooting

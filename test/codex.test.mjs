@@ -257,3 +257,80 @@ test("ready: a Codex turn that ended (Stop hook) is ready for 30 minutes, then j
   const cut = (await src(base + 60_000, { hooksDir }).listItems()).find((i) => i.id === C1)
   assert.equal(cut.ready, undefined)
 })
+
+test("v2.2 waiting: parallel tools — a sibling call's hooks do not clear an open approval keyed by call id", async () => {
+  const hooksDir = mkdtempSync(join(tmpdir(), "mc-hooks-"))
+  const base = Math.max(lastMs, Date.parse("2026-11-01T09:01:00Z"))
+  const at = (ms) => () => new Date(ms)
+  const raw = (o) => JSON.stringify({ session_id: C1, cwd: "/work/shop", ...o })
+  const rec = (o, ms) => recordCodexHook({ raw: raw(o), hooksDir, now: at(base + ms) })
+  rec({ hook_event_name: "PreToolUse", tool_name: "Read", tool_use_id: "call_b" }, 1_000)
+  rec({ hook_event_name: "PermissionRequest", tool_name: "Bash", tool_use_id: "call_a", tool_input: { description: "rm build" } }, 2_000)
+  rec({ hook_event_name: "PostToolUse", tool_name: "Read", tool_use_id: "call_b" }, 3_000) // the sibling finishes
+  const line = JSON.parse(readFileSync(join(hooksDir, "codex", `${C1}.jsonl`), "utf8").split("\n")[1])
+  assert.equal(line.callId, "call_a")
+  let w = (await src(base + 30_000, { hooksDir }).listItems()).find((i) => i.id === C1)
+  assert.deepEqual([w.status, w.waiting], ["waiting", true], "sibling PostToolUse must not clear call_a's wait")
+  rec({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_use_id: "call_a" }, 4_000) // approved: call_a starts
+  w = (await src(base + 30_000, { hooksDir }).listItems()).find((i) => i.id === C1)
+  assert.equal(w.waiting, false)
+})
+
+test("v2.2 waiting: keyed waits — two open approvals need both answered; Stop clears all; unkeyed events keep the old rule", async () => {
+  const { waitingFromHooks } = await import("../src/hooks.mjs")
+  const N = (callId, ts) => ({ event: "Notification", message: `ask ${callId}`, callId, ts })
+  const P = (callId) => ({ event: "PreToolUse", ...(callId ? { callId } : {}) })
+  assert.deepEqual(waitingFromHooks([N("a", "t1"), N("b", "t2"), P("b")]), { waiting: true, message: "ask a", since: "t1", callId: "a" })
+  assert.equal(waitingFromHooks([N("a", "t1"), N("b", "t2"), P("b"), P("a")]).waiting, false)
+  assert.equal(waitingFromHooks([N("a", "t1"), N("b", "t2"), { event: "Stop" }]).waiting, false)
+  assert.equal(waitingFromHooks([N("a", "t1"), P()]).waiting, false, "a tool event with no id clears as before")
+  assert.equal(waitingFromHooks([{ event: "Notification", message: "x" }, P("zz")]).waiting, false, "an unkeyed wait clears on any tool event")
+})
+
+test("v2.2: CODEX_HOME moves the default sessions dir; --codex-dir still wins", async () => {
+  const home = mkdtempSync(join(tmpdir(), "mc-home-"))
+  const codexHome = mkdtempSync(join(tmpdir(), "mc-codexhome-"))
+  // CODEX_HOME set but no sessions dir there: off (the ~/.codex default is not consulted)
+  mkdirSync(join(home, ".codex", "sessions"), { recursive: true })
+  assert.equal(await loadCodex([], process.cwd(), home, { CODEX_HOME: codexHome }), null)
+  mkdirSync(join(codexHome, "sessions"), { recursive: true })
+  const s = await loadCodex([], process.cwd(), home, { CODEX_HOME: codexHome })
+  assert.equal(s.describe().source, join(codexHome, "sessions"))
+  assert.equal((await loadCodex([], process.cwd(), home, {})).describe().source, join(home, ".codex", "sessions"))
+  assert.equal((await loadCodex(["--codex-dir", root], process.cwd(), home, { CODEX_HOME: codexHome })).describe().source, root)
+})
+
+test("v2.2 prices: current OpenAI models from the official pricing page (short-context Standard rates)", () => {
+  const m = (model) => openaiPrice(model)
+  assert.deepEqual(m("gpt-5.6-sol"), { input: 4, output: 20, cacheRead: 0.4, cacheWrite: 5 })
+  assert.deepEqual(m("gpt-6.1-sol"), { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 })
+  assert.deepEqual(m("gpt-5.5"), { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 5 })
+  assert.deepEqual(m("gpt-5.4-mini"), { input: 0.75, output: 4.5, cacheRead: 0.075, cacheWrite: 0.75 })
+  assert.ok(m("gpt-6-astra") && m("gpt-5.6-luna") && m("gpt-5.6-terra") && m("gpt-5.4"))
+  assert.equal(m("gpt-reserve"), null, "not on the pricing page: unpriced")
+  assert.equal(costOf("gpt-reserve", { in: 1e6, out: 1e6, cacheRead: 0, cacheWrite: 0 }), 0)
+})
+
+test("v2.2 waiting: a sibling call's output in the rollout does not end a keyed wait; the waited call's output does", async () => {
+  const { appendFileSync } = await import("node:fs")
+  const r = mkdtempSync(join(tmpdir(), "mc-cx-"))
+  const dir = join(r, "2026", "11", "02")
+  mkdirSync(dir, { recursive: true })
+  const id = "55555555-5555-4555-8555-555555555555"
+  const file = join(dir, `rollout-2026-11-02T10-00-00-${id}.jsonl`)
+  const T = Date.parse("2026-11-02T10:00:00Z")
+  const at = (s) => new Date(T + s * 1000).toISOString()
+  writeFileSync(file, [
+    JSON.stringify({ timestamp: at(0), type: "session_meta", payload: { id, cwd: "/w" } }),
+    JSON.stringify({ timestamp: at(1), type: "response_item", payload: { type: "function_call", name: "shell", arguments: "{}", call_id: "call_a" } }),
+    JSON.stringify({ timestamp: at(1), type: "response_item", payload: { type: "function_call", name: "read", arguments: "{}", call_id: "call_b" } }),
+  ].join("\n") + "\n")
+  const hooksDir = mkdtempSync(join(tmpdir(), "mc-hooks-"))
+  recordCodexHook({ raw: JSON.stringify({ session_id: id, hook_event_name: "PermissionRequest", tool_name: "shell", tool_use_id: "call_a" }), hooksDir, now: () => new Date(T + 2000) })
+  const waiting = async () => (await create({ root: r, hooksDir, now: () => T + 60_000 }).listItems())[0].waiting
+  assert.equal(await waiting(), true)
+  appendFileSync(file, JSON.stringify({ timestamp: at(10), type: "response_item", payload: { type: "function_call_output", call_id: "call_b", output: "ok" } }) + "\n")
+  assert.equal(await waiting(), true, "the sibling finishing is not the session moving on")
+  appendFileSync(file, JSON.stringify({ timestamp: at(20), type: "response_item", payload: { type: "function_call_output", call_id: "call_a", output: "ok" } }) + "\n")
+  assert.equal(await waiting(), false)
+})

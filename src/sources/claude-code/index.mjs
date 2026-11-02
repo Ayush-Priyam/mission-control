@@ -8,6 +8,7 @@ import { createTail, parseFileWith } from "./tail.mjs"
 import { costOf } from "./prices.mjs"
 import { LOOP_DEFAULTS, applyLoops, tokenMessages } from "../../loops.mjs"
 import { createUsageScanner } from "./usage.mjs"
+import { turnCosts } from "../../turn-costs.mjs"
 
 const LIVE_MS = 2 * 60 * 1000
 const TAIL_BYTES = 64 * 1024
@@ -233,9 +234,10 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
     const mp = read(main, "main")
     if (!mp) return null
     const subs = []
+    const okStamp = [id(main)] // only files that were read: a failed one makes the next call's stamp differ, so it is retried
     for (const a of found) {
       const p = read(a.c, `agent-${a.aid}`)
-      if (p) subs.push({ aid: a.aid, p, meta: readMeta(a.m), mt: a.c.st.mtimeMs })
+      if (p) { subs.push({ aid: a.aid, p, meta: readMeta(a.m), mt: a.c.st.mtimeMs }); okStamp.push(`${id(a.c)}>${id(a.m)}`) }
     }
     const calls = mp.calls.map((c) => ({ ...c }))
     const byUse = new Map(calls.map((c) => [c.id, c]))
@@ -248,7 +250,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
     calls.sort((x, y) => x.ts.localeCompare(y.ts))
     const lastMs = Math.max(main.st.mtimeMs, ...subs.map((a) => a.mt))
     const data = { main, mp, subs, calls, lastMs }
-    sessions.set(s.id, { stamp, tails, data })
+    sessions.set(s.id, { stamp: okStamp.length === found.length + 1 ? stamp : okStamp.join("\n"), tails, data })
     return data
   }
 
@@ -382,6 +384,15 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
       return { lane, total: all.length, start, turns: all.slice(start, end) }
     },
 
+    /** Per-turn tokens, cost and compaction markers of one lane ("main" or "agent-<id>"); null when unknown. */
+    async getTurnCosts(id, lane = "main") {
+      const s = locate(id)
+      const d = s && parsed(s)
+      if (!d) return null
+      const p = lane === "main" ? d.mp : d.subs.find((a) => `agent-${a.aid}` === lane)?.p
+      return p ? { lane, ...turnCosts(p.messages, costOf) } : null
+    },
+
     /** Raw transcript text: "main.jsonl" (or "<id>.jsonl") or "agent-<id>.jsonl". Anything else is null. */
     async getSession(id, name) {
       if (!isSessionName(name)) return null
@@ -403,6 +414,11 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
       return scanner.rows(range)
     },
     usageStatus: () => scanner.status(),
+    /** 15-minute token buckets since a bucket time, from the background scan (for the usage-window estimate). */
+    async usageBuckets(since) {
+      scanner.kick()
+      return scanner.buckets({ since })
+    },
     /** Resolves when the running usage scan (if any) has finished. */
     whenScanned: () => scanner.idle(),
     /** Server start: fill the list cache and begin the usage scan without blocking the caller. */

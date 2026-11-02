@@ -18,7 +18,7 @@ test("make-demo: sessions with lanes and calls, one waiting, runs listed", async
     execFileSync(process.execPath, [script, "--out", out], { stdio: "pipe" })
     const src = create({ root: join(out, "claude"), hooksDir: join(out, "hooks"), now: () => NOW })
     const items = await src.listItems()
-    assert.equal(items.length, 10)
+    assert.equal(items.length, 11)
     assert.equal(new Set(items.map((i) => i.cwd)).size, 4, "four working directories: shop, its worktree, app, api")
     assert.ok(items.some((i) => i.branch === "feat/search") && items.some((i) => i.branch === "main"))
     const waiting = items.filter((i) => i.waiting)
@@ -31,6 +31,12 @@ test("make-demo: sessions with lanes and calls, one waiting, runs listed", async
     assert.ok(search.summary.counts.calls > 5 && search.summary.counts.errors >= 1)
     const calls = await src.getCalls("sess-shop-cart", {})
     assert.ok(calls.some((c) => c.kind === "mcp" && c.server === "docs") && calls.some((c) => c.kind === "skill") && calls.some((c) => c.ok === false))
+    // v2.2 demo data: a compaction in the cart session, a demo home with config names, budgets and PRs
+    assert.equal((await src.getTurnCosts("sess-shop-cart", "main")).total.compactions, 1)
+    const { existsSync, readFileSync } = await import("node:fs")
+    assert.ok(existsSync(join(out, "demo-home", ".claude.json")))
+    assert.equal(JSON.parse(readFileSync(join(out, "demo-home", ".mission-control", "config.json"), "utf8")).budgets.length, 3)
+    assert.equal(JSON.parse(readFileSync(join(out, "demo-prs.json"), "utf8")).length, 2)
     const runs = await fromAdapter(createNative({ runsDir: join(out, "runs"), now: () => NOW })).listItems()
     assert.ok(runs.length >= 5)
   } finally { rmSync(out, { recursive: true, force: true }) }

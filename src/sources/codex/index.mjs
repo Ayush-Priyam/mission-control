@@ -8,6 +8,7 @@ import { LOOP_DEFAULTS, applyLoops, tokenMessages } from "../../loops.mjs"
 import { createTail, parseFileWith } from "../claude-code/tail.mjs"
 import { createUsageScanner } from "../claude-code/usage.mjs"
 import { peek, rolloutAcc, turnsAcc } from "./parse.mjs"
+import { turnCosts } from "../../turn-costs.mjs"
 
 const LIVE_MS = 2 * 60 * 1000
 const READY_TURN_MS = 30 * 60 * 1000
@@ -124,8 +125,12 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, onPa
 
   const liveAt = (ms) => now() - ms <= LIVE_MS
 
-  /** Newest response item or typed user message (ms) in the tail of a rollout: the session moved on. */
-  function lastTurnMs(file, size) {
+  /**
+   * Newest record (ms) in the tail of a rollout that shows the session moved on: any response item or typed
+   * user message; with `callId` (a wait on one tool call) only that call's output or a typed user message, so
+   * a sibling tool finishing in parallel does not end the wait.
+   */
+  function lastTurnMs(file, size, callId = null) {
     let fd
     try {
       fd = openSync(file, "r")
@@ -137,7 +142,9 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, onPa
         if (!line.includes('"timestamp"')) continue
         try {
           const j = JSON.parse(line)
-          if (j && (j.type === "response_item" || (j.type === "event_msg" && j.payload?.type === "user_message"))) best = Math.max(best, Date.parse(j.timestamp) || 0)
+          const typed = j?.type === "event_msg" && j.payload?.type === "user_message"
+          const item = j?.type === "response_item" && (!callId || (/_output$/.test(j.payload?.type ?? "") && j.payload?.call_id === callId))
+          if (typed || item) best = Math.max(best, Date.parse(j.timestamp) || 0)
         } catch { /* half-written or cut first line */ }
       }
       return best
@@ -160,8 +167,8 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, onPa
       if (now() - since > WAIT_EXPIRY_MS) return null
       // A finished turn counts as ready for 30 minutes; after that the session is just idle.
       if (w.turnEnd && now() - since > READY_TURN_MS) return null
-      const k = cache.key(r.c.real, r.c.st)
-      const last = lastTurns.get(k) ?? lastTurns.set(k, lastTurnMs(r.c.real, r.c.st.size))
+      const k = `${cache.key(r.c.real, r.c.st)}|${w.callId ?? ""}`
+      const last = lastTurns.get(k) ?? lastTurns.set(k, lastTurnMs(r.c.real, r.c.st.size, w.callId ?? null))
       if (last > since + CLEAR_GAP_MS) return null
     }
     return w
@@ -195,16 +202,17 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, onPa
     const mp = read(r.c, "main")
     if (!mp) return null
     const subs = []
+    const okStamp = [id(r.c)] // a rollout that failed to read is left out of the stamp, so the next call retries it
     for (const k of kids) {
       const p = read(k.c, `agent-${k.id}`)
-      if (p) subs.push({ k, p, mt: k.c.st.mtimeMs })
+      if (p) { subs.push({ k, p, mt: k.c.st.mtimeMs }); okStamp.push(id(k.c)) }
     }
     const calls = [...mp.calls]
     for (const a of subs) calls.push(...a.p.calls)
     calls.sort((x, y) => x.ts.localeCompare(y.ts))
     const lastMs = Math.max(r.c.st.mtimeMs, ...subs.map((a) => a.mt))
     const data = { mp, subs, calls, lastMs }
-    sessions.set(r.id, { stamp, tails, data })
+    sessions.set(r.id, { stamp: okStamp.join("\n"), tails, data })
     return data
   }
 
@@ -335,6 +343,15 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, onPa
       const end = Math.max(0, Math.min(all.length, Number.isInteger(before) ? before : all.length))
       const start = Math.max(0, end - Math.max(1, limit))
       return { lane, total: all.length, start, turns: all.slice(start, end) }
+    },
+
+    /** Per-turn tokens, cost and compaction markers of one lane ("main" or "agent-<thread id>"); null when unknown. */
+    async getTurnCosts(id, lane = "main") {
+      const l = locate(id)
+      const d = l && parsed(l.r, l.kids)
+      if (!d) return null
+      const p = lane === "main" ? d.mp : d.subs.find((a) => `agent-${a.k.id}` === lane)?.p
+      return p ? { lane, ...turnCosts(p.messages, costOf) } : null
     },
 
     /** Raw rollout text: "main.jsonl" (or "<id>.jsonl") or "agent-<thread id>.jsonl". Anything else is null. */

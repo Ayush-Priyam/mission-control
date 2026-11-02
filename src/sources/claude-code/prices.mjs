@@ -8,14 +8,16 @@
 //   opus 4 / 4.1 (and older)   $15 in / $75 out
 //   opus 4.5 and later         $5 / $25    (incl. opus-5*; a bare "opus" is taken as the latest)
 //   sonnet (all versions)      $3 / $15
-//   haiku below 4.5 (3.5)      $0.80 / $4
+//   haiku 3                    $0.25 / $1.25  (its own cache rates: write $0.30, read $0.03)
+//   haiku 3.5 up to 4.5        $0.80 / $4
 //   haiku 4.5 and later        $1 / $5     (a bare "haiku" is taken as the latest)
 const row = (input, output) => ({ input, output, cacheWrite: input * 1.25, cacheRead: input * 0.1 })
 export const PRICES = {
   "opus-4": row(15, 75),
   opus: row(5, 25),
   sonnet: row(3, 15),
-  "haiku-3": row(0.8, 4),
+  "haiku-3": { input: 0.25, output: 1.25, cacheWrite: 0.3, cacheRead: 0.03 },
+  "haiku-3-5": row(0.8, 4),
   haiku: row(1, 5),
 }
 export const PRICES_AS_OF = "2026-11-02"
@@ -37,21 +39,21 @@ export function version(model) {
   return { family: fam, major: v ? Number(v[1]) : null, minor: v && v[2] ? Number(v[2]) : 0 }
 }
 
-/** The PRICES key for a model ("claude-opus-4-1" -> "opus-4", "claude-opus-5-5" -> "opus"); null when unknown. */
+/** The PRICES key for a model ("claude-opus-4-1" -> "opus-4", "claude-opus-5-5" -> "opus", "claude-3-haiku" -> "haiku-3"); null when unknown. */
 export function family(model) {
   const v = version(model)
   if (!v) return null
   const older = v.major !== null && v.major * 100 + v.minor < 405 // before 4.5
   if (v.family === "opus") return older ? "opus-4" : "opus"
-  if (v.family === "haiku") return older ? "haiku-3" : "haiku"
+  if (v.family === "haiku") return !older ? "haiku" : v.major * 100 + v.minor < 305 ? "haiku-3" : "haiku-3-5"
   return v.family
 }
 
 // OpenAI models (Codex CLI), USD per million tokens. LIST-PRICE ESTIMATE as of 2026-11-02, shown as "est.":
-// pay-as-you-go API prices; a ChatGPT plan is billed differently. OpenAI bills no cache-write premium, so cache
+// pay-as-you-go API prices; a ChatGPT plan is billed differently. Older models list no cache-write rate, so their cache
 // write is priced as input. Only exact ids (after dropping a -YYYY-MM-DD suffix) are priced: a model not listed
 // here, including any newer version, costs 0 and shows as "–" (no price) rather than borrowing an older price.
-const oa = (input, output, cacheRead) => ({ input, output, cacheWrite: input, cacheRead })
+const oa = (input, output, cacheRead, cacheWrite = input) => ({ input, output, cacheWrite, cacheRead })
 export const OPENAI_PRICES = {
   "gpt-5": oa(1.25, 10, 0.125),
   "gpt-5-codex": oa(1.25, 10, 0.125),
@@ -68,6 +70,17 @@ export const OPENAI_PRICES = {
   o3: oa(2, 8, 0.5),
   "o4-mini": oa(1.1, 4.4, 0.275),
   "codex-mini-latest": oa(1.5, 6, 0.375),
+  // Confirmed 2026-11-02 on OpenAI's official pricing page (developers.openai.com/api/docs/pricing), Standard
+  // tier, short context (<=272K input). Cache write is the listed "30m write" rate where the page has one.
+  // Long-context rates (>272K input) are higher and are not modelled: such turns are underestimated.
+  "gpt-6-astra": oa(10, 50, 1, 12.5),
+  "gpt-6.1-sol": oa(2, 10, 0.1, 2.5),
+  "gpt-5.6-sol": oa(4, 20, 0.4, 5),
+  "gpt-5.6-terra": oa(2, 12, 0.2, 2.5),
+  "gpt-5.6-luna": oa(0.2, 1.2, 0.02, 0.25),
+  "gpt-5.5": oa(5, 30, 0.5),
+  "gpt-5.4": oa(2.5, 15, 0.25),
+  "gpt-5.4-mini": oa(0.75, 4.5, 0.075),
 }
 
 /** The OPENAI_PRICES row for a model id ("gpt-5-2025-08-07" -> gpt-5); null when not listed. */

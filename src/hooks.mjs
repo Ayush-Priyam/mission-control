@@ -12,6 +12,8 @@ export const EVENTS = ["Notification", "PermissionRequest", "Stop", "SubagentSto
 const SAFE_ID = /^[\w-][\w.-]*$/
 const CLEARS = new Set(["PreToolUse", "UserPromptSubmit", "Stop", "PostToolUse", "PostToolUseFailure", "PermissionDenied"])
 const OPENS = new Set(["Notification", "PermissionRequest"])
+// Tool events that end only the wait for their own call id (when they carry one).
+const KEYED_CLEARS = new Set(["PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied"])
 const MAX_MESSAGE = 500
 const MAX_TARGET = 120
 
@@ -68,39 +70,55 @@ export function parseHookLines(lines) {
 export const IDLE_MESSAGE = /waiting for your input/i
 
 /**
- * Waiting = the last Notification or PermissionRequest has no clearing event after it (log order):
+ * Waiting = an open Notification or PermissionRequest with no clearing event after it (log order):
  * PreToolUse, PostToolUse(Failure), PermissionDenied, UserPromptSubmit or Stop. A Notification that
  * follows an open PermissionRequest is the same prompt (Claude's ~6 s reminder), not a new one: `since`
  * stays. An idle reminder (notification_type idle_prompt, or its message) is `ready: true` with
  * `waiting: false`; so is a Codex turn that ended (codexEvent Stop), with `turnEnd: true`.
  * The prompt's tool and target come from its own line, else from the PreToolUse just before it.
- * { waiting, ready?, turnEnd?, message?, since?, tool?, target? }. Takes parsed events or raw lines.
+ *
+ * A wait that carries a `callId` (Codex PermissionRequest for one tool call) is a wait of its own: only a
+ * tool event for the same call id, a tool event with no id, a new prompt or Stop clears it, so a sibling
+ * tool running in parallel never clears it. An unkeyed wait replaces every open wait (Claude's rule). The
+ * oldest still-open keyed wait is reported (it is what blocks the session), else the newest.
+ * { waiting, ready?, turnEnd?, message?, since?, tool?, target?, callId? }. Takes parsed events or raw lines.
  */
 export function waitingFromHooks(lines) {
   const events = parseHookLines(lines)
-  let open = null, pre = null
+  const open = new Map() // callId ("" for unkeyed) -> open state, in arrival order
+  let pre = null
   for (const e of events) {
     const ev = e.event
+    const id = typeof e.callId === "string" && e.callId ? e.callId : ""
     if (OPENS.has(ev)) {
       const msg = typeof e.message === "string" ? e.message : undefined
       const idle = ev === "Notification" && (e.kind === "idle_prompt" || (msg !== undefined && IDLE_MESSAGE.test(msg)))
-      if (idle) { open = { ready: true, message: msg, since: e.ts }; continue }
-      if (ev === "Notification" && open?.waiting && open.from === "PermissionRequest") { open.message ??= msg; continue }
+      if (idle) { open.clear(); open.set("", { ready: true, message: msg, since: e.ts }); continue }
+      const prev = open.get(id)
+      if (ev === "Notification" && prev?.waiting && prev.from === "PermissionRequest") { prev.message ??= msg; continue }
       const tool = typeof e.tool === "string" ? e.tool : pre?.tool
       const target = typeof e.target === "string" ? e.target : typeof e.tool === "string" && e.tool !== pre?.tool ? undefined : pre?.target
-      open = { waiting: true, from: ev, message: msg, since: e.ts, tool, target }
+      if (!id) open.clear()
+      open.delete(id)
+      open.set(id, { waiting: true, from: ev, message: msg, since: e.ts, tool, target, callId: id || undefined })
     } else if (CLEARS.has(ev)) {
-      open = ev === "Stop" && e.codexEvent === "Stop" ? { ready: true, turnEnd: true, since: e.ts } : null
+      if (id && KEYED_CLEARS.has(ev)) { open.delete(id); open.delete("") } else open.clear()
+      if (ev === "Stop" && e.codexEvent === "Stop") open.set("", { ready: true, turnEnd: true, since: e.ts })
       pre = ev === "PreToolUse" && e.codexEvent !== "PostToolUse" ? e : null
     }
   }
-  if (!open) return { waiting: false }
-  const out = open.ready ? { waiting: false, ready: true } : { waiting: true }
-  if (open.turnEnd) out.turnEnd = true
-  if (typeof open.message === "string") out.message = open.message
-  if (typeof open.since === "string") out.since = open.since
-  if (typeof open.tool === "string") out.tool = open.tool
-  if (typeof open.target === "string") out.target = open.target
+  const all = [...open.values()]
+  const newest = all.at(-1)
+  if (!newest) return { waiting: false }
+  const oldest = all[0]
+  const shown = oldest !== newest && oldest.callId ? oldest : newest
+  const out = shown.ready ? { waiting: false, ready: true } : { waiting: true }
+  if (shown.turnEnd) out.turnEnd = true
+  if (typeof shown.message === "string") out.message = shown.message
+  if (typeof shown.since === "string") out.since = shown.since
+  if (typeof shown.tool === "string") out.tool = shown.tool
+  if (typeof shown.target === "string") out.target = shown.target
+  if (typeof shown.callId === "string") out.callId = shown.callId
   return out
 }
 
@@ -129,7 +147,9 @@ export function createWaitingReader({ tailBytes = HOOK_TAIL, onRead } = {}) {
       const text = buf.toString("utf8", 0, got)
       if (n === size) return waitingFromHooks(text)
       const events = parseHookLines(text.slice(text.indexOf("\n") + 1))
-      if (events.some((e) => OPENS.has(e.event) || CLEARS.has(e.event))) return waitingFromHooks(events)
+      // The tail decides only when it holds an event that resets every wait; a keyed event alone could
+      // leave an older open wait before the tail, so that needs the whole log.
+      if (events.some((e) => (OPENS.has(e.event) || CLEARS.has(e.event)) && !e.callId)) return waitingFromHooks(events)
     } finally { closeSync(fd) }
     onRead?.(path, { bytes: size })
     return waitingFromHooks(readFileSync(path, "utf8"))
@@ -190,6 +210,9 @@ export function recordCodexHook({ raw, hooksDir = defaultHooksDir(), now = () =>
       const target = targetOf(input.tool_input)
       if (target) line.target = target
     }
+    // The tool call this event is about, so parallel tools keep separate waits (see waitingFromHooks).
+    const callId = [input.tool_use_id, input.call_id, input.tool_call_id].find((v) => typeof v === "string" && SAFE_ID.test(v) && v.length <= 128)
+    if (callId) line.callId = callId
     if (name === "PermissionRequest") {
       const what = typeof input.tool_input?.description === "string" ? input.tool_input.description : ""
       const tool = typeof input.tool_name === "string" ? input.tool_name : "a tool"

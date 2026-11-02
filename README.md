@@ -88,7 +88,7 @@ lists every source that is on (`claude-code`, `codex`, and any runs or adapters 
 | The browser shows a 404 and the terminal says `no built page ... run npm run build` | The page was not built in this checkout. Run `npm run build`, then restart. The API works without it. |
 | `EADDRINUSE` or "port in use" | Something already listens on 4319 (maybe another copy). Use `--port 4400`, or set `MISSION_CONTROL_PORT`. |
 | No Claude Code sessions | Sessions live in `~/.claude/projects`. If yours are elsewhere, pass `--claude-dir <dir>`. |
-| No Codex sessions | Codex turns on only when `~/.codex/sessions` exists. Pass `--codex-dir <dir>` if `CODEX_HOME` points somewhere else. |
+| No Codex sessions | Codex turns on only when `$CODEX_HOME/sessions` (default `~/.codex/sessions`) exists. Pass `--codex-dir <dir>` to point at a sessions directory directly. |
 | Needs you stays empty | Hooks are optional and off until you merge the printed block. After moving the checkout or upgrading Node, run `hooks install` again and merge again: the block holds absolute paths. |
 | Costs look wrong | They are API list-price estimates, not your bill. See [Costs are estimates](#costs-are-estimates). |
 
@@ -100,7 +100,7 @@ npm run demo -- --port 4400       # another port
 npm run demo -- --live            # keep appending to the live session and the busy run
 ```
 
-The demo generates invented data into `examples/claude`, `examples/hooks` and `examples/runs` and serves it; the generated files are git-ignored (one sample run, `examples/runs/20261101-0900-greeter`, is tracked). It defaults to port 4320 so it never clashes with a real dashboard on 4319. It never reads your own `~/.claude` or `~/.codex`.
+The demo generates invented data into `examples/claude`, `examples/hooks`, `examples/runs` and `examples/demo-home` (a stand-in home with configured MCP server and skill names, budgets and a usage window) and serves it; the generated files are git-ignored (one sample run, `examples/runs/20261101-0900-greeter`, is tracked). It defaults to port 4320 so it never clashes with a real dashboard on 4319. It never reads your own `~/.claude`, `~/.codex` or `~/.mission-control/config.json`.
 
 ## Flags
 
@@ -176,7 +176,7 @@ The thresholds live in `~/.mission-control/config.json` (re-read when it changes
 
 ![Map tab: stages, send-backs and questions](docs/screenshots/run-map.png)
 
-**Calls** lists every tool, MCP, skill and subagent call, filterable by lane and kind and searchable, with arguments and results.
+**Calls** lists every tool, MCP, skill and subagent call, filterable by lane and kind and searchable, with arguments and results. Under the breakdown, "Config vs calls" lists each MCP server and skill you have configured as used, loaded but not used, or failing (half or more of its calls errored), plus anything called that is not in the config.
 
 ![Calls tab](docs/screenshots/calls.png)
 
@@ -184,13 +184,17 @@ The thresholds live in `~/.mission-control/config.json` (re-read when it changes
 
 ![Timeline tab](docs/screenshots/timeline.png)
 
+**Turns** (Claude Code and Codex sessions) lists each assistant turn with its input, cache read, cache write and output tokens, context size and estimated cost, in order or most expensive first. A marker shows where the context dropped sharply (a compaction), and a short hint says why a turn was expensive: a large cache write means new context was sent, a high cache read means a long context is re-read every turn.
+
+![Turns tab](docs/screenshots/turns.png)
+
 **Chat** shows a session's conversation one lane at a time, with tool calls as chips.
 
-**Usage** shows tokens and estimated cost by day, week or month, split by model or harness, with an activity heatmap and breakdowns by project, worktree and branch.
+**Usage** shows tokens and estimated cost by day, week or month, split by model or harness, with an activity heatmap and breakdowns by project, worktree, branch and pull request. It also shows your [budgets](#budgets) and a [usage-window estimate](#usage-window-estimate).
 
 ![Usage](docs/screenshots/usage.png)
 
-**Project** shows a project's worktrees with live lanes and its runs and sessions.
+**Project** shows a project's worktrees with live lanes and its runs and sessions. When two sessions or runs of the project (in any worktrees) changed the same repo-relative file within 30 minutes, a warning names both ("api in feat/rate-limit and main both edited src/middleware/rateLimit.ts 8m apart"); the same warning sits on both items' rails. A note lists configured MCP servers that none of the last 20 sessions called.
 
 ![Project page](docs/screenshots/project.png)
 
@@ -199,6 +203,34 @@ All screenshots come from the synthetic demo data.
 ## Costs are estimates
 
 Costs are API list-price estimates computed from token counts (input, output, cache write, cache read) and the model, and the page marks them "est.". For Claude models the price goes by family and version (for example Opus 4/4.1 at $15/$75 per million tokens, Opus 4.5 and later at $5/$25). For OpenAI models used by Codex only exact model ids in the table are priced (for example `gpt-5` at $1.25/$10 with cached input at $0.125); a model id the table does not list, including a newer version, costs nothing and shows as "–" (no price). They are not your bill: plans, subscriptions (a ChatGPT or Claude plan) and discounts differ, and list prices change. Both tables are dated and live in `src/sources/claude-code/prices.mjs`; edit them when they go stale.
+
+## Settings: config.json
+
+`~/.mission-control/config.json` holds every setting; all keys are optional and the file is re-read when it changes. A missing or broken file means defaults.
+
+```json
+{
+  "hide": ["/work/scratch", "project-name"],
+  "budgets": [
+    { "scope": "project", "match": "api", "daily": 5 },
+    { "scope": "branch", "match": "feat/*", "weekly": 40 },
+    { "scope": "worktree", "match": "shop-search", "monthly": 120 }
+  ],
+  "usageWindow": { "hours": 5, "limitTokens": 2000000, "limitUsd": 30 }
+}
+```
+
+### Budgets
+
+Each budget has a `scope` (`project`, `worktree` or `branch`), a `match` (a project name or path, a worktree path or folder name, or a branch; a trailing `*` matches a prefix) and one or more of `daily`, `weekly`, `monthly` in US dollars. Periods are rolling: today, the last 7 days and the last 30 days. The Usage page draws a bar per budget, and the top bar shows a chip at 80% ("Budget 83%") and at 100% ("Over budget"). Spend is the same list-price estimate as everywhere else.
+
+### Cost per pull request
+
+The Usage breakdown's "Pull requests" tab maps branches to pull requests with the GitHub CLI (`gh pr list --json headRefName,number,title,state`, read-only, run in the project's folder, cached for 10 minutes). It is optional: without `gh`, or when it is not logged in, the tab says so and nothing else changes.
+
+### Usage-window estimate
+
+For Claude Code, the Usage page estimates the current rolling usage window from your local logs: a window opens at your first activity after the previous one ended and lasts `usageWindow.hours` (default 5). With a limit you set yourself (`limitTokens`, counting input + output + cache write tokens, and/or `limitUsd`), it says "At this rate you hit the limit in ~1h 40m"; without one it says "No limit set". It is always labelled an estimate: Anthropic's actual windows and limits are not public and are not read or claimed here.
 
 ## Hiding projects
 
@@ -217,7 +249,9 @@ Local only, no auth. The server binds `127.0.0.1` and `::1` and:
 - answers only requests whose `Host` is `localhost`, `127.0.0.1` or `[::1]` on its own port (anything else gets 403), so a web page cannot reach it through DNS rebinding;
 - takes a POST only with `content-type: application/json` (else 415) and, when the browser sends an `Origin`, only from `http://localhost:<port>`, `http://127.0.0.1:<port>` or `http://[::1]:<port>` (else 403), so another site cannot submit to the action routes.
 
-The built-in sources are read-only: they never write to a runs directory, a repo, `~/.claude` or `~/.codex`. The only things written are the hook logs under `~/.mission-control/hooks` and a usage cache under `~/.mission-control/cache`. Session names are confined to their root, so `..` and symlinks out of it are refused. The page makes no network requests: it uses system fonts and loads nothing from outside the server.
+The built-in sources are read-only: they never write to a runs directory, a repo, `~/.claude` or `~/.codex`. The only things written are the hook logs under `~/.mission-control/hooks` and a usage cache under `~/.mission-control/cache`.
+
+The config readers behind "Config vs calls" read names only: MCP server names from `~/.claude.json` (`mcpServers`, and the project entry's `mcpServers` minus `disabledMcpServers`), a project's `.mcp.json`, enabled plugin names from `~/.claude/settings.json` and the project's `.claude/settings.json` / `settings.local.json`, skill folder names under `~/.claude/skills` and the project's `.claude/skills`, and `[mcp_servers.<name>]` table names from `$CODEX_HOME/config.toml`. Commands, arguments, URLs, environment variables, headers and tokens in those files are never returned, stored or logged. The only command the server runs besides read-only `git` is the optional read-only `gh pr list` above; it is the only thing that may reach the network. Session names are confined to their root, so `..` and symlinks out of it are refused. The page makes no network requests: it uses system fonts and loads nothing from outside the server.
 
 ## Develop
 

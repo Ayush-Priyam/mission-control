@@ -14,8 +14,8 @@ export function UsageTotals({ totals, label }: { totals: Usage["totals"]; label:
     <section aria-label="Usage totals" className="flex flex-col gap-2">
       <h2 className="font-mono text-xs text-muted-foreground">Total tokens · {label}</h2>
       <Strip className="grid-cols-2 sm:grid-cols-4 xl:grid-cols-7">
-        {/* 7 cells: at 4 columns the total takes two, so both rows are full */}
-        <StripCell k="Total tokens" tip={`${fmtInt(total)} tokens`} cellClassName="sm:col-span-2 xl:col-span-1">
+        {/* 7 cells: at 2 and 4 columns the total takes two, so every row is full */}
+        <StripCell k="Total tokens" tip={`${fmtInt(total)} tokens`} cellClassName="col-span-2 sm:col-span-2 xl:col-span-1">
           <span data-testid="usage-total">{fmtInt(total)}</span>
         </StripCell>
         <StripCell k="Cost" tip={EST_TIP} sub="est. · API prices">
