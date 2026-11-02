@@ -1,6 +1,6 @@
 import { useState } from "react"
-import { Bell, BellOff, Info, Power } from "lucide-react"
-import { postSettings, postTestNotification, useSettings } from "@/lib/api"
+import { Bell, BellOff, History, Info, Power } from "lucide-react"
+import { postSettings, postTestNotification, useSettings, type Settings } from "@/lib/api"
 import { InfoTip } from "@/components/IconAction"
 import { askNotifyPermission, notifyPermission } from "@/lib/notify"
 import { cn } from "@/lib/utils"
@@ -8,6 +8,68 @@ import { cn } from "@/lib/utils"
 const BROWSER_INFO =
   "Lets this page show the notifications. Clicking one opens that session here. Without it, macOS shows them, but a click does nothing. Works while a dashboard tab is open, even in the background."
 const row = "flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left hover:bg-sidebar-accent/60 hover:text-muted-foreground disabled:opacity-50 [&_svg]:size-3"
+
+const DEFAULT_DAYS = 30 // Claude Code's own default for cleanupPeriodDays
+const PRESETS = [DEFAULT_DAYS, 60, 90]
+
+/** Keep sessions: type any number of days (Enter or leaving the box saves), or pick a preset. */
+function RetentionRow({ retention, busy, onSet }: { retention: NonNullable<Settings["retention"]>; busy: boolean; onSet: (days: number) => void }) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const value = draft ?? String(retention.days ?? "")
+  const save = () => {
+    const n = Number(value)
+    setDraft(null)
+    if (Number.isInteger(n) && n >= 1 && n <= 3650 && n !== retention.days) onSet(n)
+  }
+  const title = `How long Claude Code keeps session history (cleanupPeriodDays in ${retention.configDir}/settings.json, default 30). Older sessions are deleted when Claude Code starts. Applies from its next start.`
+  if (retention.error) {
+    return (
+      <div className={row} title={retention.error}>
+        <History />
+        <span className="flex-1">Keep sessions</span>
+        <span className="text-failed">settings.json invalid</span>
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-0.5 px-1 py-0.5" title={title}>
+      <div className="flex items-center gap-1.5 [&_svg]:size-3">
+        <History />
+        <span className="flex-1">Keep sessions</span>
+        <input
+          type="number"
+          aria-label="Keep sessions for, in days"
+          min={1}
+          max={3650}
+          disabled={busy}
+          value={value}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={save}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur()
+            if (e.key === "Escape") setDraft(null)
+          }}
+          className="w-14 rounded border border-sidebar-border bg-transparent px-1 text-right text-foreground outline-none focus-visible:border-ring"
+        />
+        <span>days</span>
+      </div>
+      <div className="flex items-center justify-end gap-1">
+        {PRESETS.map((d) => (
+          <button
+            key={d}
+            type="button"
+            disabled={busy}
+            aria-pressed={retention.days === d}
+            onClick={() => { setDraft(null); if (d !== retention.days) onSet(d) }}
+            className={cn("rounded px-1.5 hover:bg-sidebar-accent/60 hover:text-muted-foreground", retention.days === d && "bg-sidebar-accent text-foreground")}
+          >
+            {d === DEFAULT_DAYS ? `${d} (default)` : d}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 /** Waits for the dashboard to answer again (launchd's copy taking over the port), then reloads the page. */
 async function reloadWhenBack() {
@@ -17,7 +79,7 @@ async function reloadWhenBack() {
   }
 }
 
-/** Sidebar switches: notifications (needs you, done), the browser permission and a test, and start at login. */
+/** Sidebar settings: notifications (needs you, done), the browser permission and a test, session retention, start at login. */
 export function SettingsToggles() {
   const s = useSettings()
   const [note, setNote] = useState<string | null>(null)
@@ -27,7 +89,8 @@ export function SettingsToggles() {
   const { notify } = s.data
   const notifyDone = s.data.notifyDone ?? false
   const autostart = s.data.autostart ?? { supported: false, enabled: false }
-  const change = async (patch: { notify?: boolean; notifyDone?: boolean; autostart?: boolean }) => {
+  const retention = s.data.retention ?? null
+  const change = async (patch: { notify?: boolean; notifyDone?: boolean; autostart?: boolean; retentionDays?: number }) => {
     setBusy(true)
     setNote(null)
     try {
@@ -87,6 +150,9 @@ export function SettingsToggles() {
         <span className="px-1 text-[11px]" title="Allow notifications for this site in the browser's site settings">
           browser blocked notifications: macOS ones show, without a click action
         </span>
+      )}
+      {retention && (
+        <RetentionRow retention={retention} busy={busy} onSet={(days) => change({ retentionDays: days })} />
       )}
       {autostart.supported &&
         toggle(autostart.enabled, "Start at login", `Start this dashboard at login and restart it if it stops (LaunchAgent ${autostart.label ?? ""})`,

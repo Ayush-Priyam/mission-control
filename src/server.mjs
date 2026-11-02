@@ -20,6 +20,7 @@ import { createTitles } from "./titles.mjs"
 import { createMarks } from "./marks.mjs"
 import { createSettings } from "./settings.mjs"
 import { macNotify, startNotifier } from "./notify.mjs"
+import { createRetention } from "./retention.mjs"
 
 const DEFAULT_DIST = join(dirname(fileURLToPath(import.meta.url)), "..", "dist")
 
@@ -157,15 +158,23 @@ async function apiV2(ctx, req, res, url, parts) {
     return via ? json(res, { via }) : json(res, { error: "notifications are off in this server" }, 501)
   }
   if (parts[0] === "settings" && parts.length === 1) {
-    const view = () => ({ ...settings.get(), autostart: autostart?.status() ?? { supported: false, enabled: false } })
+    // Retention is Claude Code's own setting, in the config dir of the Claude Code projects this dashboard reads.
+    const cc = registry.sources().find((s) => s.harness === "claude-code")
+    const retention = cc?.describe?.().source ? createRetention(dirname(cc.describe().source)) : null
+    const view = () => ({ ...settings.get(), autostart: autostart?.status() ?? { supported: false, enabled: false }, retention: retention?.get() ?? null })
     if (get) return json(res, view())
     if (req.method !== "POST") return false
     const body = await readBody(req)
     const keys = Object.keys(body ?? {})
-    if (!keys.length || !keys.every((k) => ["notify", "notifyDone", "autostart"].includes(k) && typeof body[k] === "boolean")) {
-      return json(res, { error: "send notify, notifyDone and/or autostart as booleans" }, 400)
+    const ok = (k) => (k === "retentionDays" ? Number.isInteger(body[k]) : ["notify", "notifyDone", "autostart"].includes(k) && typeof body[k] === "boolean")
+    if (!keys.length || !keys.every(ok)) {
+      return json(res, { error: "send notify, notifyDone and/or autostart as booleans, retentionDays as a whole number" }, 400)
     }
-    if (keys.some((k) => k !== "autostart")) settings.set(body)
+    if (body.retentionDays !== undefined) {
+      if (!retention) return json(res, { error: "no Claude Code config to change" }, 501)
+      retention.set(body.retentionDays)
+    }
+    if (keys.some((k) => k === "notify" || k === "notifyDone")) settings.set(body)
     let restart = false
     if (typeof body.autostart === "boolean") {
       if (!autostart) return json(res, { error: "start at login is off" }, 501)
