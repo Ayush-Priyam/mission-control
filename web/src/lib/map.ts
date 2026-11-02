@@ -181,7 +181,9 @@ export const bandCaption = (b: Box & { band: Band }): Box => ({ x: b.x + 8, y: b
 /**
  * One mark per band, with one caption: a box around all its nodes when that box holds no other node, else a
  * bracket over them (a line above the band's nodes with a tick down to each member), so a band never
- * claims a node that was not part of it. The returned box is the box, or the bracket's line strip.
+ * claims a node that was not part of it. When the bracket's line or a tick would cross a non-member (members
+ * on different rows with another node between), each member gets its own pad, the caption on the first.
+ * The returned box is the box, the bracket's line strip, or a pad.
  */
 export type BandMark = Box & { band: Band; first: boolean; bracket?: { y: number; ticks: Pt[] } }
 export function bandBoxes(m: ItemMapModel, w: number, h = NODE_H): BandMark[] {
@@ -200,6 +202,16 @@ export function bandBoxes(m: ItemMapModel, w: number, h = NODE_H): BandMark[] {
     if (!others.some((o) => hits(all, o, -2))) return [{ ...all, band, first: true }]
     const y = all.y + p / 2 // just above the highest member
     const ticks = ns.map((n) => ({ x: n.x, y: n.y - h / 2 - 2 }))
+    // The line and every tick as thin boxes: if any crosses a node outside the band, a bracket would
+    // seem to claim it, so each member gets its own pad instead (the caption on the first).
+    const line: Box = { x: all.x + p, y: y - 1, w: all.w - 2 * p, h: 2 }
+    const legs: Box[] = ticks.map((t) => ({ x: t.x - 1, y, w: 2, h: Math.max(0, t.y - y) }))
+    if ([line, ...legs].some((seg) => others.some((o) => hits(seg, o, -1)))) {
+      return ns.map((n, i) => {
+        const b = nodeBox(n, w + 2 * p, h + 2 * p)
+        return { ...b, band, first: i === 0 }
+      })
+    }
     return [{ x: all.x + p, y: y - 4, w: all.w - 2 * p, h: 8, band, first: true, bracket: { y, ticks } }]
   })
 }

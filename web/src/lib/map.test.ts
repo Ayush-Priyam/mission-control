@@ -165,7 +165,7 @@ describe("the you node", () => {
 })
 
 describe("bands", () => {
-  it("one box when it holds only its own nodes, else one bracket over them: one mark, one caption, never pads", async () => {
+  it("one box when it holds only its own nodes, else one bracket over them: one mark, one caption", async () => {
     const { bandBoxes } = await import("./map")
     const n = (id: string, x: number, y: number) => ({ id, label: id, x, y, status: "working" as Status, lanes: [id] })
     const base = { mode: "tree" as const, w: 820, h: 400, flow: [], consult: [], arcs: [] }
@@ -176,6 +176,18 @@ describe("bands", () => {
     expect(loose[0].first).toBe(true)
     expect(loose[0].bracket?.ticks.map((t) => t.x)).toEqual([100, 500]) // ticks to members only, none to x
     expect(tight[0].bracket).toBeUndefined()
+  })
+  it("a bracket whose tick would cross a non-member (members on different rows) falls back to one pad per member", async () => {
+    const { bandBoxes } = await import("./map")
+    const n = (id: string, x: number, y: number) => ({ id, label: id, x, y, status: "working" as Status, lanes: [id] })
+    const base = { mode: "tree" as const, w: 820, h: 400, flow: [], consult: [], arcs: [] }
+    // a (row 1) and b (row 3) worked together; x sits on row 2 right above b, y beside a
+    const nodes = [n("a", 100, 50), n("y", 300, 50), n("x", 300, 150), n("b", 300, 250)]
+    const marks = bandBoxes({ ...base, nodes, bands: [{ nodes: ["a", "b"], live: true }] }, 150)
+    expect(marks.map((m) => m.bracket)).toEqual([undefined, undefined])
+    expect(marks.map((m) => m.first)).toEqual([true, false])
+    const others = [nodes[1], nodes[2]].map((o) => nodeBox(o, 150))
+    for (const m of marks) for (const o of others) expect(hits(m, o, -1)).toBe(false) // no pad claims x or y
   })
 })
 
