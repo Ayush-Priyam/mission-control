@@ -153,7 +153,7 @@ export function CallList({ calls, selectedId, onSelect, laneLabel, empty = "No c
               )}
             >
               <span className="w-16 shrink-0 text-muted-foreground">{fmtTime(c.ts)}</span>
-              <span className={cn("flex w-64 shrink-0 items-center gap-1.5 overflow-hidden", KIND[c.kind].text)}>
+              <span className={cn("flex w-40 shrink-0 items-center gap-1.5 overflow-hidden 2xl:w-64", KIND[c.kind].text)}>
                 <Icon className="size-3.5 shrink-0" />
                 <CallName call={c} />
               </span>

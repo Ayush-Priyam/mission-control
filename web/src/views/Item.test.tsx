@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ItemDetail } from "@/lib/api"
 import Item, { itemTabs } from "./Item"
@@ -59,6 +59,20 @@ describe("Item page", () => {
     expect(node.textContent).not.toContain("failed")
     expect(screen.getByLabelText("Stopped").textContent).toContain("Stopped · budget")
     expect(screen.getByLabelText("Summary").textContent).toContain("est.")
+  })
+
+  it("a session's map is a tree; clicking a node opens that lane's calls", async () => {
+    const lane = (id: string, status: string, parent?: string) => ({ id, label: id === "main" ? "main" : `Task ${id}`, kind: parent ? "subagent" : "main", status, calls: 1, errors: 0, tokens: tok, cost: 0.01, ...(parent ? { parent } : {}) })
+    routes["/api/item/claude-code/s1"] = { summary: summary({ source: "claude-code", id: "s1", kind: "session", live: true, status: "working" }), lanes: [lane("main", "working"), lane("a", "done", "main"), lane("b", "working", "main")], events: [] }
+    routes["/api/item/claude-code/s1/calls"] = [{ id: "c1", lane: "b", ts: "2026-01-01T10:00:00Z", name: "Bash", kind: "tool", summary: "npm test", ok: true }]
+    routes["/api/sources"] = [{ name: "claude-code", harness: "claude-code", extras: [], actions: [], source: null }]
+    render(<Item source="claude-code" id="s1" tab="map" />)
+    await waitFor(() => expect(screen.getByRole("group", { name: "Session tree" })).toBeTruthy())
+    const b = document.querySelector('[data-node="b"]') as HTMLElement
+    expect(b.dataset.status).toBe("working")
+    fireEvent.click(b)
+    await waitFor(() => expect(screen.getByText("npm test")).toBeTruthy())
+    expect((globalThis.fetch as any).mock.calls.some(([u]: [string]) => u === "/api/item/claude-code/s1/calls?lane=b")).toBe(true)
   })
 
   it("an unknown item says so", async () => {

@@ -170,6 +170,8 @@ export type Health = {
   consults: number
   /** Extra rounds beyond the first, over all stages. */
   rework: number
+  /** A run's rounds that ended failed (a later round may have passed). */
+  failedRounds: number
   cache: number | null
   budget: { spent: number; limit: number } | null
 }
@@ -195,6 +197,7 @@ export function health(d: ItemDetail, calls: Call[] | null = null): Health {
     sendBacks: sendBacks(hops),
     consults: hops.filter((h) => h.kind === "consult").length,
     rework,
+    failedRounds: (Array.isArray(d.events) ? d.events : []).filter((e) => e?.type === "stage.end" && e.ok === false).length,
     cache: cacheShare(s.tokens),
     budget: Number.isFinite(limit) && limit > 0 ? { spent: s.cost ?? 0, limit } : null,
   }

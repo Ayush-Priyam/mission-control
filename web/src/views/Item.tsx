@@ -132,7 +132,7 @@ export default function Item({ source, id, tab }: { source: string; id: string; 
             <ItemMap detail={d} extras={extras} selected={sheet?.[0]} onOpen={setSheet} />
           </TabsContent>
           <TabsContent value="calls" className="pt-4">
-            {current === "calls" && <Calls source={source} id={id} />}
+            {current === "calls" && <div className="h-[78vh] min-h-[520px] overflow-hidden rounded-xl border bg-card/30"><Calls source={source} id={id} /></div>}
           </TabsContent>
           <TabsContent value="timeline" className="pt-4">
             {v1Run ? <Trace runId={id} events={events} live={d.summary.live} idea={idea} /> : <Later>The timeline for {d.summary.kind}s arrives with the next task (Timeline and Chat for any item).</Later>}

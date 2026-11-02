@@ -42,8 +42,9 @@ export function HealthCard({ h }: { h: Health }) {
       <div className="flex items-center gap-4">
         <Ring value={h.okRate} />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <Row k="Errors" v={h.calls ? `${h.errors} · ${(errRate * 100).toFixed(errRate && errRate < 0.1 ? 1 : 0)}%` : String(h.errors)} tone={h.errors ? "text-failed" : undefined} tip="Failed calls (or issues) over all calls" />
+          <Row k="Errors" v={h.calls ? `${h.errors} · ${(errRate * 100).toFixed(errRate && errRate < 0.1 ? 1 : 0)}%` : String(h.errors)} tone={h.errors ? "text-failed" : undefined} tip="A session: failed calls over all calls. A run: issues raised over all calls" />
           <Row k="Sent back" v={String(h.sendBacks)} tone={h.sendBacks ? "text-needs-you" : undefined} tip="Work a later stage sent back to an earlier one" />
+          {h.failedRounds > 0 && <Row k="Failed rounds" v={String(h.failedRounds)} tone="text-failed" tip="Rounds that ended failed; a later round may have passed" />}
           {h.rework > 0 && <Row k="Extra rounds" v={String(h.rework)} tone="text-needs-you" tip="Rounds beyond the first, over all stages" />}
           {h.consults > 0 && <Row k="Questions" v={String(h.consults)} tone="text-consult" />}
           <Row k="Cache use" v={h.cache === null ? "–" : `${Math.round(h.cache * 100)}%`} tone={h.cache !== null ? "text-running" : undefined} tip="Cache reads over all input" />

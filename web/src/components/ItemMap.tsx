@@ -120,6 +120,40 @@ function Node({ n, w, word, selected, onOpen }: { n: MapNode; w: number; word: s
   )
 }
 
+/**
+ * A tree's links as a bus: a trunk down from each parent, one rail above each row of its children,
+ * and a short drop to each child. Lit while the child is busy or done, faint while idle.
+ */
+function TreeBus({ m }: { m: ItemMapModel }) {
+  const at = new Map(m.nodes.map((n) => [n.id, n]))
+  const kids = new Map<string, MapNode[]>()
+  for (const [p, c] of m.flow) {
+    const child = at.get(c)
+    if (child && at.has(p)) kids.set(p, [...(kids.get(p) ?? []), child])
+  }
+  const paths: { d: string; lit: boolean }[] = []
+  for (const [pid, children] of kids) {
+    const p = at.get(pid)!
+    const rows = new Map<number, MapNode[]>()
+    for (const c of children) rows.set(c.y, [...(rows.get(c.y) ?? []), c])
+    const railY = (y: number) => y - NODE_H / 2 - 12
+    const last = Math.max(...rows.keys())
+    paths.push({ d: `M${p.x},${p.y + NODE_H / 2} V${railY(last)}`, lit: true })
+    for (const [y, row] of rows) {
+      const xs = row.map((c) => c.x)
+      paths.push({ d: `M${Math.min(p.x, ...xs)},${railY(y)} H${Math.max(p.x, ...xs)}`, lit: true })
+      for (const c of row) paths.push({ d: `M${c.x},${railY(y)} V${y - NODE_H / 2}`, lit: c.status !== "idle" })
+    }
+  }
+  return (
+    <g aria-hidden>
+      {paths.map((p, i) => (
+        <path key={i} d={p.d} fill="none" strokeWidth={1.2} className={p.lit ? "stroke-foreground/30" : "stroke-foreground/12"} />
+      ))}
+    </g>
+  )
+}
+
 /** The model for an item: its run graph when it has one, else its lanes as a spawn tree. */
 export function mapModel(detail: ItemDetail): ItemMapModel {
   const g = runGraph(detail)
@@ -168,7 +202,8 @@ export function ItemMap({ detail, extras, selected, onOpen }: { detail: ItemDeta
               </marker>
             ))}
           </defs>
-          {m.flow.map((f, i) => {
+          {m.mode === "tree" && <TreeBus m={m} />}
+          {m.mode === "graph" && m.flow.map((f, i) => {
             const d = link(f)
             const from = byId.get(f[0])
             const lit = from?.status === "done" || from?.status === "working" || from?.status === "waiting"
