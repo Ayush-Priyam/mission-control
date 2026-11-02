@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url"
 import { isRunId, isSessionName } from "./names.mjs"
 import { crewStats } from "./crew.mjs"
 import { fromAdapter } from "./sources/from-adapter.mjs"
+import { buildTree } from "./projects.mjs"
 import { createRegistry } from "./sources/registry.mjs"
 
 const DEFAULT_DIST = join(dirname(fileURLToPath(import.meta.url)), "..", "dist")
@@ -84,8 +85,8 @@ async function sendExtra(res, r) {
   return json(res, r.body, status)
 }
 
-// v2 routes, one set for every source: /api/overview, /api/items, /api/item/:source/:id[/...]
-async function apiV2(registry, req, res, url, parts) {
+// v2 routes, one set for every source: /api/overview, /api/items, /api/projects, /api/project/:key, /api/item/:source/:id[/...]
+async function apiV2(registry, git, req, res, url, parts) {
   const get = req.method === "GET" || req.method === "HEAD"
   if (get && parts[0] === "sources" && parts.length === 1) {
     await registry.list() // refresh per-source errors
@@ -96,6 +97,13 @@ async function apiV2(registry, req, res, url, parts) {
   }
   if (get && parts[0] === "overview" && parts.length === 1) return json(res, await registry.overview())
   if (get && parts[0] === "items" && parts.length === 1) return json(res, await registry.list())
+  if (get && parts[0] === "projects" && parts.length === 1) return json(res, await buildTree(await registry.list(), { git }))
+  if (get && parts[0] === "project" && parts.length === 2) {
+    const key = decode(parts[1])
+    if (!isKey(key)) return json(res, { error: "not allowed" }, 400)
+    const p = (await buildTree(await registry.list(), { git })).find((x) => x.key === key)
+    return p ? json(res, p) : json(res, { error: "no such project" }, 404)
+  }
   if (parts[0] !== "item" || parts.length < 3) return false
   const source = decode(parts[1]), id = decode(parts[2])
   if (!isKey(source) || !isKey(id)) return json(res, { error: "not allowed" }, 400)
@@ -132,11 +140,11 @@ async function apiV2(registry, req, res, url, parts) {
   return false
 }
 
-async function api({ adapter, registry }, req, res, url) {
+async function api({ adapter, registry, git }, req, res, url) {
   const parts = url.pathname.split("/").slice(2) // after "/api"
   const get = req.method === "GET" || req.method === "HEAD"
   try {
-    if ((await apiV2(registry, req, res, url, parts)) !== false) return
+    if ((await apiV2(registry, git, req, res, url, parts)) !== false) return
     // v1 routes below: aliases for the first adapter-backed source.
     if (!adapter) return notFound(res)
     if (get && parts[0] === "runs" && parts.length === 1) return json(res, await adapter.listRuns())
@@ -186,12 +194,12 @@ const LOOPBACK = ["localhost", "127.0.0.1", "[::1]"]
  * `input` is one v1 adapter, one source, or an array of either. Every entry becomes a source;
  * the v1 routes (/api/runs, /api/run/..., /api/crew, /api/x/...) stay as aliases for the first adapter.
  */
-export function createServer(input, { port = 4319, distDir = DEFAULT_DIST } = {}) {
+export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git } = {}) {
   const entries = Array.isArray(input) ? input : [input]
   const sources = entries.map((e) => (typeof e.listItems === "function" ? e : fromAdapter(e)))
   const registry = createRegistry(sources)
   const adapter = entries.find((e) => typeof e.listRuns === "function") ?? null
-  const ctx = { adapter, registry }
+  const ctx = { adapter, registry, git }
   if (!existsSync(join(distDir, "index.html"))) {
     console.error(`mission control: no built page at ${join(distDir, "index.html")} — run npm run build`)
   }

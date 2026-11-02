@@ -6,6 +6,7 @@ import { parseTranscript, peek } from "./parse.mjs"
 
 const LIVE_MS = 2 * 60 * 1000
 const HEAD_BYTES = 64 * 1024
+const HEAD_MAX = 1024 * 1024 // read forward this far for the first line carrying a cwd
 const SAFE = /^[\w-][\w.-]*$/ // one path segment: no separators, never starts with a dot
 const zero = () => ({ in: 0, out: 0, cacheRead: 0, cacheWrite: 0 })
 const add = (a, b) => { a.in += b.in; a.out += b.out; a.cacheRead += b.cacheRead; a.cacheWrite += b.cacheWrite }
@@ -19,6 +20,7 @@ const iso = (ms) => new Date(ms).toISOString()
 export function create({ root, now = () => Date.now(), hooksDir } = {}) {
   void hooksDir
   const cache = createCache()
+  const peeked = createCache(8192) // path|size|mtime -> peek of the head, so warm lists skip file reads
   const opened = new Map() // id -> { lastMs, summary } of sessions already fully parsed, for list totals
   let realRoot = null
   const rootReal = () => (realRoot ??= realpathSync(root))
@@ -33,13 +35,41 @@ export function create({ root, now = () => Date.now(), hooksDir } = {}) {
     } catch { return null }
   }
 
-  function head(file) {
+  function head(file, bytes) {
     let fd
     try {
       fd = openSync(file, "r")
-      const buf = Buffer.alloc(HEAD_BYTES)
-      return buf.toString("utf8", 0, readSync(fd, buf, 0, HEAD_BYTES, 0))
+      const buf = Buffer.alloc(bytes)
+      return buf.toString("utf8", 0, readSync(fd, buf, 0, bytes, 0))
     } finally { if (fd !== undefined) closeSync(fd) }
+  }
+
+  /**
+   * Claude Code slugs replace "/" with "-", so a decoded path is only a hint (real dashes are lost):
+   * walk the slug segment by segment, joining with "-" where the plain split names no directory.
+   * Returns a real directory or null.
+   */
+  function slugCwd(slug) {
+    const parts = slug.split("-").slice(1)
+    const walk = (base, i) => {
+      if (i === parts.length) return base
+      for (let j = parts.length; j > i; j--) {
+        const next = join(base, parts.slice(i, j).join("-"))
+        let ok = false
+        try { ok = statSync(next).isDirectory() } catch { /* not there */ }
+        if (ok) { const r = walk(next, j); if (r) return r }
+      }
+      return null
+    }
+    return slug.startsWith("-") && parts.length ? walk(sep, 0) : null
+  }
+
+  /** peek of the file head: 64 KB first, then up to 1 MB when no line with a cwd was seen, then the slug. */
+  function peekFile(c, slug) {
+    let h = peek(head(c.real, HEAD_BYTES))
+    if (!h.cwd && c.st.size > HEAD_BYTES) h = peek(head(c.real, Math.min(c.st.size, HEAD_MAX)))
+    if (!h.cwd) h.cwd = slugCwd(slug)
+    return h
   }
 
   const dirs = (p) => { try { return readdirSync(p, { withFileTypes: true }) } catch { return [] } }
@@ -163,7 +193,8 @@ export function create({ root, now = () => Date.now(), hooksDir } = {}) {
           const subs = dirs(join(root, s.slug, s.id, "subagents")).filter((f) => f.isFile() && /^agent-[\w-]+\.jsonl$/.test(f.name))
           let lastMs = c.st.mtimeMs
           for (const f of subs) lastMs = Math.max(lastMs, confined(join(root, s.slug, s.id, "subagents", f.name))?.st.mtimeMs ?? 0)
-          const h = peek(head(c.real))
+          const pk = cache.key(c.real, c.st)
+          const h = peeked.get(pk) ?? peeked.set(pk, peekFile(c, s.slug))
           const o = opened.get(s.id)
           const done = o && o.lastMs === lastMs ? o.summary : null
           const live = liveAt(lastMs)
