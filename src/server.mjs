@@ -188,6 +188,9 @@ async function apiV2({ registry, git, hide, now }, req, res, url, parts) {
   if (!isKey(source) || !isKey(id)) return json(res, { error: "not allowed" }, 400)
   const src = registry.source(source)
   if (!src) return json(res, { error: "no such source" }, 404)
+  // A v1 adapter behind the source gets only run ids (no dots), as on the v1 routes; extras keep the
+  // looser key (a repo basename such as "my.app").
+  if (src.adapter && parts[3] !== "x" && !isRunId(id)) return json(res, { error: "not allowed" }, 400)
   if (get && parts.length === 3) {
     const item = await registry.get(source, id)
     return item ? json(res, item) : json(res, { error: "no such item" }, 404)

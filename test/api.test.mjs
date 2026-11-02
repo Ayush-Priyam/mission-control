@@ -270,3 +270,24 @@ test("M3: the port comes from --port or MISSION_CONTROL_PORT; PORT is ignored", 
     assert.equal(first, `mission control on http://localhost:${p}`)
   } finally { child.kill() }
 })
+
+test("minor 2: v2 item routes of an adapter-backed source take run ids only; extras keep dotted keys", async () => {
+  const seen = []
+  const adapter = {
+    name: "ex",
+    listRuns: async () => [],
+    getRun: async (id) => { seen.push(["getRun", id]); return null },
+    getSession: async (id) => { seen.push(["getSession", id]); return null },
+    extras: { info: async (id) => ({ body: { id } }) },
+    actions: { say: async (id) => { seen.push(["say", id]); return { ok: true } } },
+  }
+  await withServer(adapter, async (base) => {
+    for (const path of ["/api/item/ex/my.run", "/api/item/ex/my.run/calls", "/api/item/ex/my.run/session/a.md"]) {
+      assert.equal((await fetch(base + path)).status, 400, path)
+    }
+    assert.equal((await fetch(`${base}/api/item/ex/my.run/action/say`, { method: "POST", headers: JSON_TYPE, body: "{}" })).status, 400)
+    assert.deepEqual(seen, [], "the adapter never sees a dotted id")
+    assert.deepEqual(await (await fetch(`${base}/api/item/ex/my.app/x/info`)).json(), { id: "my.app" })
+    assert.equal((await fetch(`${base}/api/item/ex/r-1/action/say`, { method: "POST", headers: JSON_TYPE, body: "{}" })).status, 200)
+  })
+})
