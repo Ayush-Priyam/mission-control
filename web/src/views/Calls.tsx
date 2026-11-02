@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { CallBreakdown } from "@/components/CallBreakdown"
+import { ConfigJoin } from "@/components/ConfigJoin"
+import type { ItemConfig } from "@/lib/api-v22"
 import { CallDetail } from "@/components/CallDetail"
 import { CallList, KIND, chipCounts, filterCalls, type Chip } from "@/components/CallList"
 import { useCalls, useItem, type Call, type ItemDetail, type Lane, type Status } from "@/lib/api"
@@ -48,10 +50,12 @@ type Props = {
   callsError?: string | null
   /** Fetch the given calls again (the item page's loader). */
   onRetry?: () => void
+  /** Configured MCP servers and skills joined to this item's calls (the item page loads it). */
+  config?: ItemConfig | null
 }
 
 /** Calls tab: lanes on the left, filtered calls in the middle, the picked call on the right. */
-export default function Calls({ source, id, sessionHref, timelineHref, call, detail: given, calls: givenCalls, callsError, onRetry }: Props) {
+export default function Calls({ source, id, sessionHref, timelineHref, call, detail: given, calls: givenCalls, callsError, onRetry, config }: Props) {
   const shared = given !== undefined
   const [poll, setPoll] = useState(0) // poll only while the item is live
   const item = useItem(source, shared ? null : id, poll)
@@ -216,6 +220,11 @@ export default function Calls({ source, id, sessionHref, timelineHref, call, det
         <div className="mt-4">
           <CallBreakdown calls={scoped} />
         </div>
+        {config && (config.servers.length > 0 || config.skills.length > 0) && (
+          <div className="mt-3">
+            <ConfigJoin config={config} />
+          </div>
+        )}
         <div className="mt-4 mb-1 text-xs tracking-wide text-muted-foreground uppercase">
           Calls · newest first{rows.length !== scoped.length || q ? ` · ${rows.length} shown` : ""}
         </div>

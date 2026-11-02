@@ -23,6 +23,7 @@ import Docs from "@/views/Docs"
 import Qa from "@/views/Qa"
 import Trace from "@/views/Trace"
 import { useCalls, useCapabilities, useExtra, useItem, useSources, type ItemDetail } from "@/lib/api"
+import { useItemConfig } from "@/lib/api-v22"
 import { extraTabs, normaliseDiff, normaliseTasks, qaRows, runChanges } from "@/lib/extras"
 import { useNow } from "@/lib/format"
 import { crewCards, crewGraph, currentStop } from "@/lib/graph"
@@ -87,6 +88,7 @@ export default function Item({ source, id, tab, call }: { source: string; id: st
   // draws them, and the Calls tab lists them: one poller for all three.
   const calls = useCalls(source, isSession || tab === "timeline" || tab === "calls" ? id : null, {}, poll)
   const now = useNow(5000)
+  const config = useItemConfig(source, isSession && tab === "calls" ? id : null, d?.summary.counts?.calls ?? 0)
   const [sheet, setSheet] = useState<string[] | null>(null)
   const [focus, setFocus] = useState<{ ids: string[]; n: number } | null>(null)
   const [youFlash, setYouFlash] = useState(0)
@@ -179,7 +181,7 @@ export default function Item({ source, id, tab, call }: { source: string; id: st
           <TabsContent value="calls" className="pt-4">
             {current === "calls" && (
               <div className="h-[78vh] min-h-[520px] overflow-hidden rounded-xl border bg-card/30">
-                <Calls source={source} id={id} call={call} detail={d} calls={calls.data ?? null} callsError={calls.error} onRetry={calls.reload} />
+                <Calls source={source} id={id} call={call} detail={d} calls={calls.data ?? null} callsError={calls.error} onRetry={calls.reload} config={config.data} />
               </div>
             )}
           </TabsContent>

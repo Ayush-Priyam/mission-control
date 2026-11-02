@@ -13,7 +13,6 @@ Ideas and fixes, roughly in the order they'll land. Many came from people trying
 ## Later
 
 - Answer prompts from the browser (allow / deny / pick an option) through the hooks, not by reading the terminal screen.
-- Calls joined to config: MCP servers and skills that are loaded but never used, or used and failing.
 - Why a turn was expensive: per-turn context, cache and compaction view.
 - Two agents editing the same file in different worktrees: warning on the project page.
 - Cost per task, PR or worktree with budget alerts.
@@ -35,3 +34,4 @@ None open right now.
 - Fixed (Codex): a sibling tool call's hook could clear a wait while another approval was still open (parallel tools). Waits are keyed by tool call id when the hook payload has one.
 - Codex: `CODEX_HOME` is honoured (sessions default to `$CODEX_HOME/sessions`).
 - Prices for newer OpenAI models (gpt-6-astra, gpt-6.1-sol, gpt-5.6-sol/terra/luna, gpt-5.5, gpt-5.4, gpt-5.4-mini) from OpenAI's pricing page, short-context Standard rates. Models not on that page stay unpriced (–).
+- Calls joined to config: the Calls tab lists each configured MCP server and skill as used, loaded but not used, or failing (by error rate); the project page names MCP servers no recent session called. Config files are read for names only.
