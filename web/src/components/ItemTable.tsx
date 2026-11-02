@@ -6,6 +6,7 @@ import { toHash } from "@/lib/route"
 import { worktreeLabel } from "@/lib/tree"
 import { cn } from "@/lib/utils"
 import { RenameForm } from "@/components/RenameForm"
+import { CopyResume } from "@/components/CopyResume"
 import { IconAction } from "@/components/IconAction"
 import { STATUS_LABEL, STATUS_TEXT, StatusDot } from "@/components/StatusDot"
 
@@ -143,6 +144,9 @@ export function ItemTable({
                       <IconAction label="Rename" className={HOVER} onClick={() => setEditing(`${i.source}/${i.id}`)}>
                         <Pencil />
                       </IconAction>
+                      {i.resume && (
+                        <CopyResume command={i.resume} open={i.open} className={HOVER} />
+                      )}
                     </div>
                   )}
                 </td>

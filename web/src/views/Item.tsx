@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { Pencil } from "lucide-react"
 import { RenameForm } from "@/components/RenameForm"
+import { CopyResume } from "@/components/CopyResume"
 import { IconAction } from "@/components/IconAction"
 import { Retry } from "@/components/Retry"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -99,6 +100,7 @@ function Header({ d, onRenamed }: { d: ItemDetail; onRenamed: () => void }) {
       {s.live && s.status !== "idle" && (
         <span data-live-tag className="mc-live rounded-full border border-border px-2 py-0.5 font-mono text-xs text-faint">live</span>
       )}
+      {s.resume && <CopyResume full command={s.resume} open={s.open} className="basis-full" />}
     </header>
   )
 }

@@ -1,4 +1,5 @@
 import { closeSync, openSync, readSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs"
+import { homedir } from "node:os"
 import { dirname, join, sep } from "node:path"
 import { UNCONFIRMED_MS, askOf, createWaitingReader, readyOf } from "../../hooks.mjs"
 import { capText, isSessionName } from "../../names.mjs"
@@ -23,6 +24,7 @@ const SAFE = /^[\w-][\w.-]*$/ // one path segment: no separators, never starts w
 const zero = () => ({ in: 0, out: 0, cacheRead: 0, cacheWrite: 0 })
 const add = (a, b) => { a.in += b.in; a.out += b.out; a.cacheRead += b.cacheRead; a.cacheWrite += b.cacheWrite }
 const iso = (ms) => new Date(ms).toISOString()
+const shq = (s) => (/^[\w@%+=:,./-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`)
 
 /**
  * Claude Code sessions as a v2 source. `root` is the projects dir (default ~/.claude/projects),
@@ -221,12 +223,20 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
     return out
   }
 
+  /** The shell command that resumes a session in its own folder, under the config dir it was recorded in. */
+  function resumeOf(x) {
+    const cfg = dirname(root)
+    const env = cfg === join(homedir(), ".claude") ? "" : `CLAUDE_CONFIG_DIR=${shq(cfg)} `
+    return `${x.cwd ? `cd ${shq(x.cwd)} && ` : ""}${env}claude --resume ${x.id}`
+  }
+
   /**
    * `x` with `open` and status from the running process, which beats file times: an idle Claude Code still
    * appends metadata every few minutes. Busy is working (or looping), open and not busy is idle and ready
    * (unless the hooks say it waits on you), and a closed session is idle, never waiting and never ready.
    */
   function withProcess(x, procs) {
+    x = { ...x, resume: resumeOf(x) }
     if (!procs) return x
     const p = procs.get(x.id)
     const { ready, readySince, ...rest } = x
