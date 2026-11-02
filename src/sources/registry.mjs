@@ -1,11 +1,18 @@
 const OVERVIEW_POOL = 6
 
 /** One place that fans out over every source. Later tasks add sources by passing more to createRegistry. */
-export function createRegistry(sources, { titles = null } = {}) {
-  // A title the owner set on the page wins; the source's own stays as originalTitle.
+export function createRegistry(sources, { titles = null, marks = null } = {}) {
+  // A title the owner set on the page wins; the source's own stays as originalTitle. Pinned and archived
+  // come from marks; an archived session that is open again counts as not archived while it is open.
   const withOwnerEdits = (source, id, x) => {
     const t = titles?.get(source, id)
-    return t ? { ...x, title: t, originalTitle: x.title } : x
+    const m = marks?.get(source, id)
+    return {
+      ...x,
+      ...(t ? { title: t, originalTitle: x.title } : {}),
+      ...(m?.pinned ? { pinned: true } : {}),
+      ...(m?.archived && x.open !== true ? { archived: true } : {}),
+    }
   }
   const byName = new Map()
   for (const s of sources) {

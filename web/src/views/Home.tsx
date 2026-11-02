@@ -16,10 +16,10 @@ import { matchesFilter } from "@/lib/tree"
 
 const RECENT = 100
 
-type Show = "open" | "closed" | "all"
-const SHOWS: Show[] = ["open", "closed", "all"]
-const SHOW_LABEL: Record<Show, string> = { open: "open only", closed: "closed", all: "all" }
-const SHOW: Record<Show, (i: ItemSummary) => boolean> = {
+type Show = "open" | "closed" | "all" | "archived"
+const SHOWS: Show[] = ["open", "closed", "all", "archived"]
+const SHOW_LABEL: Record<Show, string> = { open: "open only", closed: "closed", all: "all", archived: "archived" }
+const SHOW: Record<Exclude<Show, "archived">, (i: ItemSummary) => boolean> = {
   open: (i) => i.open !== false,
   closed: (i) => i.open === false,
   all: () => true,
@@ -37,14 +37,14 @@ export default function Home() {
   const { overview, filter, showHidden } = useShared()
   const sources = useSources()
   const [show, setShow] = useState<Show>("all")
-  const recent = useItems({ all: showHidden, limit: RECENT })
+  const recent = useItems({ all: showHidden, archived: show === "archived", limit: RECENT })
   const now = useNow()
   const actions = useMemo(() => Object.fromEntries((sources.data ?? []).map((s) => [s.name, s.actions])), [sources.data])
   const items = recent.data ?? []
   const knowsOpen = items.some((i) => i.open !== undefined)
   const shown = useMemo(
-    // A status chip picks its own items: the Closed chip lists closed ones whatever Show says.
-    () => items.filter((i) => matchesFilter(i, filter) && (!!filter || SHOW[show](i))),
+    // A status chip picks its own items (the Closed chip lists closed ones whatever Show says); archived always applies.
+    () => items.filter((i) => matchesFilter(i, filter) && (show === "archived" ? !!i.archived : filter || SHOW[show](i))),
     [items, filter, show],
   )
   const live = overview.data?.live ?? []
@@ -88,7 +88,7 @@ export default function Home() {
               <span>{shown.length} of {items.length}</span>
               <span className="flex items-center gap-0.5" role="group" aria-label="Show">
                 <span className="mr-1">Show:</span>
-                {(knowsOpen ? SHOWS : SHOWS.filter((v) => v === "all")).map((v) => (
+                {(knowsOpen ? SHOWS : SHOWS.filter((v) => v === "all" || v === "archived")).map((v) => (
                   <Button key={v} variant={show === v ? "secondary" : "ghost"} size="xs" aria-pressed={show === v} onClick={() => setShow(v)}>
                     {SHOW_LABEL[v]}
                   </Button>

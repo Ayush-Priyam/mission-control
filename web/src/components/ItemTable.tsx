@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react"
-import { ArrowDown, ArrowUp, Pencil } from "lucide-react"
-import type { ItemSummary, Status } from "@/lib/api"
+import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Pencil, Pin, PinOff } from "lucide-react"
+import { postMark, type ItemSummary, type Status } from "@/lib/api"
 import { ago, compact, money } from "@/lib/format"
 import { toHash } from "@/lib/route"
 import { worktreeLabel } from "@/lib/tree"
@@ -30,11 +30,12 @@ const KEYS: Record<SortKey, (i: ItemSummary) => string | number> = {
   updated: time,
 }
 
-/** Items ordered by a column; ties fall back to newest first. Does not mutate. */
+/** Items ordered by a column, pinned ones first; ties fall back to newest first. Does not mutate. */
 export function sortItems(items: ItemSummary[], key: SortKey, dir: SortDir): ItemSummary[] {
   const get = KEYS[key]
   const sign = dir === "asc" ? 1 : -1
   return [...items].sort((a, b) => {
+    if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1
     const x = get(a), y = get(b)
     const c = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y))
     return c * sign || time(b).localeCompare(time(a))
@@ -64,10 +65,12 @@ export function ItemTable({
   /** Rows shown before a "Show all" button. */
   cap?: number
   now?: number
-  /** Called after a row is renamed, to reload the list. */
+  /** Called after a row is renamed, pinned or archived, to reload the list. */
   onChanged?: () => void
 }) {
   const [editing, setEditing] = useState<string | null>(null)
+  const mark = (i: ItemSummary, patch: { pinned?: boolean; archived?: boolean }) =>
+    postMark(i.source, i.id, patch).then(() => onChanged?.(), () => {})
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "updated", dir: "desc" })
   const [all, setAll] = useState(false)
   const rows = useMemo(() => sortItems(items, sort.key, sort.dir), [items, sort])
@@ -147,6 +150,12 @@ export function ItemTable({
                       {i.resume && (
                         <CopyResume command={i.resume} open={i.open} className={HOVER} />
                       )}
+                      <IconAction label={i.pinned ? "Unpin" : "Pin to the top"} className={i.pinned ? "relative z-10 text-foreground" : HOVER} onClick={() => mark(i, { pinned: !i.pinned })}>
+                        {i.pinned ? <PinOff /> : <Pin />}
+                      </IconAction>
+                      <IconAction label={i.archived ? "Unarchive" : "Archive (hidden until it is open again)"} className={HOVER} onClick={() => mark(i, { archived: !i.archived })}>
+                        {i.archived ? <ArchiveRestore /> : <Archive />}
+                      </IconAction>
                     </div>
                   )}
                 </td>

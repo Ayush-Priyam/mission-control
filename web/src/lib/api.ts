@@ -210,6 +210,10 @@ export type ItemSummary = {
   open?: boolean
   /** Shell command that resumes the session in its folder (Claude Code only). */
   resume?: string
+  /** Pinned by the owner: listed first. */
+  pinned?: boolean
+  /** Archived by the owner (and not open): left out of lists and counts unless asked for. */
+  archived?: boolean
 }
 export type Placed = { key: string; name: string; worktree: string }
 export type Lane = {
@@ -339,8 +343,8 @@ const PROJECTS_POLL = 5000
 export const overviewUrl = (all = false) => `/api/overview${all ? "?all=1" : ""}`
 export const projectsUrl = (tz: string) => `/api/projects${qs({ slim: "1", tz })}`
 export const projectUrl = (key: string, tz: string) => `/api/project/${encodeURIComponent(key)}${qs({ tz })}`
-export const itemsUrl = (q: { all?: boolean; limit?: number; source?: string; id?: string } = {}) =>
-  `/api/items${qs({ all: q.all ? "1" : undefined, limit: q.limit === undefined ? undefined : String(q.limit), source: q.source, id: q.id })}`
+export const itemsUrl = (q: { all?: boolean; archived?: boolean; limit?: number; source?: string; id?: string } = {}) =>
+  `/api/items${qs({ all: q.all ? "1" : undefined, archived: q.archived ? "1" : undefined, limit: q.limit === undefined ? undefined : String(q.limit), source: q.source, id: q.id })}`
 
 export const useOverview = (all = false) => useFetch<Overview>(overviewUrl(all), POLL)
 export const useSources = () => useFetch<SourceInfo[]>("/api/sources")
@@ -401,6 +405,18 @@ export async function postTitle(source: string, id: string, title: string) {
   const j = await r.json().catch(() => ({}))
   if (!r.ok) throw new Error(j.error ?? `rename: ${r.status}`)
   return j as { title: string | null }
+}
+
+/** Pin or archive an item (either flag may be left out). */
+export async function postMark(source: string, id: string, patch: { pinned?: boolean; archived?: boolean }) {
+  const r = await fetch(`${itemUrl(source, id)}/mark`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch),
+  })
+  const j = await r.json().catch(() => ({}))
+  if (!r.ok) throw new Error(j.error ?? `mark: ${r.status}`)
+  return j as { pinned: boolean; archived: boolean }
 }
 
 export type ActionNote = { ok: boolean; text: string }
