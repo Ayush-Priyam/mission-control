@@ -1,10 +1,11 @@
-import { useState } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { ChevronRight } from "lucide-react"
 import type { Call, CallKind, Lane, Status } from "@/lib/api"
 import { ago, compact } from "@/lib/format"
 import { estCost, EST_TIP, laneTree, modelName, totalTokens, type Chip, type LaneExtra } from "@/lib/item"
 import { iconOf, KIND } from "@/components/CallList"
 import { StatusDot } from "@/components/StatusDot"
+import type { LaneLink } from "@/lib/map"
 import { cn } from "@/lib/utils"
 
 const BORDER: Record<Status, string> = {
@@ -55,8 +56,17 @@ function NowDoing({ lane, now }: { lane: Lane; now: number }) {
   )
 }
 
+/** How a card relates to the one under the pointer. */
+export type Linked = { kind: LaneLink["kind"]; text: string }
+type Look = { linked?: Linked; flash?: boolean; onHover?: (id: string | null) => void }
+
+const LINKED: Record<Linked["kind"], { ring: string; text: string }> = {
+  sendback: { ring: "ring-1 ring-failed/55", text: "text-failed" },
+  consult: { ring: "ring-1 ring-consult/55", text: "text-consult" },
+}
+
 /** One lane: dot, label, corner word, what it is doing now, why (chip), and its calls/tokens/cost. */
-export function LaneCard({ lane, extra, now, onOpen, compactCard }: { lane: Lane; extra?: LaneExtra; now: number; onOpen?: (id: string) => void; compactCard?: boolean }) {
+export function LaneCard({ lane, extra, now, onOpen, compactCard, linked, flash, onHover }: { lane: Lane; extra?: LaneExtra; now: number; onOpen?: (id: string) => void; compactCard?: boolean } & Look) {
   const quiet = lane.status === "idle" || lane.status === "done" || lane.status === "stopped"
   const chip = extra?.chip
   return (
@@ -64,14 +74,26 @@ export function LaneCard({ lane, extra, now, onOpen, compactCard }: { lane: Lane
       type="button"
       data-lane={lane.id}
       data-status={lane.status}
+      data-linked={linked?.kind}
       onClick={() => onOpen?.(lane.id)}
+      onMouseEnter={() => onHover?.(lane.id)}
+      onMouseLeave={() => onHover?.(null)}
+      onFocus={() => onHover?.(lane.id)}
+      onBlur={() => onHover?.(null)}
       className={cn(
-        "flex min-w-0 flex-col gap-2.5 rounded-xl border bg-card p-3.5 text-left transition-colors hover:border-ring",
+        "relative flex min-w-0 flex-col gap-2.5 rounded-xl border bg-card p-3.5 text-left transition-[border-color,box-shadow] hover:border-ring",
         BORDER[lane.status],
         quiet && "bg-card/60",
         compactCard && "gap-2 p-3",
+        linked && LINKED[linked.kind].ring,
+        flash && "mc-flash",
       )}
     >
+      {linked && (
+        <span className={cn("absolute -top-2 right-3 max-w-[85%] truncate rounded bg-background px-1.5 font-mono text-[10.5px]", LINKED[linked.kind].text)} title={linked.text}>
+          {linked.text}
+        </span>
+      )}
       <div className="flex min-w-0 items-center gap-2">
         <StatusDot status={lane.status} />
         <span className={cn("min-w-0 flex-1 truncate font-semibold", compactCard ? "text-sm" : "text-[15px]", quiet && "text-muted-foreground")} title={lane.label}>
@@ -100,7 +122,7 @@ export function LaneCard({ lane, extra, now, onOpen, compactCard }: { lane: Lane
 }
 
 /** Quiet subagents (done or idle) as one row each, under the busy ones. */
-function QuietRows({ lanes, onOpen }: { lanes: Lane[]; onOpen?: (id: string) => void }) {
+function QuietRows({ lanes, onOpen, look }: { lanes: Lane[]; onOpen?: (id: string) => void; look: (id: string) => Look }) {
   return (
     <ol className="flex flex-col">
       {lanes.map((l) => (
@@ -109,8 +131,9 @@ function QuietRows({ lanes, onOpen }: { lanes: Lane[]; onOpen?: (id: string) => 
             type="button"
             data-lane={l.id}
             data-status={l.status}
+            data-linked={look(l.id).linked?.kind}
             onClick={() => onOpen?.(l.id)}
-            className="grid w-full grid-cols-[auto_minmax(0,1fr)_70px_60px_90px] items-center gap-3 rounded-md px-2 py-1 text-left text-[13px] hover:bg-accent/50"
+            className={cn("grid w-full grid-cols-[auto_minmax(0,1fr)_70px_60px_90px] items-center gap-3 rounded-md px-2 py-1 text-left text-[13px] hover:bg-accent/50", look(l.id).flash && "mc-flash")}
           >
             <StatusDot status={l.status} />
             <span className="truncate" title={l.label}>{l.label}</span>
@@ -125,14 +148,75 @@ function QuietRows({ lanes, onOpen }: { lanes: Lane[]; onOpen?: (id: string) => 
 }
 
 const busy = (l: Lane) => l.status === "working" || l.status === "waiting" || l.status === "failed"
+const sel = (ids: string[]) => ids.map((id) => `[data-lane="${id.replace(/["\\]/g, "\\$&")}"]`).join(",")
+
+/** What each card is to the hovered lane: "sent back X3 to backend", "got X3 back from qa", "asked Q4 by backend". */
+export function linkedTo(hover: string | null, links: LaneLink[], label: (id: string) => string): Map<string, Linked> {
+  const out = new Map<string, Linked>()
+  if (!hover) return out
+  const name = label(hover)
+  const add = (id: string, kind: Linked["kind"], text: string) => {
+    const was = out.get(id)
+    out.set(id, { kind: was?.kind === "sendback" ? "sendback" : kind, text: was ? `${was.text} · ${text}` : text })
+  }
+  for (const l of links) {
+    const ids = l.labels.join(", ")
+    const sp = ids ? ` ${ids}` : ""
+    if (l.from === hover) add(l.to, l.kind, l.kind === "sendback" ? `got${sp || " work"} back from ${name}` : `asked${sp} by ${name}`)
+    else if (l.to === hover) add(l.from, l.kind, l.kind === "sendback" ? `sent back${sp} to ${name}` : `asked ${name}${sp}`)
+  }
+  return out
+}
+
+/** Cards in a grid; two or more working at once lead in their own row, labelled. */
+function CardGrid({ lanes, render }: { lanes: Lane[]; render: (l: Lane) => ReactNode; compactCard?: boolean }) {
+  const together = lanes.filter((l) => l.status === "working")
+  const rest = together.length >= 2 ? lanes.filter((l) => !together.includes(l)) : lanes
+  const grid = "grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
+  return (
+    <>
+      {together.length >= 2 && (
+        <section aria-label={`running in parallel · ${together.length}`} className="flex flex-col gap-2 rounded-2xl border border-dashed border-running/30 bg-running/[0.03] p-2.5">
+          <div className="flex items-center gap-1.5 px-1 font-mono text-[11px] tracking-wider text-running uppercase">
+            <i className="mc-pulse size-1.5 rounded-full bg-running" />
+            running in parallel · {together.length}
+          </div>
+          <div className={cn("grid gap-3", together.length === 2 ? "sm:grid-cols-2" : "sm:grid-cols-2 xl:grid-cols-3")}>{together.map(render)}</div>
+        </section>
+      )}
+      {rest.length > 0 && <div className={grid}>{rest.map(render)}</div>}
+    </>
+  )
+}
 
 /**
  * The Lanes tab: a card per top-level lane, subagents nested under their parent with a count
  * (busy ones as cards, the rest as rows). A run's finished stages fold into one "Done" line.
+ * Hovering a card outlines its linked cards; `focus` (from the flow strip) scrolls to a lane and flashes it.
  */
-export function LaneCards({ lanes, extras, now, onOpen }: { lanes: Lane[]; extras: Map<string, LaneExtra>; now: number; onOpen?: (id: string) => void }) {
+export function LaneCards({ lanes, extras, now, onOpen, links = [], focus }: { lanes: Lane[]; extras: Map<string, LaneExtra>; now: number; onOpen?: (id: string) => void; links?: LaneLink[]; focus?: { ids: string[]; n: number } | null }) {
   const [showQuiet, setShowQuiet] = useState<Record<string, boolean>>({})
+  const [hover, setHover] = useState<string | null>(null)
+  const [flash, setFlash] = useState<string[]>([])
+  const root = useRef<HTMLDivElement>(null)
+  const labels = useMemo(() => new Map(lanes.map((l) => [l.id, l.label])), [lanes])
+  const related = useMemo(() => linkedTo(hover, links, (id) => labels.get(id) ?? id), [hover, links, labels])
+
+  useEffect(() => {
+    if (!focus?.ids.length) return
+    const parents = lanes.filter((l) => focus.ids.includes(l.id) && l.parent).map((l) => l.parent!)
+    if (parents.length) setShowQuiet((s) => ({ ...s, ...Object.fromEntries(parents.map((p) => [p, true])) }))
+    setFlash(focus.ids)
+    const t = setTimeout(() => setFlash([]), 1800)
+    return () => clearTimeout(t)
+    // a new request is a new `n`; the lanes polled in between do not re-trigger it
+  }, [focus?.n])
+  useEffect(() => {
+    if (flash.length) root.current?.querySelector(sel(flash))?.scrollIntoView({ behavior: "smooth", block: "center" })
+  }, [flash, showQuiet])
+
   if (!lanes.length) return <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No lanes recorded for this item.</p>
+  const look = (id: string): Look => ({ linked: related.get(id), flash: flash.includes(id), onHover: setHover })
   const groups = laneTree(lanes)
   const stageRun = groups.every((g) => g.lane.kind === "stage" || g.lane.kind === "crew")
   const folded = stageRun ? groups.filter((g) => g.lane.status === "done" || extras.get(g.lane.id)?.skipped) : []
@@ -141,25 +225,21 @@ export function LaneCards({ lanes, extras, now, onOpen }: { lanes: Lane[]; extra
   const singles = shown.filter((g) => !g.children.length)
 
   return (
-    <div className="flex flex-col gap-4">
+    <div ref={root} className="flex flex-col gap-4">
       {parents.map(({ lane, children }) => {
         const active = children.filter(busy)
         const quiet = children.filter((c) => !busy(c))
         const open = showQuiet[lane.id] ?? quiet.length <= 12
         return (
           <section key={lane.id} className="flex flex-col gap-3" aria-label={`${lane.label} and its subagents`}>
-            <LaneCard lane={lane} extra={extras.get(lane.id)} now={now} onOpen={onOpen} />
+            <LaneCard lane={lane} extra={extras.get(lane.id)} now={now} onOpen={onOpen} {...look(lane.id)} />
             <div className="ml-3 flex flex-col gap-2 border-l pl-4">
               <div className="font-mono text-[11px] tracking-wider text-faint uppercase">
                 Subagents · {children.length}
                 {active.length ? <span className="text-running"> · {active.length} busy</span> : null}
               </div>
               {active.length > 0 && (
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {active.map((c) => (
-                    <LaneCard key={c.id} lane={c} extra={extras.get(c.id)} now={now} onOpen={onOpen} compactCard />
-                  ))}
-                </div>
+                <CardGrid compactCard lanes={active} render={(c) => <LaneCard key={c.id} lane={c} extra={extras.get(c.id)} now={now} onOpen={onOpen} compactCard {...look(c.id)} />} />
               )}
               {quiet.length > 0 && (
                 <div className="flex flex-col gap-1">
@@ -172,28 +252,22 @@ export function LaneCards({ lanes, extras, now, onOpen }: { lanes: Lane[]; extra
                     <ChevronRight className={cn("size-3 transition-transform", open && "rotate-90")} />
                     {quiet.length} finished or idle
                   </button>
-                  {open && <QuietRows lanes={quiet} onOpen={onOpen} />}
+                  {open && <QuietRows lanes={quiet} onOpen={onOpen} look={look} />}
                 </div>
               )}
             </div>
           </section>
         )
       })}
-      {singles.length > 0 && (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {singles.map(({ lane }) => (
-            <LaneCard key={lane.id} lane={lane} extra={extras.get(lane.id)} now={now} onOpen={onOpen} />
-          ))}
-        </div>
-      )}
+      {singles.length > 0 && <CardGrid lanes={singles.map((g) => g.lane)} render={(l) => <LaneCard key={l.id} lane={l} extra={extras.get(l.id)} now={now} onOpen={onOpen} {...look(l.id)} />} />}
       {folded.length > 0 && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs text-muted-foreground" aria-label="Done">
           <span>Done</span>
           {folded.map(({ lane }) =>
             extras.get(lane.id)?.skipped ? (
-              <span key={lane.id} className="text-faint">— {lane.label} skipped</span>
+              <span key={lane.id} data-lane={lane.id} className={cn("rounded text-faint", flash.includes(lane.id) && "mc-flash")}>— {lane.label} skipped</span>
             ) : (
-              <button key={lane.id} type="button" onClick={() => onOpen?.(lane.id)} className="hover:text-foreground">
+              <button key={lane.id} type="button" data-lane={lane.id} data-linked={related.get(lane.id)?.kind} onClick={() => onOpen?.(lane.id)} onMouseEnter={() => setHover(lane.id)} onMouseLeave={() => setHover(null)} className={cn("rounded hover:text-foreground", flash.includes(lane.id) && "mc-flash", related.has(lane.id) && LINKED[related.get(lane.id)!.kind].text)}>
                 <span className="text-running">✓</span> {lane.label}
               </button>
             ),

@@ -55,6 +55,8 @@ export function NeedsYouCard({ source, id, ask, actions, now, onActed }: { sourc
 
   return (
     <section
+      data-needs-you
+      tabIndex={-1}
       aria-label={ask.waiting ? "Needs you" : "Stopped"}
       className={cn("flex flex-col gap-3 rounded-xl border p-4", ask.waiting ? "border-needs-you/70 bg-needs-you/5" : "border-stopped/40 border-dashed bg-card")}
     >

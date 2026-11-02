@@ -77,4 +77,44 @@ describe("LaneCards", () => {
     render(<LaneCards now={NOW} extras={new Map()} lanes={[]} />)
     expect(screen.getByText("No lanes recorded for this item.")).toBeTruthy()
   })
+
+  it("hovering a card outlines the cards it is linked to, with what passed between them", () => {
+    const links = [
+      { from: "qa", to: "backend", kind: "sendback" as const, labels: ["X3"] },
+      { from: "backend", to: "architect", kind: "consult" as const, labels: ["Q4"] },
+    ]
+    render(<LaneCards now={NOW} extras={new Map()} links={links} lanes={[lane("backend", "working"), lane("qa", "waiting"), lane("architect", "working"), lane("review", "idle")]} />)
+    fireEvent.mouseEnter(card("backend"))
+    expect(card("qa").dataset.linked).toBe("sendback")
+    expect(card("qa").textContent).toContain("sent back X3 to backend")
+    expect(card("architect").dataset.linked).toBe("consult")
+    expect(card("architect").textContent).toContain("asked Q4 by backend")
+    expect(card("review").dataset.linked).toBeUndefined()
+    fireEvent.mouseEnter(card("qa"))
+    expect(card("backend").textContent).toContain("got X3 back from qa")
+    fireEvent.mouseLeave(card("qa"))
+    expect(card("backend").dataset.linked).toBeUndefined()
+  })
+
+  it("lanes working at the same time share one row labelled running in parallel", () => {
+    render(<LaneCards now={NOW} extras={new Map()} lanes={[lane("backend", "working"), lane("frontend", "working"), lane("qa", "waiting"), lane("review", "idle")]} />)
+    const row = screen.getByLabelText("running in parallel · 2")
+    expect(row.textContent).toContain("running in parallel · 2")
+    expect(row.querySelector('[data-lane="backend"]')).toBeTruthy()
+    expect(row.querySelector('[data-lane="frontend"]')).toBeTruthy()
+    expect(row.querySelector('[data-lane="qa"]')).toBeNull()
+  })
+
+  it("a focus request scrolls to the lane's card and flashes it, opening a folded group if needed", () => {
+    const scroll = vi.fn()
+    Element.prototype.scrollIntoView = scroll
+    const lanes = [lane("main", "working", { kind: "main" }), ...Array.from({ length: 14 }, (_, i) => lane(`q${i}`, "done", { kind: "subagent", parent: "main" }))]
+    const { rerender } = render(<LaneCards now={NOW} extras={new Map()} lanes={lanes} />)
+    expect(card("q3")).toBeNull()
+    rerender(<LaneCards now={NOW} extras={new Map()} lanes={lanes} focus={{ ids: ["q3"], n: 1 }} />)
+    expect(card("q3")).toBeTruthy()
+    expect(card("q3").className).toContain("mc-flash")
+    expect(scroll).toHaveBeenCalled()
+  })
 })
+

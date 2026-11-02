@@ -42,7 +42,9 @@ function clock(t: number, withDay: boolean, withSec: boolean) {
   return withDay ? `${d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })} ${hm}` : hm
 }
 
-export function buildTimeline(lanes: Lane[], calls: Call[], o: { live: boolean; now: number; gapMs?: number }): Timeline {
+/** `zoom` (≥ 1): how many track widths the axis spans; marks get denser to match. */
+export function buildTimeline(lanes: Lane[], calls: Call[], o: { live: boolean; now: number; gapMs?: number; zoom?: number }): Timeline {
+  const zoom = Math.max(1, o.zoom ?? 1)
   const gapMs = o.gapMs ?? 10 * 60_000
   const first = new Map<string, number>(), last = new Map<string, number>()
   const points: number[] = []
@@ -115,7 +117,7 @@ export function buildTimeline(lanes: Lane[], calls: Call[], o: { live: boolean; 
   const marks: TlMark[] = []
   const mark = (xx: number, t: number) => {
     // labels with a day are about twice as wide; keep them apart on a ~600px track
-    if (marks.every((m) => Math.abs(m.x - xx) > (multiDay ? 0.18 : 0.1))) marks.push({ x: xx, label: clock(t, multiDay, t1 - t0 < 15 * 60_000) })
+    if (marks.every((m) => Math.abs(m.x - xx) > (multiDay ? 0.18 : 0.1) / zoom)) marks.push({ x: xx, label: clock(t, multiDay, (t1 - t0) / zoom < 15 * 60_000) })
   }
   // axis position (0..1) back to real time, for the in-between marks
   const tAt = (xx: number) => {
@@ -129,7 +131,10 @@ export function buildTimeline(lanes: Lane[], calls: Call[], o: { live: boolean; 
   mark(1, t1)
   for (const g of gaps) mark(pos[g.at] / D, pts[g.at])
   const inBreak = (xx: number) => breaks.some((b) => xx >= b.x - 0.02 && xx <= b.x + b.w + 0.02)
-  for (const xx of [0.5, 0.25, 0.75]) if (pts.length > 1 && !inBreak(xx)) mark(xx, tAt(xx))
+  // in-between marks, coarse to fine: halves, quarters, then (zoomed) finer steps
+  const parts = Math.max(4, Math.round(4 * zoom))
+  const between = [...new Set([2, 4, parts].flatMap((n) => Array.from({ length: n - 1 }, (_, k) => (k + 1) / n)))]
+  for (const xx of between) if (pts.length > 1 && !inBreak(xx)) mark(xx, tAt(xx))
   marks.sort((a, b) => a.x - b.x)
   return { rows: rowsOf(x), breaks, marks, t0, t1, activeMs: active, playhead: o.live ? x(o.now) : null }
 }

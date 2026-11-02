@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { FlowStrip } from "@/components/FlowStrip"
 import { ItemMap } from "@/components/ItemMap"
 import { LaneTimeline } from "@/components/LaneTimeline"
 import { LaneCards } from "@/components/LaneCards"
@@ -23,6 +24,7 @@ import { extraTabs, normaliseDiff, normaliseTasks, qaRows, runChanges } from "@/
 import { useNow } from "@/lib/format"
 import { crewCards, crewGraph, currentStop } from "@/lib/graph"
 import { laneExtras } from "@/lib/item"
+import { laneLinks } from "@/lib/map"
 import { toHash } from "@/lib/route"
 import { cn } from "@/lib/utils"
 
@@ -70,16 +72,19 @@ export default function Item({ source, id, tab, call }: { source: string; id: st
   const caps = useCapabilities()
   const sources = useSources()
   const isSession = d?.summary.kind === "session"
-  // Sessions read health and findings from their calls (a run's come from its events); any item's timeline draws them.
-  const calls = useCalls(source, isSession || tab === "timeline" ? id : null, {}, poll)
+  // Sessions read health and findings from their calls (a run's come from its events); any item's timeline
+  // draws them, and the Calls tab lists them: one poller for all three.
+  const calls = useCalls(source, isSession || tab === "timeline" || tab === "calls" ? id : null, {}, poll)
   const now = useNow(5000)
   const [sheet, setSheet] = useState<string[] | null>(null)
+  const [focus, setFocus] = useState<{ ids: string[]; n: number } | null>(null)
 
   const src = sources.data?.find((s) => s.name === source)
   const actions = src?.actions ?? []
   const v1Run = !!d && d.summary.kind === "run" && caps.data?.adapter === source
   const events = useMemo(() => (Array.isArray(d?.events) ? d!.events : []), [d])
   const extras = useMemo(() => (d ? laneExtras(d) : new Map()), [d])
+  const links = useMemo(() => (d ? laneLinks(d) : []), [d])
   const v1 = useMemo(() => {
     if (!d || !v1Run) return null
     const state = d.state ?? {}
@@ -103,6 +108,16 @@ export default function Item({ source, id, tab, call }: { source: string; id: st
   const lanesFor = (ids: string[] | null) => (ids ? d.lanes.filter((l) => ids.includes(l.id)) : [])
   const wide = current === "calls"
   const idea = String(d.state?.idea ?? d.summary.title ?? "")
+  // "you" on the map: bring up the needs-you card in the rail (or, with nothing waiting, the conversation).
+  const toYou = () => {
+    const card = document.querySelector<HTMLElement>("[data-needs-you]")
+    if (!card) return go("chat")
+    card.scrollIntoView({ behavior: "smooth", block: "center" })
+    card.classList.remove("mc-flash")
+    void card.offsetWidth
+    card.classList.add("mc-flash")
+    card.focus({ preventScroll: true })
+  }
 
   return (
     <div className="mx-auto flex max-w-[1500px] flex-col gap-4">
@@ -122,14 +137,19 @@ export default function Item({ source, id, tab, call }: { source: string; id: st
               </TabsTrigger>
             ))}
           </TabsList>
-          <TabsContent value="lanes" className="pt-4">
-            <LaneCards lanes={d.lanes} extras={extras} now={now} onOpen={(lane) => setSheet([lane])} />
+          <TabsContent value="lanes" className="flex flex-col gap-4 pt-4">
+            {d.lanes.length > 1 && <FlowStrip detail={d} now={now} onPick={(ids) => setFocus({ ids, n: Date.now() })} onYou={toYou} />}
+            <LaneCards lanes={d.lanes} extras={extras} now={now} links={links} focus={focus} onOpen={(lane) => setSheet([lane])} />
           </TabsContent>
           <TabsContent value="map" className="pt-4">
-            <ItemMap detail={d} extras={extras} selected={sheet?.[0]} onOpen={setSheet} />
+            <ItemMap detail={d} extras={extras} selected={sheet?.[0]} onOpen={setSheet} onYou={toYou} />
           </TabsContent>
           <TabsContent value="calls" className="pt-4">
-            {current === "calls" && <div className="h-[78vh] min-h-[520px] overflow-hidden rounded-xl border bg-card/30"><Calls source={source} id={id} call={call} /></div>}
+            {current === "calls" && (
+              <div className="h-[78vh] min-h-[520px] overflow-hidden rounded-xl border bg-card/30">
+                <Calls source={source} id={id} call={call} detail={d} calls={calls.data ?? (calls.error ? [] : null)} />
+              </div>
+            )}
           </TabsContent>
           <TabsContent value="timeline" className="pt-4">
             {current === "timeline" &&

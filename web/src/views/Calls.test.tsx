@@ -85,4 +85,13 @@ describe("Calls tab", () => {
     expect(screen.getByText("No tool calls.")).toBeTruthy()
     expect(chip(/^All 0$/)).toBeTruthy()
   })
+
+  it("given the item page's item and calls, it shows them and starts no poller of its own", async () => {
+    const fetch = serve({}, [])
+    const detail = { summary: { source: "claude-code", id: "s1", title: "t", live: true, status: "working" }, lanes } as any
+    render(<Calls source="claude-code" id="s1" detail={detail} calls={calls as any} />)
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(6))
+    expect(fetch).not.toHaveBeenCalled()
+  })
 })
+

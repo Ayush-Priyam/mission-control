@@ -44,4 +44,14 @@ describe("buildTimeline", () => {
     const tl = buildTimeline([lane("build", { kind: "stage" })], [], { live: true, now: 5 })
     expect(tl.rows[0]).toMatchObject({ a: null, b: null, ticks: [] })
   })
+
+  it("zoomed in, the axis carries more marks, still apart on the wider track", () => {
+    const lanes = [lane("main", { startedAt: T(0), endedAt: T(9) })]
+    const calls = Array.from({ length: 40 }, (_, i) => call(`c${i}`, "main", T(Math.floor(i / 5), (i % 5) * 10)))
+    const one = buildTimeline(lanes, calls, { live: false, now: 0 })
+    const four = buildTimeline(lanes, calls, { live: false, now: 0, zoom: 4 })
+    expect(four.marks.length).toBeGreaterThan(one.marks.length * 2)
+    for (let i = 1; i < four.marks.length; i++) expect(four.marks[i].x - four.marks[i - 1].x).toBeGreaterThan(0.1 / 4 - 1e-9)
+  })
 })
+

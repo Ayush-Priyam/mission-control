@@ -159,7 +159,17 @@
     50% { stroke-opacity: 0; stroke-width: 9; }
 }
 .mc-halo { animation: mc-halo 1.8s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) { .mc-pulse, .mc-halo { animation: none; } }
+/* An edge that waits on the owner: its dashes march toward "you". */
+@keyframes mc-dash { to { stroke-dashoffset: -20; } }
+.mc-dash { animation: mc-dash 1.2s linear infinite; }
+/* A lane card picked from the flow strip flashes once. */
+@keyframes mc-flash {
+    0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ring) 0%, transparent); }
+    20% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 70%, transparent); }
+    100% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 35%, transparent); }
+}
+.mc-flash { animation: mc-flash 1.6s ease-out both; }
+@media (prefers-reduced-motion: reduce) { .mc-pulse, .mc-halo, .mc-dash, .mc-flash { animation: none; } }
 
 @layer base {
   * {
