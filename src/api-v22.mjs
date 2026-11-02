@@ -4,6 +4,21 @@
 import { joinConfig, readClaudeConfig, readCodexConfig, unusedServers } from "./config.mjs"
 import { buildTree, projectsOf } from "./projects.mjs"
 import { sameFileWarnings, warningText, WINDOW_MS } from "./conflicts.mjs"
+import { evaluateBudgets } from "./budgets.mjs"
+import { prUsage } from "./prs.mjs"
+import { defaultTz, isTz, localDay, shiftDay } from "./usage.mjs"
+
+const DAY = /^\d{4}-\d{2}-\d{2}$/
+/** Usage rows of a range with project key, name and path (as /api/usage names them) and the worktree. */
+export async function namedRows(ctx, range) {
+  const rows = await ctx.registry.usage(range)
+  const where = await projectsOf(rows.map((r) => r.project), { git: ctx.git })
+  return rows.map((r) => {
+    const p = where.get(r.project)
+    return p ? { ...r, project: p.key, projectName: p.name, projectPath: p.path, worktree: p.worktree || r.worktree } : { ...r, project: "no-project", projectName: "(no project)", projectPath: "" }
+  })
+}
+const todayIn = (ctx, tz) => localDay(new Date((ctx.now ?? Date.now)()).toISOString(), tz)
 
 const RECENT = 20 // sessions a project-level note looks at
 
@@ -71,6 +86,24 @@ export async function apiV22(ctx, { get, parts, isKey, q }) {
     const src = registry.source(source)
     const r = src?.getTurnCosts ? await src.getTurnCosts(id, lane) : null
     return r ? { body: r } : { body: { error: "not found" }, status: 404 }
+  }
+  // GET /api/usage/prs?from&to&tz: cost per pull request (branches that map to a PR through gh)
+  if (get && parts[0] === "usage" && parts[1] === "prs" && parts.length === 2) {
+    const from = q.get("from") ?? undefined, to = q.get("to") ?? undefined, tz = q.get("tz") ?? defaultTz()
+    if ((from && !DAY.test(from)) || (to && !DAY.test(to)) || !isTz(tz)) return bad
+    if (!ctx.prs) return { body: { gh: false, rows: [] } }
+    const rows = await prUsage(await namedRows(ctx, { from, to, tz }), ctx.prs)
+    return { body: { gh: ctx.prs.available() !== false, rows } }
+  }
+  // GET /api/budgets?tz: spend against each configured budget
+  if (get && parts[0] === "budgets" && parts.length === 1) {
+    const tz = q.get("tz") ?? defaultTz()
+    if (!isTz(tz)) return bad
+    const list = ctx.budgets?.list() ?? []
+    if (!list.length) return { body: { budgets: [] } }
+    const today = todayIn(ctx, tz)
+    const rows = await namedRows(ctx, { from: shiftDay(today, -29), to: today, tz })
+    return { body: { today, budgets: evaluateBudgets(list, rows, { today }) } }
   }
   // GET /api/project/:key/conflicts
   if (get && parts[0] === "project" && parts[2] === "conflicts" && parts.length === 3) {

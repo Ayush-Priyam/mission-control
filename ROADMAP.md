@@ -13,7 +13,7 @@ Ideas and fixes, roughly in the order they'll land. Many came from people trying
 ## Later
 
 - Answer prompts from the browser (allow / deny / pick an option) through the hooks, not by reading the terminal screen.
-- Cost per task, PR or worktree with budget alerts.
+- Cost per task (spec-kit task, Ronin stage).
 - "Will this finish before my usage window resets?"
 - Approve and steer from a phone (local-first PWA).
 - Rewind or fork a session from its log.
@@ -35,3 +35,4 @@ None open right now.
 - Calls joined to config: the Calls tab lists each configured MCP server and skill as used, loaded but not used, or failing (by error rate); the project page names MCP servers no recent session called. Config files are read for names only.
 - Same-file warning: two sessions or runs of one project (any worktrees) that edited the same repo-relative path within 30 minutes show a warning on the project page and on both items' rails.
 - Turns view: each assistant turn's input, cache read, cache write and output tokens with an estimated cost, sortable by cost, with markers where the context dropped sharply (compaction) and a short "why expensive" hint. Claude Code and Codex.
+- Cost per pull request (branches mapped to PRs through `gh`, cached, optional) and budgets per project, worktree or branch in `~/.mission-control/config.json`, with bars on the Usage page and a top-bar chip at 80% and 100%.

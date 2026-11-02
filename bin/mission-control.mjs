@@ -61,7 +61,8 @@ let srv
 const { homedir } = await import("node:os")
 const { join: joinPath, resolve: resolvePath } = await import("node:path")
 const codexHome = process.env.CODEX_HOME ? resolvePath(process.env.CODEX_HOME) : joinPath(homedir(), ".codex")
-try { srv = await createServer(adapters, { port, config: defaultConfigPath(), claudeHome: homedir(), codexHome }) } catch { process.exit(1) }
+const { createPrReader } = await import("../src/prs.mjs")
+try { srv = await createServer(adapters, { port, config: defaultConfigPath(), claudeHome: homedir(), codexHome, prs: createPrReader() }) } catch { process.exit(1) }
 
 if (!args.noOpen && process.platform === "darwin") {
   spawn("open", [`http://localhost:${srv.port}`], { stdio: "ignore", detached: true }).on("error", () => {}).unref()

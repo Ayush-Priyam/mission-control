@@ -87,3 +87,26 @@ test("turn-costs route: a session's turns; bad lane 400; a source without turns 
     assert.equal((await fetch(`${base}/api/item/claude-code/s1/turn-costs?lane=agent-zz`)).status, 404)
   })
 })
+
+test("budgets and PR routes: spend against a configured budget; PR rows only from the injected reader", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "mc-cfgfile-"))
+  const config = join(dir, "config.json")
+  // fixture usage is on 2026-11-01 (UTC); "today" is 2026-11-02
+  writeFileSync(config, JSON.stringify({ budgets: [{ scope: "branch", match: "feat/*", weekly: 0.000001 }, { scope: "project", match: "nothing-here", daily: 5 }] }))
+  const NOW = Date.parse("2026-11-02T12:00:00Z")
+  const prs = { available: () => true, prsOf: async () => new Map([["feat/cart", { number: 9, title: "Cart" }]]) }
+  const src = create({ root: claudeRoot })
+  await src.usage({}); await src.whenScanned()
+  await withServer([src], { config, now: () => NOW, prs }, async (base) => {
+    const b = await (await fetch(`${base}/api/budgets?tz=UTC`)).json()
+    assert.equal(b.today, "2026-11-02")
+    assert.deepEqual(b.budgets.map((x) => [x.match, x.period, x.level]), [["feat/*", "weekly", "over"], ["nothing-here", "daily", "ok"]])
+    const p = await (await fetch(`${base}/api/usage/prs?tz=UTC`)).json()
+    assert.deepEqual(p.rows.map((r) => [r.branch, r.pr.number]), [["feat/cart", 9]])
+    assert.equal((await fetch(`${base}/api/budgets?tz=Nope/Zone`)).status, 400)
+  })
+  await withServer([create({ root: claudeRoot })], {}, async (base) => {
+    assert.deepEqual(await (await fetch(`${base}/api/budgets`)).json(), { budgets: [] })
+    assert.deepEqual(await (await fetch(`${base}/api/usage/prs`)).json(), { gh: false, rows: [] })
+  })
+})

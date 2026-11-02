@@ -173,4 +173,18 @@ describe("Heatmap labels", () => {
     labels.forEach((l) => expect(l.className).toContain("text-xs"))
     expect(map.querySelector("svg")).toBeNull()
   })
+
+  it("v2.2: the Pull requests tab lists branches that map to a PR; budgets show as bars", async () => {
+    const pr = { key: "p#42", project: "p", projectName: "shop", branch: "feat/search", pr: { number: 42, title: "Search page", state: "open" }, ...tok(10), cost: 3, sessions: 2 }
+    stub((by) => answer(by), (url) =>
+      url.pathname === "/api/usage/prs" ? Promise.resolve({ ok: true, json: async () => ({ gh: true, rows: [pr] }) })
+      : url.pathname === "/api/budgets" ? Promise.resolve({ ok: true, json: async () => ({ budgets: [{ scope: "branch", match: "feat/*", period: "weekly", limit: 10, spent: 9, ratio: 0.9, level: "warn" }] }) })
+      : null)
+    render(<Usage />)
+    await waitFor(() => expect(screen.getByLabelText("Budgets")).toBeTruthy())
+    expect(screen.getByText("$9.00 / $10.00 · 90%")).toBeTruthy()
+    fireEvent.click(screen.getByRole("tab", { name: "Pull requests" }))
+    await waitFor(() => expect(screen.getByText("#42 Search page")).toBeTruthy())
+    expect(screen.getByText("shop · feat/search · open")).toBeTruthy()
+  })
 })

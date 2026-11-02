@@ -22,3 +22,16 @@ export type TurnCost = { i: number; ts: string | null; model: string | null; in:
 export type TurnCosts = { lane: string; turns: TurnCost[]; total: { cost: number; turns: number; compactions: number } }
 export const useTurnCosts = (source: string, id: string | null, lane: string, pollMs = 0) =>
   useFetch<TurnCosts>(id ? `/api/item/${enc(source)}/${enc(id)}/turn-costs?lane=${enc(lane)}` : null, pollMs)
+
+export type BudgetState = { scope: "project" | "worktree" | "branch"; match: string; period: "daily" | "weekly" | "monthly"; limit: number; spent: number; ratio: number; level: "ok" | "warn" | "over" }
+export const useBudgets = (tz: string, pollMs = 60_000) => useFetch<{ today?: string; budgets: BudgetState[] }>(`/api/budgets?tz=${enc(tz)}`, pollMs)
+
+export type PrRow = { key: string; project: string; projectName: string; branch: string; pr: { number: number; title: string; state?: string }; in: number; out: number; cacheRead: number; cacheWrite: number; cost: number; sessions: number }
+export const usePrUsage = (q: { from?: string; to?: string } | null, tz: string) =>
+  useFetch<{ gh: boolean; rows: PrRow[] }>(q ? `/api/usage/prs?${new URLSearchParams({ ...(q.from ? { from: q.from } : {}), ...(q.to ? { to: q.to } : {}), tz })}` : null)
+
+/** The worst budget state, for the top-bar chip: null when every budget is under 80%. */
+export function budgetAlert(list: BudgetState[] | undefined): BudgetState | null {
+  const hot = (Array.isArray(list) ? list : []).filter((b) => b.level !== "ok").sort((a, b) => b.ratio - a.ratio)
+  return hot[0] ?? null
+}
