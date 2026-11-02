@@ -30,7 +30,7 @@ npm run demo -- --port 4400       # another port
 npm run demo -- --live            # keep appending to the live session and the busy run
 ```
 
-The demo generates invented data into `examples/` (not tracked) and serves it. It defaults to port 4320 so it never clashes with a real dashboard on 4319. It never reads your own `~/.claude`.
+The demo generates invented data into `examples/claude`, `examples/hooks` and `examples/runs` and serves it; the generated files are git-ignored (one sample run, `examples/runs/20261101-0900-greeter`, is tracked). It defaults to port 4320 so it never clashes with a real dashboard on 4319. It never reads your own `~/.claude`.
 
 ## Levels: how much you set up
 
@@ -47,17 +47,17 @@ The demo generates invented data into `examples/` (not tracked) and serves it. I
 node bin/mission-control.mjs hooks install
 ```
 
-This prints a `hooks` block for Claude Code's `settings.json` and changes nothing itself: merge it in by hand. Each event runs `mission-control hook <Event>`, which appends one small line (event, session id, time, a message of at most 500 characters, tool name) to `~/.mission-control/hooks/<session_id>.jsonl`. It never prints and never fails the session. Set `MISSION_CONTROL_HOOKS_DIR` to keep the logs elsewhere (the hook and the dashboard both read it). The file format is in [FORMAT.md](FORMAT.md#hook-event-files).
+This prints a `hooks` block for Claude Code's `settings.json` and changes nothing itself: merge it in by hand. The commands in it use absolute paths (your `node` binary and this checkout's `bin/mission-control.mjs`), so re-run `hooks install` and merge again after you move the checkout or upgrade Node. Each event runs `mission-control hook <Event>`, which appends one small line (event, session id, time, a message of at most 500 characters, tool name) to `~/.mission-control/hooks/<session_id>.jsonl`. It never prints and never fails the session. Set `MISSION_CONTROL_HOOKS_DIR` to keep the logs elsewhere (the hook and the dashboard both read it). The file format is in [FORMAT.md](FORMAT.md#hook-event-files).
 
 ### Levels 2 and 3: runs and adapters
 
 A harness writes two files per run, `state.json` and `runs.jsonl`, in the documented [run format](FORMAT.md). Point the dashboard at the directory: `node bin/mission-control.mjs --runs path/to/runs`. A spec-kit-compound repo is read directly with `--speckit path/to/repo`.
 
-An adapter is a JS module whose default export is `create(options)`, returning:
+An adapter is a JS module whose default export is `create(options)`. It returns either a v1 adapter (runs) or a v2 source (items with lanes and calls). A v1 adapter looks like this, and is wrapped into a v2 source automatically (stages become lanes, its events become calls):
 
 ```js
 {
-  name: "my-harness",
+  name: "example-harness",
   describe?(): { source?: string },             // shown on the empty home page
   listRuns(): Promise<RunSummary[]>,            // newest first
   getRun(id): Promise<{ state, events, live } | null>,
@@ -68,6 +68,24 @@ An adapter is a JS module whose default export is `create(options)`, returning:
 ```
 
 `RunSummary` is `{ id, idea, repo?, live, waiting?, stages: { [stage]: { status, rounds? } }, harness? }`. `waiting` is true when the run's current stop waits on you; compute it with `isWaiting(events)` from `src/status.mjs` (the rule is in [FORMAT.md](FORMAT.md#waiting-on-you)). External adapters are called as `create({ ...opts, runsDir, createNative })`, where `createNative` is the built-in runs-directory adapter factory, so you can wrap it. `extras` feed optional tabs served at `GET /api/x/<key>[/<id>]`; the page shows a tab only when the adapter lists it. `actions` are served at `POST /api/run/<id>/action/<name>`; buttons appear only for actions an adapter declares.
+
+A v2 source (anything with `listItems`) is used as is. Its shape (JSDoc in `src/sources/types.mjs`):
+
+```js
+{
+  name: "example-harness",
+  harness: "example-harness",
+  listItems(): Promise<ItemSummary[]>,          // { source, id, kind: "run" | "session", title, cwd, branch, live, status, waiting, startedAt, updatedAt, counts, tokens, cost }
+  getItem(id): Promise<{ summary, lanes, events, state? } | null>,   // Lane: { id, label, kind, status, model?, nowDoing?, calls, errors, tokens, cost, parent? }
+  getCalls(id, { lane?, kind?, q? }): Promise<Call[]>,               // Call: { id, lane, ts, name, kind: "tool" | "mcp" | "skill" | "agent", summary, ok?, error?, durationMs? }
+  getSession(id, name): Promise<{ text, truncated? } | null>,
+  getTurns?(id, lane, { before?, limit? }),     // chat pages: { lane, total, start, turns }
+  usage?({ from?, to?, tz? }): Promise<UsageRow[]>,
+  extras?, actions?, describe?(),               // as for v1; served under /api/item/<source>/<id>/x/<key> and /action/<name>
+}
+```
+
+Status is one of `working`, `waiting` (needs you), `stopped`, `failed`, `done`, `idle`.
 
 ## The pages
 
@@ -118,7 +136,7 @@ Local only, no auth. The server binds `127.0.0.1` and `::1` and:
 - answers only requests whose `Host` is `localhost`, `127.0.0.1` or `[::1]` on its own port (anything else gets 403), so a web page cannot reach it through DNS rebinding;
 - takes a POST only with `content-type: application/json` (else 415) and, when the browser sends an `Origin`, only from `http://localhost:<port>`, `http://127.0.0.1:<port>` or `http://[::1]:<port>` (else 403), so another site cannot submit to the action routes.
 
-The built-in sources are read-only: they never write to a runs directory, a repo or `~/.claude`. The only thing written is the hook log under `~/.mission-control/` (and a usage cache there). Session names are confined to their root, so `..` and symlinks out of it are refused. The page makes no network requests (fonts are bundled).
+The built-in sources are read-only: they never write to a runs directory, a repo or `~/.claude`. The only thing written is the hook log under `~/.mission-control/` (and a usage cache there). Session names are confined to their root, so `..` and symlinks out of it are refused. The page makes no network requests: it uses system fonts and loads nothing from outside the server.
 
 ## Develop
 
