@@ -36,9 +36,9 @@ function order(lanes: Lane[], first: Map<string, number>) {
 }
 
 const pad = (n: number) => String(n).padStart(2, "0")
-function clock(t: number, withDay: boolean) {
+function clock(t: number, withDay: boolean, withSec: boolean) {
   const d = new Date(t)
-  const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}${withSec ? `:${pad(d.getSeconds())}` : ""}`
   return withDay ? `${d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })} ${hm}` : hm
 }
 
@@ -114,11 +114,22 @@ export function buildTimeline(lanes: Lane[], calls: Call[], o: { live: boolean; 
   // Marks: the start, the far side of every break, and the end (dropped when they would crowd).
   const marks: TlMark[] = []
   const mark = (xx: number, t: number) => {
-    if (marks.every((m) => Math.abs(m.x - xx) > 0.09)) marks.push({ x: xx, label: clock(t, multiDay) })
+    // labels with a day are about twice as wide; keep them apart on a ~600px track
+    if (marks.every((m) => Math.abs(m.x - xx) > (multiDay ? 0.18 : 0.1))) marks.push({ x: xx, label: clock(t, multiDay, t1 - t0 < 15 * 60_000) })
+  }
+  // axis position (0..1) back to real time, for the in-between marks
+  const tAt = (xx: number) => {
+    const p = xx * D
+    let i = 1
+    while (i < pos.length - 1 && pos[i] < p) i++
+    const f = (p - pos[i - 1]) / (pos[i] - pos[i - 1] || 1)
+    return pts[i - 1] + f * (pts[i] - pts[i - 1])
   }
   mark(0, t0)
-  for (const g of gaps) mark(pos[g.at] / D, pts[g.at])
   mark(1, t1)
+  for (const g of gaps) mark(pos[g.at] / D, pts[g.at])
+  const inBreak = (xx: number) => breaks.some((b) => xx >= b.x - 0.02 && xx <= b.x + b.w + 0.02)
+  for (const xx of [0.5, 0.25, 0.75]) if (pts.length > 1 && !inBreak(xx)) mark(xx, tAt(xx))
   marks.sort((a, b) => a.x - b.x)
   return { rows: rowsOf(x), breaks, marks, t0, t1, activeMs: active, playhead: o.live ? x(o.now) : null }
 }

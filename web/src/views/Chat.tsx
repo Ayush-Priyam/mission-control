@@ -71,8 +71,32 @@ function ChipDetail({ c, href, onOpenLane, subLane }: { c: ToolChip; href: strin
   )
 }
 
-type TurnProps = {
-  t: Turn
+/** Consecutive turns of one role read as one block; inside it, tool-only turns share a chip row. */
+export type Block = { role: Turn["role"]; turns: Turn[] }
+export function blocks(turns: Turn[]): Block[] {
+  const out: Block[] = []
+  for (const t of turns) {
+    const last = out[out.length - 1]
+    if (last && last.role === t.role && t.role === "assistant") last.turns.push(t)
+    else out.push({ role: t.role, turns: [t] })
+  }
+  return out
+}
+/** A block's pieces in order: text, or a row of chips (merged across tool-only turns). */
+function pieces(b: Block) {
+  const out: ({ k: "text"; t: Turn } | { k: "chips"; key: string; chips: ToolChip[] })[] = []
+  for (const t of b.turns) {
+    if (t.text) out.push({ k: "text", t })
+    if (!t.tools.length) continue
+    const last = out[out.length - 1]
+    if (last?.k === "chips" && !t.text) last.chips.push(...t.tools)
+    else out.push({ k: "chips", key: `c${t.i}`, chips: [...t.tools] })
+  }
+  return out
+}
+
+type BlockProps = {
+  b: Block
   who: string
   open: Set<string>
   toggle: (id: string) => void
@@ -81,34 +105,50 @@ type TurnProps = {
   onOpenLane: (lane: string) => void
 }
 
-function TurnView({ t, who, open, toggle, callHref, subLanes, onOpenLane }: TurnProps) {
+function Chips({ chips, open, toggle, callHref, subLanes, onOpenLane }: Omit<BlockProps, "b" | "who"> & { chips: ToolChip[] }) {
   const [all, setAll] = useState(false)
-  const user = t.role === "user"
-  const chips = all ? t.tools : t.tools.slice(0, SHOWN_CHIPS)
-  const opened = t.tools.filter((c) => open.has(c.id))
+  const shown = all ? chips : chips.slice(0, SHOWN_CHIPS)
+  const opened = chips.filter((c) => open.has(c.id))
   return (
-    <li data-turn={t.i} className={cn("flex flex-col gap-2 rounded-xl border px-4 py-3", user ? "border-consult/25 bg-consult/[0.06]" : "border-transparent")}>
-      <div className="flex items-center gap-2 font-mono text-[10.5px] tracking-wider">
-        <span className={cn("uppercase", user ? "text-consult" : "text-foreground/80")}>{user ? "you" : who}</span>
-        <span className="text-faint">{t.ts ? fmtTime(t.ts) : ""}</span>
-        <span className="text-faint">#{t.i + 1}</span>
+    <>
+      <div className="flex flex-wrap gap-1.5" aria-label="Tool calls">
+        {shown.map((c) => (
+          <Chip key={c.id} c={c} open={open.has(c.id)} onToggle={() => toggle(c.id)} />
+        ))}
+        {chips.length > SHOWN_CHIPS && (
+          <button type="button" onClick={() => setAll(!all)} className="rounded-md border border-dashed px-2 py-1 font-mono text-[11px] text-muted-foreground hover:text-foreground">
+            {all ? "fewer" : `+${chips.length - SHOWN_CHIPS} more`}
+          </button>
+        )}
       </div>
-      {t.text && (user ? <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">{t.text}</p> : <Markdown text={t.text} className="break-words" />)}
-      {t.tools.length > 0 && (
-        <div className="flex flex-wrap gap-1.5" aria-label="Tool calls">
-          {chips.map((c) => (
-            <Chip key={c.id} c={c} open={open.has(c.id)} onToggle={() => toggle(c.id)} />
-          ))}
-          {t.tools.length > SHOWN_CHIPS && (
-            <button type="button" onClick={() => setAll(!all)} className="rounded-md border border-dashed px-2 py-1 font-mono text-[11px] text-muted-foreground hover:text-foreground">
-              {all ? "fewer" : `+${t.tools.length - SHOWN_CHIPS} more`}
-            </button>
-          )}
-        </div>
-      )}
       {opened.map((c) => (
         <ChipDetail key={c.id} c={c} href={callHref(c.id)} subLane={subLanes.get(c.id)} onOpenLane={onOpenLane} />
       ))}
+    </>
+  )
+}
+
+function BlockView({ b, who, ...rest }: BlockProps) {
+  const user = b.role === "user"
+  const a = b.turns[0], z = b.turns[b.turns.length - 1]
+  return (
+    <li data-turn={a.i} className={cn("flex flex-col gap-2 rounded-xl border px-4 py-2.5", user ? "border-consult/25 bg-consult/[0.06]" : "border-transparent")}>
+      <div className="flex items-center gap-2 font-mono text-[10.5px] tracking-wider">
+        <span className={cn("uppercase", user ? "text-consult" : "text-foreground/80")}>{user ? "you" : who}</span>
+        <span className="text-faint">{a.ts ? fmtTime(a.ts) : ""}{z !== a && z.ts ? ` – ${fmtTime(z.ts)}` : ""}</span>
+        <span className="text-faint">#{a.i + 1}{z !== a ? `–${z.i + 1}` : ""}</span>
+      </div>
+      {pieces(b).map((p) =>
+        p.k === "text" ? (
+          user ? (
+            <p key={`t${p.t.i}`} className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">{p.t.text}</p>
+          ) : (
+            <Markdown key={`t${p.t.i}`} text={p.t.text} className="break-words" />
+          )
+        ) : (
+          <Chips key={p.key} chips={p.chips} {...rest} />
+        ),
+      )}
     </li>
   )
 }
@@ -202,8 +242,8 @@ function LaneChat({ source, id, lane, laneId, live, subLanes, onOpenLane }: Lane
         <p className="p-6 text-center font-mono text-[13px] text-muted-foreground">No messages in this lane yet.</p>
       ) : (
         <ol className="mx-auto flex max-w-[900px] flex-col gap-2" aria-label="Transcript" data-total={total}>
-          {list.map((t) => (
-            <TurnView key={t.i} t={t} who={who} open={open} toggle={toggle} callHref={callHref} subLanes={subLanes} onOpenLane={onOpenLane} />
+          {blocks(list).map((b) => (
+            <BlockView key={b.turns[0].i} b={b} who={who} open={open} toggle={toggle} callHref={callHref} subLanes={subLanes} onOpenLane={onOpenLane} />
           ))}
         </ol>
       )}
@@ -228,7 +268,7 @@ export default function Chat({ source, id, lanes, live, calls }: Props) {
   }, [calls, lanes])
 
   return (
-    <div className="flex h-[calc(100vh-15rem)] min-h-[420px] flex-col overflow-hidden rounded-xl border bg-card" aria-label="Chat">
+    <div className="flex h-[calc(100vh-19rem)] min-h-[420px] flex-col overflow-hidden rounded-xl border bg-card" aria-label="Chat">
       <div className="flex flex-wrap items-center gap-3 border-b px-4 py-2.5">
         <b className="font-mono text-[13px] font-bold">Chat</b>
         {lanes.length > 1 && (

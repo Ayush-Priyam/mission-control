@@ -117,3 +117,11 @@ describe("Chat tab", () => {
     expect(screen.queryByText("main says")).toBeNull()
   })
 })
+
+describe("chat blocks", () => {
+  it("runs of assistant turns read as one block; user turns stay their own", async () => {
+    const { blocks } = await import("./Chat")
+    const t = (i: number, role: "user" | "assistant"): Turn => ({ i, role, ts: null, text: "", tools: [] })
+    expect(blocks([t(0, "user"), t(1, "assistant"), t(2, "assistant"), t(3, "user"), t(4, "user"), t(5, "assistant")]).map((b) => b.turns.map((x) => x.i))).toEqual([[0], [1, 2], [3], [4], [5]])
+  })
+})

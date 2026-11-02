@@ -41,7 +41,7 @@ export function LaneTimeline({ lanes, calls, live, now, onPick, onOpenLane }: Pr
   const wall = tl.t0 !== null && tl.t1 !== null ? tl.t1 - tl.t0 : 0
 
   return (
-    <div className="flex h-[calc(100vh-15rem)] min-h-[420px] flex-col overflow-hidden rounded-xl border bg-card [--namew:260px] max-md:[--namew:150px]" aria-label="Timeline">
+    <div className="flex max-h-[calc(100vh-15rem)] min-h-[180px] flex-col overflow-hidden rounded-xl border bg-card [--namew:260px] max-md:[--namew:150px]" aria-label="Timeline">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b px-4 py-3">
         <b className="font-mono text-[13px] font-bold">Timeline</b>
         <span className="font-mono text-[11px] text-muted-foreground">
