@@ -202,6 +202,7 @@ test("open state from <config>/sessions/<pid>.json: busy is working, a dead pid 
   assert.deepEqual([(await s.getItem("busy")).summary.open, (await s.getItem("dead")).summary.open], [true, false])
   const ready = Object.fromEntries((await s.listItems()).map((i) => [i.id, !!i.ready]))
   assert.deepEqual(ready, { busy: false, idle: true, dead: false, none: false }) // open and not busy is Ready at once
+  assert.equal((await s.getItem("busy")).summary.resume, `cd /w && CLAUDE_CONFIG_DIR=${cfg} claude --resume busy`)
 })
 
 test("parseTranscript: half-written last line is skipped", () => {

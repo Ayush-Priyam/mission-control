@@ -208,6 +208,8 @@ export type ItemSummary = {
   loop?: LoopInfo
   /** A process is still running this session (false: closed). Absent when the source cannot tell. */
   open?: boolean
+  /** Shell command that resumes the session in its folder (Claude Code only). */
+  resume?: string
 }
 export type Placed = { key: string; name: string; worktree: string }
 export type Lane = {
