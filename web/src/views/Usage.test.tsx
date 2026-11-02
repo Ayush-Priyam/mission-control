@@ -79,7 +79,7 @@ describe("Usage page", () => {
     const monthSpan = screen.getByLabelText("Usage totals").querySelector("h2")!.textContent!
     expect(monthSpan).toMatch(/LAST 30 DAYS/)
     fireEvent.click(screen.getByRole("tab", { name: "Week" }))
-    await waitFor(() => expect(screen.getByLabelText("Range summary").getAttribute("aria-busy")).toBe("true"))
+    await waitFor(() => expect(screen.getByLabelText("Totals").getAttribute("aria-busy")).toBe("true"))
     const label = screen.getByLabelText("Usage totals").querySelector("h2")!.textContent!
     expect(label).not.toMatch(/LAST 7 DAYS|LAST 30 DAYS/)
     expect(label).toMatch(/\d{4}-\d{2}-\d{2} → \d{4}-\d{2}-\d{2}/)
@@ -106,5 +106,48 @@ describe("Usage page", () => {
     const th = screen.getByText("Est. cost").closest("th")!
     expect(th.getAttribute("title")).toBe("API list prices; subscription plans differ")
     expect(screen.getByText("$2.00 est.")).toBeTruthy() // harness card
+  })
+
+  it("main fresh but harness still loading: the harness section keeps its own old span, never the new range's", async () => {
+    stub(full, (url) => (isWeek(url) && url.searchParams.get("by") === "harness" ? new Promise<Reply>(() => {}) : null))
+    render(<Usage />)
+    await waitFor(() => expect(screen.getByTestId("usage-total").textContent).toBe("1,000"))
+    fireEvent.click(screen.getByRole("tab", { name: "Week" }))
+    await waitFor(() => expect(screen.getByLabelText("Harnesses").getAttribute("aria-busy")).toBe("true"))
+    expect(screen.getByLabelText("Totals").getAttribute("aria-busy")).toBeNull()
+    expect(screen.getByLabelText("Usage totals").querySelector("h2")!.textContent).toMatch(/LAST 7 DAYS/)
+    const h = screen.getByLabelText("Harnesses").textContent!
+    expect(h).toMatch(/\d{4}-\d{2}-\d{2} → \d{4}-\d{2}-\d{2} · loading…/)
+    const monthFrom = new URL(String(vi.mocked(fetch).mock.calls[0][0]), "http://x").searchParams.get("from")!
+    expect(h).toContain(monthFrom)
+    fireEvent.click(screen.getByRole("tab", { name: "harness" }))
+    expect(screen.getByLabelText("Split").getAttribute("aria-busy")).toBe("true")
+    expect(screen.getByLabelText("Split").textContent).toContain(monthFrom)
+  })
+
+  it("switching breakdown tabs never shows the previous tab's rows under the new header", async () => {
+    stub(
+      (by, url) => (by === "project" ? withSpan(url, answer(by, { groups: [{ key: "p1", name: "proj-alpha", ...tok(9), cost: 1, sessions: 1 }] })) : full(by, url)),
+      (url) => (url.searchParams.get("by") === "branch" ? new Promise<Reply>(() => {}) : null),
+    )
+    render(<Usage />)
+    await waitFor(() => expect(screen.getByTestId("usage-total").textContent).toBe("1,000"))
+    fireEvent.click(screen.getByRole("tab", { name: "Projects" }))
+    await screen.findByText("proj-alpha")
+    fireEvent.click(screen.getByRole("tab", { name: "Branches" }))
+    await waitFor(() => expect(screen.queryByText("proj-alpha")).toBeNull())
+    expect(screen.queryByText("Project")).toBeNull()
+  })
+})
+
+describe("Heatmap labels", () => {
+  it("month and weekday labels are real 10px text, not scaled SVG", async () => {
+    stub((by) => answer(by))
+    render(<Usage />)
+    const map = await screen.findByLabelText("Activity heatmap")
+    const labels = map.querySelectorAll("[data-heat-label]")
+    expect(labels.length).toBeGreaterThan(7)
+    labels.forEach((l) => expect(l.className).toContain("text-[10px]"))
+    expect(map.querySelector("svg")).toBeNull()
   })
 })

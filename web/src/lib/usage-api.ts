@@ -1,6 +1,6 @@
 // /api/usage client for the Usage page: types, range and heatmap math, and a fetch hook.
 // Local to Task 11 (parallel worktree); folded into api.ts when the views are wired up.
-import { useCallback, useEffect, useReducer, useRef, useState } from "react"
+import { useCallback, useEffect, useReducer, useState } from "react"
 import { fetchReducer, initialFetch, type Remote } from "@/lib/api"
 
 export type By = "model" | "project" | "harness" | "day" | "worktree" | "branch"
@@ -127,17 +127,24 @@ async function getUsage(url: string): Promise<Usage> {
   throw new Error(j.error ?? `usage: ${r.status}`)
 }
 
+/** The `by` of a usage url: answers are only ever kept across urls of the same kind. */
+export const kindOf = (url: string | null) => (url === null ? null : new URL(url, "http://local").searchParams.get("by"))
+
 /**
  * GET /api/usage for `url`; `null` loads nothing. Polls every `pollMs` while set (the page polls while the scan
- * is partial). While a new url loads (or fails), the last answer for an earlier url stays as `data` with `stale`.
+ * is partial). While a new url of the same `by` loads (or fails), the last answer stays as `data` with `stale`;
+ * an answer for a different `by` is never reused.
  */
 export function useUsage(url: string | null, pollMs = 0): UsageRemote {
   const [raw, dispatch] = useReducer(fetchReducer<Usage>, url, initialFetch<Usage>)
   const [tick, setTick] = useState(0)
+  const [kept, setKept] = useState<{ kind: string | null; data: Usage } | null>(null)
   const reload = useCallback(() => setTick((n) => n + 1), [])
   const state = raw.url === url ? raw : initialFetch<Usage>(url)
-  const last = useRef<Usage | null>(null)
-  if (state.data) last.current = state.data
+  const kind = kindOf(url)
+  useEffect(() => {
+    if (raw.data && raw.url !== null) setKept({ kind: kindOf(raw.url), data: raw.data })
+  }, [raw.data, raw.url])
   useEffect(() => {
     dispatch({ type: "reset", url })
     if (url === null) return
@@ -154,8 +161,8 @@ export function useUsage(url: string | null, pollMs = 0): UsageRemote {
       if (timer) clearInterval(timer)
     }
   }, [url, pollMs, tick])
-  const stale = !state.data && url !== null && last.current !== null
-  return { data: state.data ?? (stale ? last.current : null), stale, error: state.error, loading: state.loading, reload }
+  const stale = !state.data && url !== null && kept !== null && kept.kind === kind
+  return { data: state.data ?? (stale ? kept!.data : null), stale, error: state.error, loading: state.loading, reload }
 }
 
 /** Today in `tz`, refreshed when the window regains focus and just after local midnight. */

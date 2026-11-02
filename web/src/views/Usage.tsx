@@ -29,6 +29,7 @@ const sum = (days: SeriesDay[]) => days.reduce((a, d) => a + totalTokens(d), 0)
 /** The days an answer covers, from the answer itself (so a kept answer never borrows the new range's dates). */
 const spanOf = (u: UsageData) => (u.from ? (u.from === u.to ? `${u.to}` : `${u.from} → ${u.to}`) : `all → ${u.to ?? ""}`)
 const busy = (on: boolean) => (on ? { "aria-busy": true, className: "opacity-50 transition-opacity" } : { className: "transition-opacity" })
+const busyIn = (on: boolean, cls: string) => ({ ...(on ? { "aria-busy": true } : {}), className: cn(cls, "transition-opacity", on && "opacity-50") })
 const baseName = (p: string) => p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p
 
 /** A group as a table row; worktrees show their folder name with the full path under it. */
@@ -69,7 +70,8 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
   if (!mainData) return <p role="alert" className="p-6 font-mono text-xs text-failed">Usage not available ({errors[0] ?? "no data"}).</p>
 
   const u = mainData
-  const splitGroups = splitBy === "model" ? u.groups : (harness.data?.groups ?? [])
+  const split = splitBy === "model" ? main : harness
+  const splitGroups = split.data?.groups ?? []
   const harnessSlices = slices(harness.data?.groups ?? [])
   const harnessTotal = harnessSlices.reduce((a, s) => a + s.tokens, 0)
   const halfSeries = half.data?.series ?? []
@@ -132,8 +134,7 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
       </aside>
 
       <main className="flex min-w-0 flex-col gap-5">
-        <section aria-label="Range summary" {...busy(main.stale || harness.stale)}>
-         <div className={cn(card, "flex flex-col gap-5")}>
+        <section aria-label="Range summary" className={cn(card, "flex flex-col gap-5")}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div role="tablist" aria-label="Range" className="flex gap-1">
               {RANGES.map((r) => (
@@ -150,10 +151,14 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
               <span>{spanOf(u)}</span>
             </div>
           </div>
-          <UsageTotals totals={u.totals} label={main.stale ? spanOf(u) : RANGE_LABEL[range]} />
-          <div className="flex flex-col gap-2">
+          <div aria-label="Totals" {...busy(main.stale)}>
+            <UsageTotals totals={u.totals} label={main.stale ? spanOf(u) : RANGE_LABEL[range]} />
+          </div>
+          <div aria-label="Split" {...busyIn(split.stale, "flex flex-col gap-2")}>
             <div className="flex items-center justify-between">
-              <span className="font-mono text-[11px] tracking-widest text-muted-foreground">SPLIT BY</span>
+              <span className="font-mono text-[11px] tracking-widest text-muted-foreground">
+                SPLIT BY{split.stale && split.data ? ` · ${spanOf(split.data)} · loading…` : ""}
+              </span>
               <div role="tablist" aria-label="Split by" className="flex gap-1 font-mono text-[11px]">
                 {(["model", "harness"] as const).map((b) => (
                   <button key={b} role="tab" aria-selected={splitBy === b} onClick={() => setSplitBy(b)}
@@ -163,9 +168,17 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
                 ))}
               </div>
             </div>
-            <SplitBar groups={splitBy === "harness" ? splitGroups.map((g) => ({ ...g, name: harnessName(g.key) })) : splitGroups} label={splitBy} />
+            {split.data ? (
+              <SplitBar groups={splitBy === "harness" ? splitGroups.map((g) => ({ ...g, name: harnessName(g.key) })) : splitGroups} label={splitBy} />
+            ) : (
+              <Skeleton className="h-6" />
+            )}
           </div>
-          <div aria-label="Harnesses" className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-3">
+          <div aria-label="Harnesses" {...busyIn(harness.stale, "flex flex-col gap-2")}>
+           {harness.stale && harness.data && (
+             <span className="font-mono text-[11px] text-muted-foreground">Harnesses · {spanOf(harness.data)} · loading…</span>
+           )}
+           <div className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-3">
             {!harness.data && <Skeleton className="h-20" />}
             {harness.data && harnessSlices.length === 0 && <p className="font-mono text-xs text-muted-foreground">No harness reported usage in this range.</p>}
             {harnessSlices.map((s) => (
@@ -180,8 +193,8 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
                 </div>
               </div>
             ))}
+           </div>
           </div>
-         </div>
         </section>
 
         <section className={cn(card, "flex flex-col gap-3 p-3 sm:p-5")} {...(main.stale || grouped.stale ? { "aria-busy": true } : {})}>
