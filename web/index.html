@@ -5,13 +5,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>mission control</title>
     <script>
-      try {
-        var q = new URLSearchParams(location.search).get("theme")
-        if (q === "light" || q === "dark") localStorage.setItem("mission-control-theme", q)
-        if (localStorage.getItem("mission-control-theme") !== "light") document.documentElement.classList.add("dark")
-      } catch (e) {
-        document.documentElement.classList.add("dark")
-      }
+      // Pre-paint theme (no flash): appearance + preset from localStorage (or ?theme=<mode>|<preset>|<preset>-<mode>),
+      // and the active preset's token map stored by lib/themes.ts applyTheme().
+      ;(function () {
+        var root = document.documentElement
+        try {
+          var modes = { light: 1, dark: 1, system: 1 }
+          var presets = { mission: 1, blossom: 1, mint: 1, mono: 1, custom: 1 }
+          var q = new URLSearchParams(location.search).get("theme")
+          if (q) {
+            var p = q.split("-")
+            if (modes[p[0]]) localStorage.setItem("mission-control-theme", p[0])
+            else if (presets[p[0]]) {
+              localStorage.setItem("mission-control-preset", p[0])
+              if (modes[p[1]]) localStorage.setItem("mission-control-theme", p[1])
+            }
+          }
+          var ap = localStorage.getItem("mission-control-theme") || "dark"
+          var mode = ap === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : ap === "light" ? "light" : "dark"
+          var preset = localStorage.getItem("mission-control-preset") || "mission"
+          var vars = JSON.parse(localStorage.getItem("mission-control-theme-vars") || "null")
+          if (vars && vars.preset === preset && vars[mode]) {
+            for (var k in vars[mode]) root.style.setProperty(k, vars[mode][k])
+            if (vars.shapes) root.setAttribute("data-shapes", "")
+          }
+          root.style.colorScheme = mode
+          if (mode === "dark") root.classList.add("dark")
+        } catch (e) {
+          root.classList.add("dark")
+        }
+      })()
     </script>
   </head>
   <body>

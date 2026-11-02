@@ -280,8 +280,8 @@ export function parseThemeParam(q: string | null): { appearance?: Appearance; pr
   return {}
 }
 
-/** Write a spec's tokens for `mode` on <html>, and store both modes' maps for the pre-paint script. */
-export function applyTheme(spec: ThemeSpec, mode: Mode, root: HTMLElement = document.documentElement) {
+/** Write a spec's tokens for `mode` on <html>, and store both modes' maps (tagged with the preset) for the pre-paint script. */
+export function applyTheme(spec: ThemeSpec, mode: Mode, preset: PresetId = "mission", root: HTMLElement = document.documentElement) {
   const light = buildTokens(spec, "light").tokens
   const dark = buildTokens(spec, "dark").tokens
   const t = mode === "dark" ? dark : light
@@ -290,5 +290,28 @@ export function applyTheme(spec: ThemeSpec, mode: Mode, root: HTMLElement = docu
   root.style.colorScheme = mode
   if (spec.shapes) root.setAttribute("data-shapes", "")
   else root.removeAttribute("data-shapes")
-  write(KEYS.vars, JSON.stringify({ light, dark, shapes: !!spec.shapes }))
+  root.setAttribute("data-preset", preset)
+  write(KEYS.vars, JSON.stringify({ preset, light, dark, shapes: !!spec.shapes }))
+}
+
+/** The stored appearance (default dark), preset (default mission) and custom theme. */
+export function storedTheme(): { appearance: Appearance; preset: PresetId; custom: CustomTheme } {
+  const a = read(KEYS.appearance)
+  const p = read(KEYS.preset)
+  let custom = DEFAULT_CUSTOM
+  try {
+    const c = JSON.parse(read(KEYS.custom) ?? "null")
+    if (c && (c.kind === "pick" || c.kind === "iterm")) custom = c
+  } catch {}
+  return {
+    appearance: a === "light" || a === "system" ? a : "dark",
+    preset: p && (PRESET_IDS as string[]).includes(p) ? (p as PresetId) : "mission",
+    custom,
+  }
+}
+
+/** A preset's swatches for the picker: background, card, text, accent and the status colours. */
+export function swatches(spec: ThemeSpec, mode: Mode): string[] {
+  const t = buildTokens(spec, mode).tokens
+  return ["--background", "--card", "--foreground", "--brand", "--running", "--needs-you", "--failed", "--consult"].map((k) => t[k])
 }

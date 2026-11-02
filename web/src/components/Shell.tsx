@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
-import { Moon, PanelLeft, Search, Sun } from "lucide-react"
+import { PanelLeft, Search } from "lucide-react"
 import { useItems, useSources, type ItemSummary, type ProjectSummary } from "@/lib/api"
 import { useShared } from "@/lib/projects-context"
 import { toHash, type Route } from "@/lib/route"
@@ -8,12 +8,12 @@ import { cn } from "@/lib/utils"
 import { workingLine } from "@/lib/status-ui"
 import { BP, useMedia } from "@/lib/media"
 import { FreshnessBadge } from "@/components/Freshness"
+import { ThemePicker } from "@/components/ThemePicker"
+import { useTheme } from "@/lib/use-theme"
 import { CommandPalette, isPaletteKey } from "@/components/CommandPalette"
 import { Sidebar } from "@/components/Sidebar"
 import { chipCounts, StatusChips } from "@/components/StatusChips"
 
-type Theme = "dark" | "light"
-const THEME_KEY = "mission-control-theme"
 const SIDEBAR_KEY = "mission-control-sidebar"
 
 function stored(key: string): string | null {
@@ -91,7 +91,7 @@ function Crumbs({ items }: { items: { label: string; href?: string }[] }) {
 }
 
 export function Shell({ route, children }: { route: Route; children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() => (stored(THEME_KEY) === "light" ? "light" : "dark"))
+  const theme = useTheme()
   const [sidebar, setSidebar] = useState(() => stored(SIDEBAR_KEY) !== "closed")
   const [palette, setPalette] = useState(false)
   const { projects, visible: tree, hiddenCount, showHidden, setShowHidden, overview, filter, setFilter } = useShared()
@@ -101,10 +101,6 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
   const found = useItems(isItem ? { all: true, source: route.source, id: route.id } : {}, isItem, false)
   const item = isItem ? (found.data?.[0] ?? null) : null
 
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", theme === "dark")
-    store(THEME_KEY, theme)
-  }, [theme])
   useEffect(() => store(SIDEBAR_KEY, sidebar ? "open" : "closed"), [sidebar])
   // Below lg the sidebar is an overlay drawer, closed by default and on every navigation.
   const desktop = useMedia(BP.lg)
@@ -149,8 +145,8 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
           <PanelLeft className="size-4" />
         </button>
         <a href="#/" aria-label="mission control, home" className="mr-1 flex h-8 shrink-0 items-center gap-2 text-sm font-semibold tracking-tight whitespace-nowrap lg:mr-3">
-          <span className="grid size-4 place-items-center rounded-full border-[1.5px] border-foreground">
-            <span className="size-1.5 rounded-full bg-foreground" />
+          <span className="grid size-4 place-items-center rounded-full border-[1.5px] border-brand">
+            <span className="size-1.5 rounded-full bg-brand" />
           </span>
           <span className="hidden sm:inline">mission control</span>
         </a>
@@ -170,14 +166,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
             <span className="hidden flex-1 text-left lg:inline">Search…</span>
             <kbd className="hidden rounded border px-1 font-mono text-xs lg:inline">⌘K</kbd>
           </button>
-          <button
-            type="button"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            aria-label={theme === "dark" ? "Light theme" : "Dark theme"}
-            className="grid size-8 place-items-center rounded-md border text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
-          </button>
+          <ThemePicker theme={theme} />
         </div>
       </header>
       <div className="flex min-h-0 flex-1">
