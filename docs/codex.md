@@ -182,10 +182,11 @@ Every entry runs `mission-control hook codex`. It reads Codex's JSON, maps the e
 | `PermissionRequest` | `Notification`, with a message naming the tool and its description | the session is waiting on you |
 | `PreToolUse`, `PostToolUse` | `PreToolUse` | clears a wait (the tool was approved and runs) |
 | `UserPromptSubmit` | `UserPromptSubmit` | clears a wait |
-| `Stop`, `Interrupt` | `Stop` | clears a wait (the turn ended or you interrupted it) |
+| `Stop` | `Stop` | clears a wait; the turn ended, so the session is **Ready** for 30 minutes |
+| `Interrupt` | `Stop` | clears a wait (you interrupted it); not ready |
 | `SubagentStop` | `SubagentStop` | recorded, no effect on waiting |
 
-Other events (`SessionStart`, `SessionEnd`, compaction) are ignored. Only the event, session id, time, tool name and the approval message are kept; tool inputs and outputs are not stored. The hook never prints and always exits 0.
+Other events (`SessionStart`, `SessionEnd`, compaction) are ignored. Only the event, session id, time, tool name, the approval message and, for `PermissionRequest` and `PreToolUse`, a short target (the first 120 characters of the command or file path) are kept; other tool inputs and outputs are not stored. The hook never prints and always exits 0.
 
 ```jsonl
 {"event":"Notification","codexEvent":"PermissionRequest","sessionId":"0199a1b2-...","ts":"2026-11-02T10:01:00.000Z","tool":"Bash","message":"Codex needs your approval to use Bash: install dependencies"}
@@ -196,7 +197,8 @@ A wait also clears when the rollout gets a newer response item (Codex moved on),
 
 ### What is not covered
 
-- Codex has no hook for "waiting for your next prompt", so a Codex session that finished its turn is shown as idle, not as ready or waiting.
+- Codex has no idle reminder, so **Ready** comes from the `Stop` hook: a session whose last turn ended less than 30 minutes ago (and has not moved on since) counts in the **Ready (N)** chip; after that it is plain idle. Without hooks Codex sessions are never ready.
+- **Looping** works for Codex too: the same `exec_command` failing again and again, or `apply_patch` → test → same failure, shows as looping on the lane card.
 - The older `notify` setting in `config.toml` only fires when a turn completes, so it is not used for Needs you.
 - Mission Control cannot approve for you: approvals happen in Codex.
 

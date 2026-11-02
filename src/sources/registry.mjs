@@ -105,6 +105,18 @@ export function createRegistry(sources) {
     get,
     overview,
     sources: all,
+    /** What /api/events watches: every source's hook dirs and live files (sources without watchTargets add nothing). */
+    watchTargets() {
+      const dirs = new Set(), files = new Set()
+      for (const s of all()) {
+        try {
+          const t = s.watchTargets?.() ?? {}
+          for (const d of t.dirs ?? []) dirs.add(d)
+          for (const f of t.files ?? []) files.add(f)
+        } catch { /* one source must not stop the feed */ }
+      }
+      return { dirs: [...dirs], files: [...files] }
+    },
     error: (name) => errors.get(name) ?? null,
     source: (name) => byName.get(name) ?? null,
     async calls(source, id, filter) {

@@ -41,6 +41,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, onPa
   const turned = createCache(8)
   const readWaiting = createWaitingReader()
   const codexHooks = hooksDir ? join(hooksDir, "codex") : null
+  let liveFiles = [] // rollouts live or waiting at the last listing, for /api/events
   const lastTurns = createCache(4096)
   const peeked = new Map() // real path -> { ino, size, h }: the head of an append-only file does not change
   const opened = new Map()
@@ -267,7 +268,11 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, onPa
     harness: "codex",
 
     /** stat + the head of each rollout only; totals appear once a session has been opened. */
+    /** For /api/events: the Codex hook log dir and the rollouts of live (or waiting) sessions. */
+    watchTargets: () => ({ dirs: codexHooks ? [codexHooks] : [], files: liveFiles }),
+
     async listItems() {
+      const watched = []
       const s = scan()
       const logged = new Set(codexHooks ? dirs(codexHooks).map((d) => d.name) : [])
       const items = []
@@ -280,6 +285,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, onPa
           const done = o && o.lastMs === lastMs ? o.summary : null
           const live = liveAt(lastMs)
           const w = waitingOf(r, logged)
+          if (live || w?.waiting) watched.push(r.c.real)
           const m = r.h.meta
           items.push({
             source: "codex", id: r.id, kind: "session",
@@ -296,6 +302,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, onPa
           })
         } catch { /* one unreadable file must not hide the rest */ }
       }
+      liveFiles = watched
       return items.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     },
 

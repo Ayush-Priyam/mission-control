@@ -41,6 +41,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
   const lastTurns = createCache(4096) // path|size|mtime -> newest turn time in the tail of a main log
   const peeked = createCache(8192) // path|size|mtime -> peek of the head, so warm lists skip file reads
   const opened = new Map() // id -> { lastMs, summary } of sessions already fully parsed, for list totals
+  let liveFiles = [] // main logs of sessions live or waiting at the last listing, for /api/events
   let realRoot = null
   const rootReal = () => (realRoot ??= realpathSync(root))
 
@@ -307,6 +308,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
     /** stat + the first 64 KB of each file only; totals appear once a session has been opened. */
     async listItems() {
       const items = []
+      const watched = []
       const logged = new Set(hooksDir ? dirs(hooksDir).map((d) => d.name) : []) // one readdir instead of a miss per session
       for (const s of sessionFiles()) {
         try {
@@ -321,6 +323,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
           const done = o && o.lastMs === lastMs ? o.summary : null
           const live = liveAt(lastMs)
           const w = waitingOf(s.id, c, logged)
+          if (live || w?.waiting) watched.push(c.real)
           items.push({
             source: "claude-code", id: s.id, kind: "session",
             title: h.title ?? s.id, harness: "claude-code",
@@ -337,8 +340,12 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
           })
         } catch { /* one unreadable file must not hide the rest */ }
       }
+      liveFiles = watched
       return items.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     },
+
+    /** For /api/events: the hook log dir and the main logs of live (or waiting) sessions. */
+    watchTargets: () => ({ dirs: hooksDir ? [hooksDir] : [], files: liveFiles }),
 
     async getItem(id) {
       const s = locate(id)

@@ -58,7 +58,7 @@ export function summarize(d: ItemDetail, now = Date.now()): Summary {
   const models = [...new Set(lanes.map((l) => l.model).filter((m): m is string => !!m).map(modelName))]
   return {
     status: s.status,
-    running: lanes.filter((l) => l.status === "working").length,
+    running: lanes.filter((l) => l.status === "working" || l.status === "looping").length,
     lanes: {
       total: lanes.length,
       main: lanes.filter((l) => l.kind === "main").length,

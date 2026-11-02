@@ -83,7 +83,7 @@ function LoopLine({ lane, now, callHref }: { lane: Lane; now: number; callHref?:
   }
   return (
     <div className="flex min-w-0 flex-col gap-0.5 rounded-md bg-looping/10 px-2 py-1 font-mono text-xs text-looping">
-      <span className="line-clamp-2" title={loop.command}>{loopLine(loop, now)}</span>
+      <span className="line-clamp-3" title={loop.command}>{loopLine(loop, now)}</span>
       {href && (
         <span
           role="link"

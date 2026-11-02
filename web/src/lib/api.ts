@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useState } from "react"
 import { markFail, markOk } from "@/lib/freshness"
+import { onServerChange } from "@/lib/server-events"
 
 export type Capabilities = { adapter: string; extras: string[]; actions: string[]; source: string | null }
 export type RunSummary = {
@@ -124,8 +125,11 @@ export function useFetch<T>(url: string | null, pollMs = 0, refresh: unknown = 0
     void load()
     if (!document.hidden) start()
     if (pollMs) document.addEventListener("visibilitychange", onVis)
+    // A polled url also refetches the moment the server says something changed (SSE); polling stays as the fallback.
+    const off = pollMs ? onServerChange(() => { if (!document.hidden) void load() }) : () => {}
     return () => {
       cancelled = true
+      off()
       stop()
       document.removeEventListener("visibilitychange", onVis)
     }

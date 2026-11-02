@@ -42,6 +42,12 @@ describe("NeedsYouQueue prompt identity", () => {
     expect(screen.queryByText("new prompt")).toBeNull()
   })
 
+  it("prompts already waiting when the first answer arrives are not flagged new", () => {
+    const { rerender } = render(<NeedsYouQueue entries={[]} stopped={[]} actions={{}} now={NOW} loaded={false} />)
+    rerender(<NeedsYouQueue entries={[ask("2026-11-02T10:00:00Z")]} stopped={[]} actions={{}} now={NOW} loaded />)
+    expect(screen.queryByText("new prompt")).toBeNull()
+  })
+
   it("a replaced prompt shows a 'new prompt' badge and flashes, for about 8 s", () => {
     vi.useFakeTimers({ now: NOW })
     const { rerender } = render(<NeedsYouQueue entries={[ask("2026-11-02T10:00:00Z")]} stopped={[]} actions={{}} now={NOW} />)

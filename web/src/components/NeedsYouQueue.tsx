@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { postItemAction, type ItemSummary, type NeedsYou } from "@/lib/api"
 import { ago } from "@/lib/format"
 import { toHash } from "@/lib/route"
@@ -29,15 +29,16 @@ export function trackPrompts(prev: PromptTrack | null, entries: NeedsYou[], at: 
 }
 
 /** The keys of prompts that are new right now; badges drop when they expire. */
-function useNewPrompts(entries: NeedsYou[]): Set<string> {
+function useNewPrompts(entries: NeedsYou[], loaded: boolean): Set<string> {
   const track = useRef<PromptTrack | null>(null)
   const [fresh, setFresh] = useState<Map<string, number>>(new Map())
   const sig = entries.map((e) => `${promptKey(e)}=${promptStamp(e)}`).join(",")
   useEffect(() => {
+    if (!loaded) return // the empty list while the first answer loads is not "nothing was waiting"
     track.current = trackPrompts(track.current, entries, Date.now())
     setFresh(track.current.fresh)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sig])
+  }, [sig, loaded])
   useEffect(() => {
     if (!fresh.size) return
     const next = Math.min(...fresh.values())
@@ -138,6 +139,8 @@ export function NeedsYouQueue({
   actions,
   onActed,
   now = Date.now(),
+  loaded = true,
+  between,
 }: {
   entries: NeedsYou[]
   stopped: ItemSummary[]
@@ -145,8 +148,12 @@ export function NeedsYouQueue({
   actions: Record<string, string[]>
   onActed?: () => void
   now?: number
+  /** False while the first answer is loading: prompts already waiting then are not flagged "new". */
+  loaded?: boolean
+  /** Shown after the cards, before Stopped (Home puts Looping and Ready here). */
+  between?: ReactNode
 }) {
-  const fresh = useNewPrompts(entries)
+  const fresh = useNewPrompts(entries, loaded)
   return (
     <div className="flex flex-col gap-3">
       <h2 className="text-base font-semibold">
@@ -161,6 +168,7 @@ export function NeedsYouQueue({
       {entries.map((e) => (
         <Ask key={`${e.source}/${e.id}`} e={e} actions={actions[e.source] ?? []} now={now} onActed={onActed} isNew={fresh.has(promptKey(e))} />
       ))}
+      {between}
       {stopped.length > 0 && (
         <>
           <h3 className="pt-2 text-xs text-faint">Stopped</h3>

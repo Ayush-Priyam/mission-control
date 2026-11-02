@@ -138,7 +138,37 @@ The guide has a complete worked run, writer snippets in Node, Python and Bash, a
 
 ## The pages
 
-**Home** lists what needs you, what is live, and the latest work across every project.
+**Home** lists what needs you, what is looping, what is ready for your next prompt (collapsed), what is live, and the latest work across every project. The top bar has a chip per state: **Needs you**, **Looping**, **Ready**, Working, Stopped, Done today; a click filters the sidebar and Home.
+
+The page gets pushed updates: `GET /api/events` (Server-Sent Events) says "changed" the moment a hook line lands or a live session file grows, and the page refetches at once. Polling every 2 s stays as the fallback, and the freshness badge counts the stream's heartbeats.
+
+## States
+
+| state | meaning |
+|---|---|
+| needs you | a permission prompt or question is open (hooks); the card shows the tool, the command or path and how long ago it was asked, and flags a **new prompt** when it changes |
+| looping | working, but retrying the same failure (below) |
+| working | live: its files changed in the last two minutes |
+| ready | done and waiting for your next prompt: Claude's idle reminder, or a Codex turn that ended in the last 30 minutes. Not urgent, so not in Needs you |
+| stopped / failed / done / idle | as before |
+
+## Looping
+
+A session that silently retries a failing test is the expensive kind of stuck. A working lane is **looping** when one of these holds (`src/loops.mjs`):
+
+1. the same tool and command fails 4 times in a row;
+2. the same check (test, build, lint, typecheck) fails with the same first error line 4 times, with file edits in between;
+3. 300k tokens and 10 minutes since the last file change, with no passing check since and at least one failure.
+
+A failing test that then passes is not looping, and different commands failing are not looping. The lane card says how long, what failed how often and the estimated cost since ("looping 14m · npm test failed 9× · $3.20 est. since") and links to the first failing call. It works for Claude Code, Codex and harness runs (`progress` events with `tool`/`detail`, `issue`, `stage.end` with `ok: false`).
+
+Every lane and item also shows **tokens since last file change**: tokens used since the last successful Edit, Write, MultiEdit or apply_patch (a failed edit does not reset it), and how long ago that was ("412k tok since last change · 18m"). It is a sortable "Since change" column in the Home and project tables.
+
+The thresholds live in `~/.mission-control/config.json` (re-read when it changes):
+
+```json
+{ "loops": { "repeat": 4, "cycles": 4, "minutes": 10, "tokens": 300000 } }
+```
 
 **Run / session page** has tabs. Lanes shows one card per agent with what it is doing now. Map draws the crew and how work flowed between lanes.
 

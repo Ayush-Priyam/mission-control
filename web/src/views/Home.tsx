@@ -45,17 +45,14 @@ export default function Home() {
             actions={actions}
             onActed={overview.reload}
             now={now}
+            loaded={!!overview.data}
+            between={
+              <>
+                <LoopingList entries={overview.data?.looping ?? []} now={now} />
+                <ReadyList entries={overview.data?.ready ?? []} now={now} />
+              </>
+            }
           />
-        )}
-        {overview.data?.looping && overview.data.looping.length > 0 && (
-          <div className="mt-4">
-            <LoopingList entries={overview.data.looping} now={now} />
-          </div>
-        )}
-        {overview.data?.ready && overview.data.ready.length > 0 && (
-          <div className="mt-3">
-            <ReadyList entries={overview.data.ready} now={now} />
-          </div>
         )}
       </aside>
       <div className="flex min-w-0 flex-col gap-5 p-5">

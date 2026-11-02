@@ -89,6 +89,16 @@ Without hooks the dashboard cannot know that Claude Code is waiting for you. Wit
            ]
          }
        ],
+       "PermissionRequest": [
+         {
+           "hooks": [
+             {
+               "type": "command",
+               "command": "'/usr/local/bin/node' '/work/mission-control/bin/mission-control.mjs' hook PermissionRequest"
+             }
+           ]
+         }
+       ],
        "Stop": [
          {
            "hooks": [
@@ -128,6 +138,36 @@ Without hooks the dashboard cannot know that Claude Code is waiting for you. Wit
              }
            ]
          }
+       ],
+       "PostToolUse": [
+         {
+           "hooks": [
+             {
+               "type": "command",
+               "command": "'/usr/local/bin/node' '/work/mission-control/bin/mission-control.mjs' hook PostToolUse"
+             }
+           ]
+         }
+       ],
+       "PostToolUseFailure": [
+         {
+           "hooks": [
+             {
+               "type": "command",
+               "command": "'/usr/local/bin/node' '/work/mission-control/bin/mission-control.mjs' hook PostToolUseFailure"
+             }
+           ]
+         }
+       ],
+       "PermissionDenied": [
+         {
+           "hooks": [
+             {
+               "type": "command",
+               "command": "'/usr/local/bin/node' '/work/mission-control/bin/mission-control.mjs' hook PermissionDenied"
+             }
+           ]
+         }
        ]
      }
    }
@@ -137,7 +177,9 @@ Without hooks the dashboard cannot know that Claude Code is waiting for you. Wit
 
 3. Start a new Claude Code session (running sessions keep the settings they started with).
 
-4. Check it: in that session, ask Claude to run a command it must ask permission for. The session shows up under **Needs you** with Claude's message. Approve it in Claude Code and it leaves the queue.
+4. Check it: in that session, ask Claude to run a command it must ask permission for. The session shows up under **Needs you** at once, with the tool, the command or file path and "asked Ns ago". Approve it in Claude Code and it leaves the queue.
+
+If you merged an older block (five events), merge the new one: it adds `PermissionRequest` (fires the moment the permission dialog opens; the `Notification` for a permission prompt only comes after about six seconds without typing, and stays as the fallback) and `PostToolUse`, `PostToolUseFailure`, `PermissionDenied` (the prompt was answered, also when you answer in the terminal while the dashboard is down).
 
 The paths in the block are absolute: your `node` binary and this checkout's `bin/mission-control.mjs`. **Run `hooks install` again and merge again after you move the checkout or upgrade Node**, or the hooks point at files that no longer exist (Claude Code then shows a hook error at each event).
 
@@ -146,16 +188,19 @@ The paths in the block are absolute: your `node` binary and this checkout's `bin
 Each event runs `mission-control hook <Event>`. It reads Claude Code's JSON from stdin and appends one line to `~/.mission-control/hooks/<session_id>.jsonl`:
 
 ```jsonl
-{"event":"PreToolUse","sessionId":"sess-1","ts":"2026-11-02T10:00:00.000Z","tool":"Bash"}
-{"event":"Notification","sessionId":"sess-1","ts":"2026-11-02T10:01:00.000Z","message":"Claude needs your permission to use Bash"}
+{"event":"PreToolUse","sessionId":"sess-1","ts":"2026-11-02T10:00:00.000Z","tool":"Bash","target":"npm run build"}
+{"event":"PermissionRequest","sessionId":"sess-1","ts":"2026-11-02T10:00:00.400Z","tool":"Bash","target":"npm run build","message":"Claude needs your permission to use Bash"}
+{"event":"PostToolUse","sessionId":"sess-1","ts":"2026-11-02T10:00:31.000Z","tool":"Bash"}
 ```
 
-It keeps the event name, session id, time, a `Notification` message cut to 500 characters, and a `PreToolUse` tool name. Nothing else from the payload is stored. It never prints, never blocks, and always exits 0, so it cannot break a session. The directory is mode 0700 and the files 0600. Set `MISSION_CONTROL_HOOKS_DIR` to keep the logs elsewhere (set it for both Claude Code and the dashboard).
+It keeps the event name, session id, time, a `Notification` message cut to 500 characters and its type, the tool name, and for `PreToolUse` and `PermissionRequest` a short target: the first 120 characters of the command or the file path, on one line. Nothing else from the payload is stored (no file contents, edit strings, descriptions or prompts). It never prints, never blocks, and always exits 0, so it cannot break a session. The directory is mode 0700 and the files 0600. Set `MISSION_CONTROL_HOOKS_DIR` to keep the logs elsewhere (set it for both Claude Code and the dashboard).
 
 ## Needs you vs ready
 
-- **Waiting (Needs you)**: the session's last `Notification` has no `PreToolUse`, `UserPromptSubmit` or `Stop` after it. That is Claude asking for permission or for an answer. The card shows Claude's message.
-- **Ready**: about a minute after a turn ends Claude Code sends an idle reminder ("Claude is waiting for your input"). That is not a block: the session is shown as idle with "ready for input", not in Needs you.
+- **Waiting (Needs you)**: the session's last `PermissionRequest` or `Notification` has no `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionDenied`, `UserPromptSubmit` or `Stop` after it. That is Claude asking for permission or for an answer. The card shows the tool, its command or path, Claude's message and when it was asked. When a different prompt replaces the one on screen, the card shows a **new prompt** badge and flashes once (no flash with reduced motion), so an answer meant for the old prompt is not given to the new one.
+- **Ready**: about a minute after a turn ends Claude Code sends an idle reminder (`idle_prompt`, "Claude is waiting for your input"). That is not a block: the session is shown as idle with "ready for input", counted in the calm **Ready (N)** chip and listed (collapsed) under Needs you on Home.
+- **Looping**: a working session that keeps retrying the same failure. See "Looping" in the README.
+- Answered in the terminal while the dashboard was down: the `PostToolUse` line (or the transcript's newer messages) clears the wait, so a restarted dashboard does not show the old prompt.
 - A wait also clears when the session's transcript gets a newer message (you answered in the terminal), and it expires after 12 hours.
 
 ## Privacy
