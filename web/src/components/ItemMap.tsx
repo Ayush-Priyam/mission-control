@@ -198,7 +198,7 @@ function TreeBus({ m }: { m: ItemMapModel }) {
  * The Map tab. Runs: the crew graph with flow, consult links, red "sent back" and blue "asked" arcs.
  * Sessions: main -> subagents as a tree. Nodes are lit by status; click one for its lane sheet.
  */
-export function ItemMap({ detail, extras, selected, onOpen, onYou }: { detail: ItemDetail; extras: Map<string, LaneExtra>; selected?: string | null; onOpen: (laneIds: string[]) => void; onYou?: () => void }) {
+export function ItemMap({ detail, extras, selected, onOpen, onYou, natural }: { detail: ItemDetail; extras: Map<string, LaneExtra>; selected?: string | null; onOpen: (laneIds: string[]) => void; onYou?: () => void; /** Draw 1:1 at the graph's own size (full screen); no panel height cap. */ natural?: boolean }) {
   const m = useMemo(() => mapModel(detail), [detail])
   if (!m.nodes.length) return <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Nothing to map: this item has no lanes.</p>
   const byId = new Map(m.nodes.map((n) => [n.id, n]))
@@ -221,13 +221,13 @@ export function ItemMap({ detail, extras, selected, onOpen, onYou }: { detail: I
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="max-h-[calc(100vh-17rem)] overflow-auto rounded-xl border bg-card/40 p-2">
+      <div className={cn("rounded-xl border bg-card/40 p-2", !natural && "max-h-[calc(100vh-17rem)] overflow-auto")}>
         <svg
           viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
           preserveAspectRatio="xMidYMid meet"
           // fit the panel's height, but never shrink a tall tree past legibility (then the panel scrolls)
-          style={{ maxHeight: `max(calc(100vh - 19rem), ${Math.round(box.h * 0.8)}px)`, minHeight: 240 }}
-          className="h-auto w-full min-w-[640px] overflow-visible"
+          style={natural ? { width: box.w, height: box.h } : { maxHeight: `max(calc(100vh - 19rem), ${Math.round(box.h * 0.8)}px)`, minHeight: 240 }}
+          className={cn("overflow-visible", !natural && "h-auto w-full min-w-[640px]")}
           role="group"
           aria-label={m.mode === "tree" ? "Session tree" : "Crew map"}
         >

@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { ItemDetail, Lane, Status } from "@/lib/api"
 import { FlowStrip } from "./FlowStrip"
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  localStorage.clear()
+})
 
 const lane = (id: string, status: Status, o: Partial<Lane> = {}): Lane => ({ id, label: id, kind: "stage", status, calls: 0, errors: 0, tokens: { in: 0, out: 0, cacheRead: 0, cacheWrite: 0 }, cost: 0, ...o })
 const run: ItemDetail = {
@@ -49,5 +52,52 @@ describe("FlowStrip", () => {
   it("nothing to draw for an item with no lanes", () => {
     const { container } = render(<FlowStrip detail={{ ...run, state: undefined, events: [], lanes: [] }} onPick={() => {}} />)
     expect(container.innerHTML).toBe("")
+  })
+
+  const big = () => {
+    const lanes = [
+      lane("main", "working", { kind: "main", model: "claude-opus-4-1" }),
+      ...Array.from({ length: 30 }, (_, i) => lane(`s${i}`, "done", { kind: "subagent", parent: "main", label: `Re-review findings for part ${i} of the plan`, model: "claude-sonnet-4-5" })),
+    ]
+    return { ...run, state: undefined, events: [], lanes, summary: { ...run.summary, kind: "session" as const } }
+  }
+  it("+N more is a button: it expands the strip in place to every lane, remembered per tab, and collapses again", () => {
+    render(<FlowStrip detail={big()} onPick={() => {}} />)
+    fireEvent.click(screen.getByRole("button", { name: /\+18 more/ }))
+    expect(document.querySelectorAll("[data-flow-node]").length).toBe(31)
+    expect(localStorage.getItem("mission-control-flow-expanded:lanes")).toBe("expanded")
+    cleanup()
+    render(<FlowStrip detail={big()} onPick={() => {}} />)
+    expect(document.querySelectorAll("[data-flow-node]").length).toBe(31) // remembered
+    fireEvent.click(screen.getByRole("button", { name: "Collapse" }))
+    expect(document.querySelectorAll("[data-flow-node]").length).toBe(13)
+    expect(localStorage.getItem("mission-control-flow-expanded:lanes")).toBe("collapsed")
+  })
+  it("nodes grow to their labels up to 220px; focus shows the full label, status and model", () => {
+    render(<FlowStrip detail={big()} onPick={() => {}} />)
+    const node = document.querySelector('[data-flow-node="s0"]')!
+    expect(Number(node.querySelector("rect.box")!.getAttribute("width"))).toBe(220)
+    fireEvent.focus(node)
+    expect(screen.getByRole("tooltip").textContent).toBe("Re-review findings for part 0 of the plan · done · sonnet")
+  })
+  it("Expand opens the graph full screen with full labels; a node click closes it and picks; Esc closes and returns focus", () => {
+    const onPick = vi.fn()
+    render(<FlowStrip detail={big()} onPick={onPick} />)
+    const open = screen.getByRole("button", { name: "Expand to full screen" })
+    open.focus()
+    fireEvent.click(open)
+    const dlg = screen.getByRole("dialog")
+    expect(dlg.getAttribute("aria-modal")).toBe("true")
+    expect(dlg.querySelectorAll("[data-flow-node]").length).toBe(31)
+    expect(dlg.textContent).toContain("Re-review findings for part 29 of the plan") // not truncated
+    expect(screen.getByRole("button", { name: "Zoom in" })).toBeTruthy()
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Close full screen" }))
+    fireEvent.keyDown(window, { key: "Escape" })
+    expect(screen.queryByRole("dialog")).toBeNull()
+    expect(document.activeElement).toBe(open)
+    fireEvent.click(open)
+    fireEvent.click(screen.getByRole("dialog").querySelector('[data-flow-node="s3"]')!)
+    expect(screen.queryByRole("dialog")).toBeNull()
+    expect(onPick).toHaveBeenCalledWith(["s3"])
   })
 })

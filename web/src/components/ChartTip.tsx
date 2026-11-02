@@ -19,5 +19,5 @@ export function tipAt(el: HTMLElement | null, box: HTMLElement | null): { x: num
   if (!el || !box) return null
   const a = el.getBoundingClientRect()
   const b = box.getBoundingClientRect()
-  return { x: a.left - b.left + a.width / 2, y: a.top - b.top }
+  return { x: a.left - b.left + box.scrollLeft + a.width / 2, y: a.top - b.top + box.scrollTop }
 }

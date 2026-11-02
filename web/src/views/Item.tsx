@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FlowStrip } from "@/components/FlowStrip"
 import { ItemMap } from "@/components/ItemMap"
+import { ExpandButton, GraphOverlay } from "@/components/GraphOverlay"
 import { LaneTimeline } from "@/components/LaneTimeline"
 import { LaneCards } from "@/components/LaneCards"
 import { LaneSheet } from "@/components/LaneSheet"
@@ -88,6 +89,7 @@ export default function Item({ source, id, tab, call }: { source: string; id: st
   const [focus, setFocus] = useState<{ ids: string[]; n: number } | null>(null)
   const [youFlash, setYouFlash] = useState(0)
   const desktop = useMedia(BP.lg)
+  const [mapFull, setMapFull] = useState(false)
   const [hoverLane, setHoverLane] = useState<string | null>(null)
 
   const src = sources.data?.find((s) => s.name === source)
@@ -145,8 +147,31 @@ export default function Item({ source, id, tab, call }: { source: string; id: st
             {d.lanes.length > 1 && <FlowStrip detail={d} now={now} onPick={(ids) => setFocus({ ids, n: Date.now() })} onYou={toYou} highlight={hoverLane} />}
             <LaneCards lanes={d.lanes} extras={extras} now={now} links={links} focus={focus} onOpen={(lane) => setSheet([lane])} onHover={setHoverLane} />
           </TabsContent>
-          <TabsContent value="map" className="pt-4">
+          <TabsContent value="map" className="relative pt-4">
+            <div className="absolute top-6 right-2 z-[2]">
+              <ExpandButton onClick={() => setMapFull(true)} />
+            </div>
             <ItemMap detail={d} extras={extras} selected={sheet?.[0]} onOpen={setSheet} onYou={toYou} />
+            {mapFull && (
+              <GraphOverlay title={`Map · ${d.summary.title || d.summary.id}`} onClose={() => setMapFull(false)}>
+                <div className="p-4">
+                  <ItemMap
+                    natural
+                    detail={d}
+                    extras={extras}
+                    selected={sheet?.[0]}
+                    onOpen={(ids) => {
+                      setMapFull(false)
+                      setSheet(ids)
+                    }}
+                    onYou={() => {
+                      setMapFull(false)
+                      toYou()
+                    }}
+                  />
+                </div>
+              </GraphOverlay>
+            )}
           </TabsContent>
           <TabsContent value="calls" className="pt-4">
             {current === "calls" && (
