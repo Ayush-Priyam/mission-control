@@ -3,17 +3,17 @@ import assert from "node:assert/strict"
 import { startNotifier } from "../src/notify.mjs"
 
 test("notifier: done fires once when an open session goes working to idle, not when it closes or waits", async () => {
-  const it = (id, status, extra = {}) => ({ source: "cc", id, title: id, status, open: true, ...extra })
+  const it = (id, status, extra = {}) => ({ source: "cc", id, title: id, status, open: true, harness: "claude-code", cwd: "/w/shop", branch: "main", ...extra })
   let items = [it("a", "working"), it("b", "working"), it("c", "working"), it("d", "idle"), it("e", "working")]
   const sent = []
   const registry = { list: async () => items, overview: async () => ({ needsYou: [] }) }
-  const n = startNotifier({ registry, enabled: (k) => k === "done", notify: (m) => sent.push(`${m.title} ${m.subtitle}`), everyMs: 1e9 })
+  const n = startNotifier({ registry, enabled: (k) => k === "done", notify: (m) => sent.push(`${m.title} ${m.subtitle} | ${m.where}`), everyMs: 1e9 })
   await n.ready
   items = [it("a", "idle"), it("b", "idle", { open: false }), it("c", "waiting"), it("d", "idle"), it("e", "idle", { parkedInto: "x" })]
   await n.pass()
   await n.pass()
   n.stop()
-  assert.deepEqual(sent, ["Done a"])
+  assert.deepEqual(sent, ["Done a | Claude Code · shop · main"])
 })
 
 test("notifier: only newly waiting items notify, never on the first pass, and not while disabled", async () => {

@@ -13,6 +13,8 @@ export function macNotify({ title, subtitle, message, where }) {
   execFile("osascript", ["-e", script], { timeout: 5000 }, () => {})
 }
 
+const HARNESS = { "claude-code": "Claude Code", codex: "Codex" }
+
 /**
  * Every `everyMs`, notify once when an item newly needs you (`enabled("needs")`) and when one finishes its
  * prompt, working to idle while still open (`enabled("done")`). The first pass only records the current
@@ -23,8 +25,8 @@ export function startNotifier({ registry, enabled, notify = macNotify, link = ()
   let seen = null, working = null
   let busy = false
   const key = (i) => `${i.source}/${i.id}`
-  // Where a session runs, for the notification's last line: its folder and branch.
-  const where = (i) => [String(i.cwd ?? "").split(/[\\/]/).filter(Boolean).pop(), i.branch].filter(Boolean).join(" · ")
+  // Where a session runs, for the notification's last line: its tool, folder and branch.
+  const where = (i) => [HARNESS[i.harness] ?? i.harness, String(i.cwd ?? "").split(/[\\/]/).filter(Boolean).pop(), i.branch].filter(Boolean).join(" · ")
   async function pass() {
     if (busy) return
     busy = true
