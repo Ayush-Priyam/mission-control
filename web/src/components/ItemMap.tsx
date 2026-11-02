@@ -21,6 +21,7 @@ function curve(a: Pt, b: Pt, vertical = false) {
 const STROKE: Record<Status, string> = {
   working: "stroke-running",
   waiting: "stroke-needs-you",
+  looping: "stroke-looping",
   failed: "stroke-failed",
   stopped: "stroke-stopped",
   done: "stroke-foreground/30",
@@ -29,6 +30,7 @@ const STROKE: Record<Status, string> = {
 const FILL: Record<Status, string> = {
   working: "fill-running",
   waiting: "fill-needs-you",
+  looping: "fill-looping",
   failed: "fill-failed",
   stopped: "fill-stopped",
   done: "fill-done",
@@ -37,6 +39,7 @@ const FILL: Record<Status, string> = {
 const WORD_FILL: Record<Status, string> = {
   working: "fill-running",
   waiting: "fill-needs-you",
+  looping: "fill-looping",
   failed: "fill-failed",
   stopped: "fill-stopped",
   done: "fill-muted-foreground",

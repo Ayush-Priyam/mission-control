@@ -11,6 +11,7 @@ import { buildTree, NO_PROJECT_INFO, projectsOf, shapeTree } from "./projects.mj
 import { createHide, isNoise } from "./hidden.mjs"
 import { aggregate, defaultTz, isBy, isTz } from "./usage.mjs"
 import { createRegistry } from "./sources/registry.mjs"
+import { createLoopConfig } from "./loops.mjs"
 
 const DEFAULT_DIST = join(dirname(fileURLToPath(import.meta.url)), "..", "dist")
 
@@ -284,9 +285,11 @@ const LOOPBACK = ["localhost", "127.0.0.1", "[::1]"]
  * `input` is one v1 adapter, one source, or an array of either. Every entry becomes a source;
  * the v1 routes (/api/runs, /api/run/..., /api/crew, /api/x/...) stay as aliases for the first adapter.
  */
-export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, config = null, now = () => Date.now() } = {}) {
+export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, config = null, now = () => Date.now(), loops = null } = {}) {
   const entries = Array.isArray(input) ? input : [input]
-  const sources = entries.map((e) => (typeof e.listItems === "function" ? e : fromAdapter(e)))
+  // Loop thresholds from config.json {"loops": {...}} (re-read when the file changes); `loops` injects them.
+  const loopCfg = typeof loops === "function" ? loops : loops ? () => loops : createLoopConfig(config)
+  const sources = entries.map((e) => (typeof e.listItems === "function" ? e : fromAdapter(e, { loops: loopCfg, now })))
   const registry = createRegistry(sources)
   const adapter = entries.find((e) => typeof e.listRuns === "function") ?? null
   // `config`: path of config.json ({ "hide": [...] }); null reads nothing. The CLI passes ~/.mission-control/config.json.

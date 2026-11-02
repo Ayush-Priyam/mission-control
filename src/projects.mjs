@@ -193,7 +193,7 @@ export async function buildTree(items, { git = realGit, only } = {}) {
 /** Where an item with no usable cwd is filed (matches buildTree's fallback). */
 export const NO_PROJECT_INFO = Object.freeze({ key: NO_PROJECT, name: "(no project)", path: "", worktree: "" })
 
-const STATUSES = ["waiting", "working", "stopped", "failed", "done", "idle"]
+const STATUSES = ["waiting", "looping", "working", "stopped", "failed", "done", "idle"]
 
 /** The day of `ts` in zone `tz` (YYYY-MM-DD), or null. */
 const dayIn = (ts, tz) => {

@@ -4,6 +4,7 @@ import { askOf, createWaitingReader, readyOf } from "../../hooks.mjs"
 import { capText, isSessionName } from "../../names.mjs"
 import { createCache } from "../claude-code/cache.mjs"
 import { costOf } from "../claude-code/prices.mjs"
+import { LOOP_DEFAULTS, applyLoops, tokenMessages } from "../../loops.mjs"
 import { createTail, parseFileWith } from "../claude-code/tail.mjs"
 import { createUsageScanner } from "../claude-code/usage.mjs"
 import { peek, rolloutAcc, turnsAcc } from "./parse.mjs"
@@ -34,7 +35,7 @@ export const idOfName = (name) => UUID.exec(name)?.[1] ?? name.replace(/^rollout
  * Codex hook lines live in <hooksDir>/codex/<session_id>.jsonl (written by `mission-control hook codex`).
  * Read-only; every file read is confined to the real path of `root`.
  */
-export function create({ root, now = () => Date.now(), hooksDir, cachePath, onParse } = {}) {
+export function create({ root, now = () => Date.now(), hooksDir, cachePath, onParse, loops = () => LOOP_DEFAULTS } = {}) {
   const cache = createCache()
   const sessions = createCache(SESSIONS)
   const turned = createCache(8)
@@ -224,6 +225,8 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, onPa
     for (const l of lanes) { add(tokens, l.tokens); cost += l.cost; errors += l.errors }
     const running = liveAt(lastMs)
     const w = waitingOf(r)
+    const parts = [{ lane: lanes[0], calls: mp.calls, messages: tokenMessages(mp.messages, costOf) }, ...subs.map((a, i) => ({ lane: lanes[i + 1], calls: a.p.calls, messages: tokenMessages(a.p.messages, costOf) }))]
+    const lp = applyLoops(parts, { now: now(), config: loops(), detect: !w?.waiting && !w?.ready })
     if (w?.waiting) { lanes[0].status = "waiting"; lanes[0].reason = w.message ?? "Waiting for you"; lanes[0].ask = askOf(w) }
     else if (w?.ready) { lanes[0].status = "idle"; lanes[0].reason = "ready for input" }
     const meta = mp.meta
@@ -231,10 +234,12 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, onPa
       source: "codex", id: r.id, kind: "session",
       title: titleOf(meta, r.h.title ?? r.id), harness: "codex",
       cwd: meta.cwd ?? r.h.meta?.cwd ?? null, branch: meta.branch ?? r.h.meta?.branch ?? null,
-      live: running && !w?.ready, status: w?.waiting ? "waiting" : w?.ready ? "idle" : running ? "working" : "idle", waiting: !!w?.waiting,
+      live: running && !w?.ready, status: w?.waiting ? "waiting" : w?.ready ? "idle" : running ? (lp.loop ? "looping" : "working") : "idle", waiting: !!w?.waiting,
       startedAt: meta.startedAt ?? mp.firstTs, updatedAt: iso(lastMs),
       counts: { lanes: lanes.length, calls: calls.length, errors },
       tokens, cost,
+      sinceChange: lp.sinceChange,
+      ...(lp.loop ? { loop: lp.loop } : {}),
       ...readyOf(w),
     }
     if (meta.version) summary.version = meta.version
@@ -280,8 +285,10 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, onPa
             source: "codex", id: r.id, kind: "session",
             title: r.h.title ?? r.id, harness: "codex",
             cwd: m?.cwd ?? null, branch: m?.branch ?? null,
-            live: live && !w?.ready, status: w?.waiting ? "waiting" : w?.ready ? "idle" : live ? "working" : "idle", waiting: !!w?.waiting,
+            live: live && !w?.ready, status: w?.waiting ? "waiting" : w?.ready ? "idle" : live ? (o?.summary.status === "looping" ? "looping" : "working") : "idle", waiting: !!w?.waiting,
             startedAt: m?.startedAt ?? r.h.startedAt, updatedAt: iso(lastMs),
+            ...(o?.summary.sinceChange ? { sinceChange: o.summary.sinceChange } : {}),
+            ...(live && o?.summary.loop && !w?.waiting && !w?.ready ? { loop: o.summary.loop } : {}),
             counts: { lanes: 1 + kids.length, calls: done?.counts.calls ?? 0, errors: done?.counts.errors ?? 0 },
             tokens: done?.tokens ?? zero(), cost: done?.cost ?? 0,
             ...readyOf(w),

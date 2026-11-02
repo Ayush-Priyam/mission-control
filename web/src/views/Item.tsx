@@ -52,7 +52,7 @@ const DiffCount = ({ id, refresh }: { id: string; refresh: number }) => <Count n
 function Header({ d }: { d: ItemDetail }) {
   const s = d.summary
   // One status word in its own colour; "live" is a separate neutral tag, never mixed into the status pill.
-  const shown = s.live && s.status !== "waiting" && s.status !== "idle" && s.status !== "failed" ? "working" : s.status
+  const shown = s.live && s.status !== "waiting" && s.status !== "looping" && s.status !== "idle" && s.status !== "failed" ? "working" : s.status
   return (
     <header className="flex flex-wrap items-center gap-x-3 gap-y-1">
       <h1 className="line-clamp-2 min-w-0 flex-1 text-lg font-bold tracking-tight [text-wrap:balance]" title={s.title}>
@@ -147,7 +147,7 @@ export default function Item({ source, id, tab, call }: { source: string; id: st
           </TabsList>
           <TabsContent value="lanes" className="flex flex-col gap-4 pt-4">
             {d.lanes.length > 1 && <FlowStrip detail={d} now={now} onPick={(ids) => setFocus({ ids, n: Date.now() })} onYou={toYou} highlight={hoverLane} />}
-            <LaneCards lanes={d.lanes} extras={extras} now={now} links={links} focus={focus} onOpen={(lane) => setSheet([lane])} onHover={setHoverLane} />
+            <LaneCards lanes={d.lanes} extras={extras} now={now} links={links} focus={focus} onOpen={(lane) => setSheet([lane])} onHover={setHoverLane} callHref={(c) => toHash({ view: "item", source, id, tab: "calls", call: c })} />
           </TabsContent>
           <TabsContent value="map" className="relative pt-4">
             <div className="absolute top-6 right-2 z-[2]">

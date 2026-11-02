@@ -46,12 +46,13 @@ export function createRegistry(sources) {
    */
   async function overview(items) {
     items ??= await list()
-    const counts = { waiting: 0, working: 0, stopped: 0, done: 0, ready: 0 }
+    const counts = { waiting: 0, working: 0, stopped: 0, done: 0, ready: 0, looping: 0 }
     const ready = []
     for (const i of items) {
       if (i.ready && i.status !== "waiting") counts.ready++
       if (i.status === "waiting") counts.waiting++
       else if (i.status === "working") counts.working++
+      else if (i.status === "looping") counts.looping++
       else if (i.status === "done") counts.done++
       else if (i.status === "stopped" || i.status === "failed") counts.stopped++
     }
@@ -60,7 +61,8 @@ export function createRegistry(sources) {
     ready.sort((a, b) => String(b.since ?? "").localeCompare(String(a.since ?? "")))
     const needsYou = []
     const live = []
-    const busy = items.filter((x) => x.status === "waiting" || x.live || x.status === "working")
+    const looping = []
+    const busy = items.filter((x) => x.status === "waiting" || x.live || x.status === "working" || x.status === "looping")
     // Details load at most OVERVIEW_POOL at a time; results keep the list order.
     const details = new Array(busy.length)
     let next = 0
@@ -81,14 +83,21 @@ export function createRegistry(sources) {
           since: ask.since ?? null, tool: ask.tool ?? null, target: ask.target ?? null,
         })
       }
+      // The listing may lag the detail by a poll: the detail (just parsed) decides working vs looping.
+      const st = d?.summary.status
+      if (st === "looping" && i.status === "working") { counts.working--; counts.looping++ }
+      else if (st === "working" && i.status === "looping") { counts.looping--; counts.working++ }
+      const loop = d?.summary.loop ?? (st ? null : i.loop)
+      if ((st ?? i.status) === "looping" && loop) looping.push({ source: i.source, id: i.id, ...where(i), lane: loop.lane ?? "", loop, sinceChange: d?.summary.sinceChange ?? i.sinceChange ?? null })
       for (const l of d?.lanes ?? []) {
-        if (l.status !== "working") continue
-        live.push({ source: i.source, id: i.id, ...where(i), lane: l.id, label: l.label, kind: l.kind, model: l.model ?? null, nowDoing: l.nowDoing ?? null, startedAt: l.startedAt ?? null })
+        if (l.status !== "working" && l.status !== "looping") continue
+        live.push({ source: i.source, id: i.id, ...where(i), lane: l.id, label: l.label, kind: l.kind, model: l.model ?? null, nowDoing: l.nowDoing ?? null, startedAt: l.startedAt ?? null, ...(l.status === "looping" ? { looping: true } : {}) })
       }
     }
     const at = (l) => String(l.nowDoing?.ts ?? l.startedAt ?? l.updatedAt ?? "")
     live.sort((a, b) => at(b).localeCompare(at(a)))
-    return { counts, needsYou, ready, live }
+    looping.sort((a, b) => String(a.loop.since ?? "").localeCompare(String(b.loop.since ?? "")))
+    return { counts, needsYou, ready, looping, live }
   }
 
   return {

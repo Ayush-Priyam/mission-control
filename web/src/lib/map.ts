@@ -226,7 +226,7 @@ const ms = (ts: unknown) => {
   const t = typeof ts === "string" ? Date.parse(ts) : NaN
   return Number.isFinite(t) ? t : null
 }
-const BUSY = new Set<Status>(["working", "waiting"])
+const BUSY = new Set<Status>(["working", "looping", "waiting"])
 
 /**
  * Lanes that were working at the same moment: a run's stage spans (stage.start to stage.end, skip or

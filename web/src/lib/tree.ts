@@ -2,9 +2,9 @@ import type { ItemSummary, ProjectSummary, Status, StatusCounts, WorktreeSummary
 import { toHash } from "./route"
 
 /** The status chips' filters. `stopped` covers failed too; `done` means done today; `ready` is idle and waiting for your next prompt. */
-export type ChipFilter = "waiting" | "ready" | "working" | "stopped" | "done"
+export type ChipFilter = "waiting" | "looping" | "ready" | "working" | "stopped" | "done"
 
-const RANK: Status[] = ["waiting", "working", "failed", "stopped", "done", "idle"]
+const RANK: Status[] = ["waiting", "looping", "working", "failed", "stopped", "done", "idle"]
 
 /** One status for a group of items: the most urgent one present. */
 export function rollup(items: Pick<ItemSummary, "status">[]): Status {

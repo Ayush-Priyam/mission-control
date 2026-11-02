@@ -76,7 +76,7 @@ export function summarize(d: ItemDetail, now = Date.now()): Summary {
   }
 }
 
-const ACTIVE: Record<Status, number> = { waiting: 0, working: 1, failed: 2, stopped: 3, idle: 4, done: 5 }
+const ACTIVE: Record<Status, number> = { waiting: 0, looping: 1, working: 1, failed: 2, stopped: 3, idle: 4, done: 5 }
 
 /** Lanes that need you or are working first, then failed/stopped, then the rest; newest first within a rank. */
 export const byActivity = (a: Lane, b: Lane) =>
@@ -97,7 +97,7 @@ export function laneTree(lanes: Lane[]): LaneGroup[] {
 /** The status a map node shows for the lanes (stages) it stands for. A non-owner stop stays `stopped`, never `failed`. */
 export function nodeStatus(statuses: Status[]): Status {
   if (!statuses.length) return "idle"
-  for (const s of ["waiting", "working", "failed", "stopped"] as Status[]) if (statuses.includes(s)) return s
+  for (const s of ["waiting", "looping", "working", "failed", "stopped"] as Status[]) if (statuses.includes(s)) return s
   if (statuses.every((s) => s === "done")) return "done"
   return statuses.includes("done") && statuses.every((s) => s === "done" || s === "idle") ? "done" : "idle"
 }

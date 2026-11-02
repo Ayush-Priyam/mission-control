@@ -6,6 +6,7 @@ import { ItemTable } from "@/components/ItemTable"
 import { LiveActivity } from "@/components/LiveActivity"
 import { NeedsYouQueue } from "@/components/NeedsYouQueue"
 import { ReadyList } from "@/components/ReadyList"
+import { LoopingList } from "@/components/LoopingList"
 import { useItems, useSources, type ItemSummary } from "@/lib/api"
 import { useNow } from "@/lib/format"
 import { useShared } from "@/lib/projects-context"
@@ -45,6 +46,11 @@ export default function Home() {
             onActed={overview.reload}
             now={now}
           />
+        )}
+        {overview.data?.looping && overview.data.looping.length > 0 && (
+          <div className="mt-4">
+            <LoopingList entries={overview.data.looping} now={now} />
+          </div>
         )}
         {overview.data?.ready && overview.data.ready.length > 0 && (
           <div className="mt-3">

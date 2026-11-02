@@ -8,6 +8,7 @@ type Chip = { filter: ChipFilter; label: string; dot?: Status; mark?: string; to
 
 const CHIPS: Chip[] = [
   { filter: "waiting", label: "Needs you", dot: "waiting", tone: "bg-needs-you/10 text-needs-you", ring: "ring-needs-you/70" },
+  { filter: "looping", label: "Looping", dot: "looping", tone: "bg-looping/10 text-looping", ring: "ring-looping/70" },
   // Calm info tone: ready is findable, never urgent (amber stays for Needs you only).
   { filter: "ready", label: "Ready", mark: "bg-consult", tone: "bg-consult/10 text-consult", ring: "ring-consult/70" },
   { filter: "working", label: "Working", dot: "working", tone: "bg-running/10 text-running", ring: "ring-running/70" },
@@ -17,7 +18,7 @@ const CHIPS: Chip[] = [
 
 /** The counts each chip shows: overview counts, plus done-today from the project tree. */
 export function chipCounts(o: Overview | null, doneToday: number): Record<ChipFilter, number | null> {
-  return { waiting: o?.counts.waiting ?? null, ready: o ? (o.counts.ready ?? 0) : null, working: o?.counts.working ?? null, stopped: o?.counts.stopped ?? null, done: doneToday }
+  return { waiting: o?.counts.waiting ?? null, looping: o ? (o.counts.looping ?? 0) : null, ready: o ? (o.counts.ready ?? 0) : null, working: o?.counts.working ?? null, stopped: o?.counts.stopped ?? null, done: doneToday }
 }
 
 /** Top-bar status chips (directions.html B). Clicking one filters the sidebar and views; clicking it again clears. */
