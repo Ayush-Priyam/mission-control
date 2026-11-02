@@ -1,4 +1,5 @@
-import { useMemo } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { Minus, Plus } from "lucide-react"
 import type { Call, Lane } from "@/lib/api"
 import { displayName, fmtTime } from "@/components/CallList"
 import { StatusDot } from "@/components/StatusDot"
@@ -30,8 +31,58 @@ type Props = {
   onOpenLane?: (lane: string) => void
 }
 
+const MAX_ZOOM = 32
+const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(1, Math.round(z * 100) / 100))
+
+/**
+ * Zoom for a dense timeline: +/− buttons and ctrl/⌘+wheel. The track grows past the panel and scrolls;
+ * a wheel zoom keeps the instant under the pointer where it was.
+ */
+function useZoom() {
+  const [zoom, setZoom] = useState(1)
+  const scroller = useRef<HTMLDivElement>(null)
+  const anchor = useRef<{ f: number; px: number } | null>(null)
+  // where (0..1 of the track) a pointer x (px inside the scroller) falls, kept across the next render
+  const at = (px: number) => {
+    const el = scroller.current
+    const track = el?.querySelector<HTMLElement>("[data-lanes-track]")
+    if (!el || !track) return
+    const left = track.getBoundingClientRect().left - el.getBoundingClientRect().left + el.scrollLeft
+    const w = track.getBoundingClientRect().width || 1
+    anchor.current = { f: (el.scrollLeft + px - left) / w, px }
+  }
+  /** Zoom to `by(current)`, keeping the instant at pointer x `px` (default: the middle) in place. */
+  const zoomTo = (by: (z: number) => number, px?: number) => {
+    const el = scroller.current
+    if (el) at(px ?? el.clientWidth / 2)
+    setZoom((z) => clampZoom(by(z)))
+  }
+  useLayoutEffect(() => {
+    const el = scroller.current, a = anchor.current
+    const track = el?.querySelector<HTMLElement>("[data-lanes-track]")
+    anchor.current = null
+    if (!el || !a || !track) return
+    const left = track.getBoundingClientRect().left - el.getBoundingClientRect().left + el.scrollLeft
+    el.scrollLeft = left + a.f * track.getBoundingClientRect().width - a.px
+  }, [zoom])
+  // React's wheel listener is passive; a native one can stop the page from zooming.
+  useEffect(() => {
+    const el = scroller.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return
+      e.preventDefault()
+      zoomTo((z) => z * Math.exp(-e.deltaY * 0.004), e.clientX - el.getBoundingClientRect().left)
+    }
+    el.addEventListener("wheel", onWheel, { passive: false })
+    return () => el.removeEventListener("wheel", onWheel)
+  })
+  return { zoom, scroller, zoomTo }
+}
+
 export function LaneTimeline({ lanes, calls, live, now, onPick, onOpenLane }: Props) {
-  const tl = useMemo(() => buildTimeline(lanes, calls, { live, now }), [lanes, calls, live, now])
+  const { zoom, scroller, zoomTo } = useZoom()
+  const tl = useMemo(() => buildTimeline(lanes, calls, { live, now, zoom }), [lanes, calls, live, now, zoom])
   const counts = useMemo(() => {
     const n: Record<TickKind, number> = { tool: 0, mcp: 0, skill: 0, agent: 0, error: 0 }
     for (const r of tl.rows) for (const t of r.ticks) n[t.kind]++
@@ -58,6 +109,17 @@ export function LaneTimeline({ lanes, calls, live, now, onPick, onOpenLane }: Pr
             </span>
           ))}
         </span>
+        <span className="flex items-center rounded-md border font-mono text-[11px]" aria-label="Zoom">
+          <button type="button" aria-label="Zoom out" title="Zoom out (ctrl/⌘ + wheel)" disabled={zoom <= 1} onClick={() => zoomTo((z) => z / 2)} className="px-1.5 py-1 text-muted-foreground hover:text-foreground disabled:opacity-40">
+            <Minus className="size-3" />
+          </button>
+          <button type="button" aria-label="Fit" title="Fit the whole span" disabled={zoom === 1} onClick={() => zoomTo(() => 1)} className="min-w-[3.2em] border-x px-1.5 py-0.5 text-muted-foreground tabular-nums hover:text-foreground disabled:hover:text-muted-foreground">
+            {zoom === 1 ? "fit" : `×${zoom < 10 ? zoom.toFixed(1).replace(/\.0$/, "") : Math.round(zoom)}`}
+          </button>
+          <button type="button" aria-label="Zoom in" title="Zoom in (ctrl/⌘ + wheel)" disabled={zoom >= MAX_ZOOM} onClick={() => zoomTo((z) => z * 2)} className="px-1.5 py-1 text-muted-foreground hover:text-foreground disabled:opacity-40">
+            <Plus className="size-3" />
+          </button>
+        </span>
         {live && (
           <span className="flex items-center gap-1.5 rounded-full border border-running/40 bg-running/10 px-2 py-0.5 font-mono text-[11px] text-running">
             <i className="mc-pulse size-1.5 rounded-full bg-running" />
@@ -68,12 +130,12 @@ export function LaneTimeline({ lanes, calls, live, now, onPick, onOpenLane }: Pr
       {tl.rows.length === 0 ? (
         <p className="m-auto px-4 text-center font-mono text-[13px] text-muted-foreground">No lanes or calls recorded for this item yet.</p>
       ) : (
-        <div className="min-h-0 flex-1 overflow-auto">
-          <div className="relative min-w-[calc(var(--namew)+520px)] pb-6">
+        <div ref={scroller} data-scroller className="min-h-0 flex-1 overflow-auto">
+          <div data-track data-zoom={zoom} className="relative min-w-[calc(var(--namew)+520px)] pb-6" style={zoom > 1 ? { width: `calc(var(--namew) + ${zoom} * (100% - var(--namew)))` } : undefined}>
             {/* axis */}
             <div className="sticky top-0 z-30 grid h-[30px] grid-cols-[var(--namew)_minmax(0,1fr)] border-b bg-card">
               <div className="sticky left-0 z-10 flex items-center border-r bg-card pl-4 font-mono text-[10px] tracking-widest text-muted-foreground">LANE</div>
-              <div className="relative mr-14 ml-3">
+              <div data-lanes-track className="relative mr-14 ml-3">
                 {tl.breaks.map((b, i) => (
                   <span key={i} title={`idle ${dur(b.realMs)}`} className={cn("absolute bottom-0 h-3 min-w-1.5 cursor-help border-x", HATCH)} style={{ left: pct(b.x), width: pct(b.w) }}>
                     <span className="sr-only">idle {dur(b.realMs)}</span>
@@ -98,7 +160,7 @@ export function LaneTimeline({ lanes, calls, live, now, onPick, onOpenLane }: Pr
                   type="button"
                   onClick={() => onOpenLane?.(r.lane.id)}
                   title={r.lane.reason ?? r.lane.label}
-                  className="sticky left-0 z-[2] flex min-w-0 items-center gap-2 border-r bg-card pr-2.5 pl-4 text-left text-[12.5px] group-hover:bg-muted"
+                  className="sticky left-0 z-[6] flex min-w-0 items-center gap-2 border-r bg-card pr-2.5 pl-4 text-left text-[12.5px] group-hover:bg-muted"
                 >
                   <StatusDot status={r.lane.status} />
                   <span className={cn("min-w-0 flex-1 truncate", r.lane.kind === "main" && "font-semibold")}>{r.lane.label}</span>

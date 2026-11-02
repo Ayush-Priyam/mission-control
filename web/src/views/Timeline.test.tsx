@@ -124,4 +124,56 @@ describe("chat blocks", () => {
     const t = (i: number, role: "user" | "assistant"): Turn => ({ i, role, ts: null, text: "", tools: [] })
     expect(blocks([t(0, "user"), t(1, "assistant"), t(2, "assistant"), t(3, "user"), t(4, "user"), t(5, "assistant")]).map((b) => b.turns.map((x) => x.i))).toEqual([[0], [1, 2], [3], [4], [5]])
   })
+  it("user turns the harness injected (task notifications, system reminders) are their own system blocks", async () => {
+    const { blocks, systemNote } = await import("./Chat")
+    const t = (i: number, role: "user" | "assistant", text = ""): Turn => ({ i, role, ts: null, text, tools: [] })
+    const note = "<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n<summary>Agent \"Review parser\" completed</summary>\n</task-notification>"
+    expect(blocks([t(0, "user", "fix it"), t(1, "user", note), t(2, "user", "  <system-reminder>be brief</system-reminder>"), t(3, "assistant")]).map((b) => [b.role, b.turns.map((x) => x.i)])).toEqual([
+      ["user", [0]],
+      ["system", [1]],
+      ["system", [2]],
+      ["assistant", [3]],
+    ])
+    expect(systemNote(note)).toEqual({ kind: "task-notification", text: 'Agent "Review parser" completed' })
+    expect(systemNote("<system-reminder>be brief</system-reminder>")).toEqual({ kind: "system-reminder", text: "be brief" })
+    expect(systemNote("hello <system-reminder>x</system-reminder>")).toBeNull()
+  })
 })
+
+describe("Chat system notes", () => {
+  it("render as a dim one-line chip that expands to the raw text", async () => {
+    routes["/api/item/claude-code/s1"] = session()
+    routes["/api/item/claude-code/s1/calls"] = calls
+    const raw = "<task-notification><summary>Agent done</summary><result>long body</result></task-notification>"
+    routes["/api/item/claude-code/s1/turns?lane=main&limit=60"] = { lane: "main", total: 2, start: 0, turns: [{ i: 0, role: "user", ts: T(0), text: raw, tools: [] }, { i: 1, role: "assistant", ts: T(1), text: "ok", tools: [] }] }
+    render(<Item source="claude-code" id="s1" tab="chat" />)
+    await waitFor(() => expect(screen.getByText("ok")).toBeTruthy())
+    const chip = screen.getByRole("button", { name: /system note/i })
+    expect(chip.textContent).toContain("task-notification")
+    expect(chip.textContent).toContain("Agent done")
+    expect(screen.queryByText(/long body/)).toBeNull()
+    expect(document.body.textContent).not.toContain("YOU#1")
+    fireEvent.click(chip)
+    expect(screen.getByText(/long body/)).toBeTruthy()
+  })
+})
+
+describe("Timeline zoom", () => {
+  it("+ and − widen and narrow the track; ctrl+wheel zooms too; fit resets", async () => {
+    routes["/api/item/claude-code/s1"] = session()
+    routes["/api/item/claude-code/s1/calls"] = calls
+    render(<Item source="claude-code" id="s1" tab="timeline" />)
+    await waitFor(() => expect(document.querySelectorAll("[data-tick]").length).toBe(4))
+    const track = () => document.querySelector("[data-track]") as HTMLElement
+    expect(track().dataset.zoom).toBe("1")
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }))
+    expect(track().dataset.zoom).toBe("2")
+    expect(track().style.width).toContain("2")
+    fireEvent.wheel(document.querySelector("[data-scroller]")!, { deltaY: -100, ctrlKey: true })
+    expect(Number(track().dataset.zoom)).toBeGreaterThan(2)
+    fireEvent.click(screen.getByRole("button", { name: "Zoom out" }))
+    fireEvent.click(screen.getByRole("button", { name: "Fit" }))
+    expect(track().dataset.zoom).toBe("1")
+  })
+})
+

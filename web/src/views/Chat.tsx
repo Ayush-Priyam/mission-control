@@ -71,16 +71,53 @@ function ChipDetail({ c, href, onOpenLane, subLane }: { c: ToolChip; href: strin
   )
 }
 
-/** Consecutive turns of one role read as one block; inside it, tool-only turns share a chip row. */
-export type Block = { role: Turn["role"]; turns: Turn[] }
+/** Tags the harness wraps around text it injects as a "user" turn: not something the owner typed. */
+const SYSTEM_TAGS = ["task-notification", "system-reminder", "local-command-stdout", "local-command-stderr", "bash-stdout", "bash-stderr", "local-command-caveat", "command-name", "command-message", "command-args", "user-prompt-submit-hook"]
+const SYSTEM_RE = new RegExp(`^\\s*<(${SYSTEM_TAGS.join("|")})>`)
+
+/** A user turn the harness injected: its tag and a one-line gist (a task notification's summary, else the text without tags). */
+export function systemNote(text: string): { kind: string; text: string } | null {
+  const m = SYSTEM_RE.exec(text)
+  if (!m) return null
+  const summary = /<summary>([\s\S]*?)<\/summary>/.exec(text)?.[1]
+  const gist = (summary ?? text.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim()
+  return { kind: m[1], text: gist }
+}
+
+/** Consecutive turns of one role read as one block; inside it, tool-only turns share a chip row. Injected turns are "system" blocks. */
+export type Block = { role: Turn["role"] | "system"; turns: Turn[] }
 export function blocks(turns: Turn[]): Block[] {
   const out: Block[] = []
   for (const t of turns) {
     const last = out[out.length - 1]
-    if (last && last.role === t.role && t.role === "assistant") last.turns.push(t)
-    else out.push({ role: t.role, turns: [t] })
+    const role: Block["role"] = t.role === "user" && !t.tools.length && systemNote(t.text) ? "system" : t.role
+    if (last && last.role === role && role === "assistant") last.turns.push(t)
+    else out.push({ role, turns: [t] })
   }
   return out
+}
+
+/** A harness-injected turn: one dim line, the raw text on demand. */
+function SystemNote({ t }: { t: Turn }) {
+  const [open, setOpen] = useState(false)
+  const n = systemNote(t.text)!
+  return (
+    <li data-turn={t.i} data-system className="flex flex-col gap-1.5 px-4">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-label={`system note: ${n.kind}`}
+        onClick={() => setOpen(!open)}
+        className="flex min-w-0 items-center gap-2 self-start rounded-md border border-dashed border-border/70 px-2 py-0.5 font-mono text-[11px] text-faint hover:text-muted-foreground"
+      >
+        {open ? <ChevronDown className="size-3 shrink-0" /> : <ChevronRight className="size-3 shrink-0" />}
+        <span className="shrink-0">system note · {n.kind}</span>
+        {n.text && <span className="max-w-[60ch] min-w-0 truncate">{n.text}</span>}
+        {t.ts && <span className="shrink-0">{fmtTime(t.ts)}</span>}
+      </button>
+      {open && <Pre>{t.text}</Pre>}
+    </li>
+  )
 }
 /** A block's pieces in order: text, or a row of chips (merged across tool-only turns). */
 function pieces(b: Block) {
@@ -129,6 +166,7 @@ function Chips({ chips, open, toggle, callHref, subLanes, onOpenLane }: Omit<Blo
 }
 
 function BlockView({ b, who, ...rest }: BlockProps) {
+  if (b.role === "system") return <SystemNote t={b.turns[0]} />
   const user = b.role === "user"
   const a = b.turns[0], z = b.turns[b.turns.length - 1]
   return (
