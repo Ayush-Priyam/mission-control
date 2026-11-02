@@ -44,6 +44,30 @@ describe("every preset passes contrast in both modes", () => {
       })
 })
 
+describe("tinted presets (Blossom, Mint)", () => {
+  for (const id of ["blossom", "mint"] as const)
+    for (const mode of MODES)
+      it(`${id} ${mode}: primary controls are the accent, selected rows a wash of it`, () => {
+        const spec = PRESETS[id].spec
+        const t = buildTokens(spec, mode).tokens
+        expect(t["--primary"]).toBe(t["--brand"])
+        expect(t["--primary-foreground"]).toBe(t["--brand-foreground"])
+        const hover = spec.base[mode].hover
+        expect(t["--accent"]).not.toBe(hover)
+        expect(t["--sidebar-accent"]).toBe(t["--accent"])
+        // nearer the accent than the plain grey is, yet still a quiet surface
+        expect(contrast(t["--accent"], t["--brand"])).toBeLessThan(contrast(hover, t["--brand"]))
+        expect(contrast(t["--accent"], hover)).toBeLessThan(1.3)
+      })
+  it("Mission and Mono keep neutral primary and selected states", () => {
+    for (const id of ["mission", "mono"] as const) {
+      const t = buildTokens(PRESETS[id].spec, "light").tokens
+      expect(t["--accent"]).toBe(PRESETS[id].spec.base.light.hover)
+      expect(t["--primary"]).not.toBe(t["--brand"])
+    }
+  })
+})
+
 describe("globals.css defaults equal the Mission preset", () => {
   const css = readFileSync(join(import.meta.dirname, "../styles/globals.css"), "utf8")
   const block = (sel: string) => {

@@ -54,12 +54,13 @@ const SERIES: Record<Mode, string[]> = {
   dark: ["#a78bfa", "#2dd4bf", "#60a5fa", "#f472b6", "#fbbf24", "#a3e635"],
 }
 
-export type ThemeSpec = { base: Record<Mode, Surface>; accent: Record<Mode, string>; status: Record<Mode, StatusSet>; series?: Record<Mode, string[]>; shapes?: boolean }
+/** `tint`: primary buttons take the accent, and selected/hover rows take a wash of it (Blossom, Mint). */
+export type ThemeSpec = { base: Record<Mode, Surface>; accent: Record<Mode, string>; status: Record<Mode, StatusSet>; series?: Record<Mode, string[]>; shapes?: boolean; tint?: boolean }
 
 export const PRESETS: Record<Exclude<PresetId, "custom">, { label: string; spec: ThemeSpec }> = {
   mission: { label: "Mission", spec: { base: BASES.neutral, accent: { light: "#18181b", dark: "#fafafa" }, status: STATUS.color } },
-  blossom: { label: "Blossom", spec: { base: BASES.rose, accent: { light: "#be185d", dark: "#f472b6" }, status: STATUS.color } },
-  mint: { label: "Mint", spec: { base: BASES.mint, accent: { light: "#047857", dark: "#34d399" }, status: STATUS.color } },
+  blossom: { label: "Blossom", spec: { base: BASES.rose, accent: { light: "#be185d", dark: "#f472b6" }, status: STATUS.color, tint: true } },
+  mint: { label: "Mint", spec: { base: BASES.mint, accent: { light: "#047857", dark: "#34d399" }, status: STATUS.color, tint: true } },
   mono: {
     label: "Mono",
     spec: {
@@ -101,8 +102,10 @@ export function buildTokens(spec: ThemeSpec, mode: Mode): { tokens: Tokens; adju
   const brand = text("--brand", spec.accent[mode])
   const brandFg = contrast(brand, "#ffffff") >= contrast(brand, "#000000") ? "#ffffff" : "#09090b"
   const fg = text("--foreground", s.fg)
-  const primary = mode === "dark" ? mix(fg, "#ffffff", 0.6) : mix(fg, "#000000", 0.2)
-  const primaryFg = mode === "dark" ? s.bg : "#ffffff"
+  const primary = spec.tint ? brand : mode === "dark" ? mix(fg, "#ffffff", 0.6) : mix(fg, "#000000", 0.2)
+  const primaryFg = spec.tint ? brandFg : mode === "dark" ? s.bg : "#ffffff"
+  // selected and hovered rows: the base's hover grey, washed with the accent on a tinted theme
+  const selected = spec.tint ? mix(s.hover, brand, 0.12) : s.hover
   const focus = mark("--focus", mode === "dark" ? s.mutedFg : mix(s.mutedFg, s.fg, 0.4))
   const series = (spec.series ?? SERIES)[mode]
   const heatTop = brand
@@ -120,7 +123,7 @@ export function buildTokens(spec: ThemeSpec, mode: Mode): { tokens: Tokens; adju
     "--secondary-foreground": fg,
     "--muted": s.muted,
     "--muted-foreground": text("--muted-foreground", s.mutedFg),
-    "--accent": s.hover,
+    "--accent": selected,
     "--accent-foreground": fg,
     "--destructive": text("--failed", st.failed),
     "--border": s.border,
@@ -149,7 +152,7 @@ export function buildTokens(spec: ThemeSpec, mode: Mode): { tokens: Tokens; adju
     "--sidebar-foreground": mix(fg, s.mutedFg, 0.15),
     "--sidebar-primary": primary,
     "--sidebar-primary-foreground": primaryFg,
-    "--sidebar-accent": s.hover,
+    "--sidebar-accent": selected,
     "--sidebar-accent-foreground": fg,
     "--sidebar-border": s.border,
     "--sidebar-ring": focus,
@@ -166,6 +169,8 @@ export function contrastPairs(t: Tokens): { fg: string; bg: string; ratio: numbe
   out.push({ fg: "--primary-foreground", bg: "--primary", ratio: contrast(t["--primary-foreground"], t["--primary"]), min: 4.5 })
   out.push({ fg: "--brand-foreground", bg: "--brand", ratio: contrast(t["--brand-foreground"], t["--brand"]), min: 4.5 })
   out.push({ fg: "--sidebar-foreground", bg: "--sidebar", ratio: contrast(t["--sidebar-foreground"], t["--sidebar"]), min: 4.5 })
+  // text on a selected / hovered row
+  for (const [f, b] of [["--accent-foreground", "--accent"], ["--sidebar-accent-foreground", "--sidebar-accent"]]) out.push({ fg: f, bg: b, ratio: contrast(t[f], t[b]), min: 4.5 })
   return out
 }
 
