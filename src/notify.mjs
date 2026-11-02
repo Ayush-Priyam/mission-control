@@ -33,7 +33,7 @@ export function startNotifier({ registry, enabled, notify = macNotify, link = ()
       }
       if (working && enabled("done")) {
         for (const i of items) {
-          if (working.has(key(i)) && i.status === "idle" && i.open !== false) {
+          if (working.has(key(i)) && i.status === "idle" && i.open !== false && !i.parkedInto) {
             notify({ title: "Done", subtitle: i.title, message: "finished; ready for your next prompt", url: link(i), group: key(i) })
           }
         }

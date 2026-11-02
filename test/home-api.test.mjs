@@ -208,3 +208,16 @@ test("marks: archived leaves items and counts until unarchived; pinned is flagge
     assert.ok((await ids()).includes("q1"))
   })
 })
+
+test("a chat that changed session id is listed once, under the newest id, which keeps its rename", async () => {
+  const titlesPath = join(mkdtempSync(join(tmpdir(), "mc-titles-")), "titles.json")
+  writeFileSync(titlesPath, JSON.stringify({ "cc:old": "my chat" }))
+  const src = { ...source(), listItems: async () => [item("old", "/work/shop", { parkedInto: "new" }), item("new", "/work/shop", { continuedFrom: "old" })] }
+  const dist = mkdtempSync(join(tmpdir(), "mc-dist-"))
+  writeFileSync(join(dist, "index.html"), "ok")
+  const srv = await createServer(src, { port: 0, distDir: dist, git: stubGit, titlesPath })
+  try {
+    const items = await (await fetch(`http://127.0.0.1:${srv.port}/api/items`)).json()
+    assert.deepEqual(items.map((i) => [i.id, i.title]), [["new", "my chat"]])
+  } finally { await srv.close() }
+})

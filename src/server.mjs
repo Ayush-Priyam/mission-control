@@ -148,9 +148,10 @@ async function apiV2(ctx, req, res, url, parts) {
   const isHidden = (p) => isNoise(p, hidden())
   const v22 = await apiV22(ctx, { get, parts: parts.map(decode), isKey, q })
   if (v22) return json(res, v22.body, v22.status ?? 200)
-  // Archived items stay out of counts, the tree and lists unless asked for (?archived=1, or all=1 on lists).
+  // Archived items stay out of counts, the tree and lists unless asked for (?archived=1). The earlier part of a
+  // chat that changed session id (parkedInto) always does: the chat is listed once, under its newest id.
   const withArchived = q.get("archived") === "1"
-  const unarchived = async () => (await registry.list()).filter((i) => withArchived || !i.archived)
+  const listed = async () => (await registry.list()).filter((i) => !i.parkedInto && (withArchived || !i.archived))
   if (req.method === "POST" && parts[0] === "settings" && parts[1] === "test" && parts.length === 2) {
     const via = testNotify({ title: "Test", subtitle: "Mission control", message: "Notifications work. Clicking opens the dashboard.", url: "#/", group: "test" })
     return via ? json(res, { via }) : json(res, { error: "notifications are off in this server" }, 501)
@@ -182,7 +183,7 @@ async function apiV2(ctx, req, res, url, parts) {
     })))
   }
   if (get && parts[0] === "overview" && parts.length === 1) {
-    const items = await place(await unarchived(), git, hidden())
+    const items = await place(await listed(), git, hidden())
     const shown = all ? items : items.filter((i) => !i.hidden)
     return json(res, { ...(await registry.overview(shown)), hidden: items.length - shown.length })
   }
@@ -190,7 +191,7 @@ async function apiV2(ctx, req, res, url, parts) {
     const limit = q.get("limit")
     if (limit !== null && !/^\d{1,6}$/.test(limit)) return json(res, { error: "bad limit" }, 400)
     const source = q.get("source"), id = q.get("id")
-    let items = await unarchived()
+    let items = await listed()
     if (source !== null) items = items.filter((i) => i.source === source)
     if (id !== null) items = items.filter((i) => i.id === id)
     return json(res, await placeFirst(items, git, hidden(), (i) => all || !i.hidden, limit === null ? Infinity : Number(limit)))
@@ -198,14 +199,14 @@ async function apiV2(ctx, req, res, url, parts) {
   if (get && parts[0] === "projects" && parts.length === 1) {
     const tz = tzOf()
     if (!isTz(tz)) return json(res, { error: "bad tz" }, 400)
-    const tree = await buildTree(await unarchived(), { git })
+    const tree = await buildTree(await listed(), { git })
     return json(res, shapeTree(tree, { tz, now: now(), slim: q.get("slim") === "1", isHidden }))
   }
   if (get && parts[0] === "project" && parts.length === 2) {
     const key = decode(parts[1])
     const tz = tzOf()
     if (!isKey(key) || !isTz(tz)) return json(res, { error: "not allowed" }, 400)
-    const p = (await buildTree(await unarchived(), { git, only: key })).find((x) => x.key === key)
+    const p = (await buildTree(await listed(), { git, only: key })).find((x) => x.key === key)
     return p ? json(res, shapeTree([p], { tz, now: now(), isHidden })[0]) : json(res, { error: "no such project" }, 404)
   }
   if (get && parts[0] === "usage" && parts.length === 1) {

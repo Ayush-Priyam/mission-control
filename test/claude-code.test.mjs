@@ -191,17 +191,19 @@ test("open state from <config>/sessions/<pid>.json: busy is working, a dead pid 
   const r = join(cfg, "projects")
   mkdirSync(join(r, "-p"), { recursive: true })
   mkdirSync(join(cfg, "sessions"))
-  for (const id of ["busy", "idle", "dead", "none"]) writeFileSync(join(r, "-p", `${id}.jsonl`), JSON.stringify({ type: "user", cwd: "/w", message: { role: "user", content: id } }) + "\n")
-  const reg = (pid, sessionId, status) => writeFileSync(join(cfg, "sessions", `${pid}.json`), JSON.stringify({ pid, sessionId, status }))
-  reg(process.pid, "busy", "busy")
+  for (const id of ["busy", "idle", "dead", "none", "parked"]) writeFileSync(join(r, "-p", `${id}.jsonl`), JSON.stringify({ type: "user", cwd: "/w", message: { role: "user", content: id } }) + "\n")
+  const reg = (pid, sessionId, status, kind, extra = {}) => writeFileSync(join(cfg, "sessions", `${pid}.json`), JSON.stringify({ pid, sessionId, status, kind, ...extra }))
+  reg(process.pid, "busy", "busy", "bg", { jobId: "job1" })
+  reg(1, "parked", "busy", "interactive", { parkedJobId: "job1" }) // pid 1 always exists
   reg(process.ppid, "idle", "idle")
   reg(2 ** 22 + 7, "dead", "busy") // above macOS and Linux pid limits: never a running process
   const s = create({ root: r })
   const got = Object.fromEntries((await s.listItems()).map((i) => [i.id, [i.open, i.status]]))
-  assert.deepEqual(got, { busy: [true, "working"], idle: [true, "idle"], dead: [false, "idle"], none: [false, "idle"] })
+  assert.deepEqual(got, { busy: [true, "working"], idle: [true, "idle"], dead: [false, "idle"], none: [false, "idle"], parked: [true, "idle"] })
   assert.deepEqual([(await s.getItem("busy")).summary.open, (await s.getItem("dead")).summary.open], [true, false])
   const ready = Object.fromEntries((await s.listItems()).map((i) => [i.id, !!i.ready]))
-  assert.deepEqual(ready, { busy: false, idle: true, dead: false, none: false }) // open and not busy is Ready at once
+  assert.deepEqual(ready, { busy: false, idle: true, dead: false, none: false, parked: false }) // open and not busy is Ready at once
+  assert.equal((await s.getItem("parked")).summary.parkedInto, "busy")
   assert.equal((await s.getItem("busy")).summary.resume, `cd /w && CLAUDE_CONFIG_DIR=${cfg} claude --resume busy`)
 })
 
