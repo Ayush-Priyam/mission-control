@@ -1,6 +1,6 @@
 import { closeSync, openSync, readSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs"
 import { join, sep } from "node:path"
-import { readWaiting } from "../../hooks.mjs"
+import { createWaitingReader } from "../../hooks.mjs"
 import { capText, isSessionName } from "../../names.mjs"
 import { createCache } from "./cache.mjs"
 import { parseTranscript, peek, transcriptAcc, turnsAcc } from "./parse.mjs"
@@ -36,6 +36,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
   // transcript is parsed only for its new lines.
   const sessions = createCache(SESSIONS)
   const turned = createCache(8) // real path -> incremental parseTurns of that file, for chat paging
+  const readWaiting = createWaitingReader() // hook logs, cached by size+mtime, tail-read when large
   const lastTurns = createCache(4096) // path|size|mtime -> newest turn time in the tail of a main log
   const peeked = createCache(8192) // path|size|mtime -> peek of the head, so warm lists skip file reads
   const opened = new Map() // id -> { lastMs, summary } of sessions already fully parsed, for list totals

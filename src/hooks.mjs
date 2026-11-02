@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, readFileSync } from "node:fs"
+import { appendFileSync, closeSync, mkdirSync, openSync, readFileSync, readSync, statSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 
@@ -66,6 +66,46 @@ export function waitingFromHooks(lines) {
 /** Read a session's hook state from disk; { waiting: false } when there is no log. */
 export function readWaiting(hooksDir, sessionId) {
   try { return waitingFromHooks(readFileSync(join(hooksDir, `${sessionId}.jsonl`), "utf8")) } catch { return { waiting: false } }
+}
+
+const HOOK_TAIL = 64 * 1024
+const CACHED_LOGS = 8192
+
+/**
+ * readWaiting with a per-file cache keyed by size+mtime: an unchanged log is not read again. A log over
+ * `tailBytes` is read from its tail only; the tail decides when it holds a Notification or a clearing
+ * event (the cut first line is skipped), else the whole log is read. `onRead(path, { bytes })` is for tests.
+ */
+export function createWaitingReader({ tailBytes = HOOK_TAIL, onRead } = {}) {
+  const cache = new Map() // path -> { key, value }
+  function read(path, size) {
+    const fd = openSync(path, "r")
+    try {
+      const n = Math.min(size, tailBytes)
+      const buf = Buffer.alloc(n)
+      const got = readSync(fd, buf, 0, n, size - n)
+      onRead?.(path, { bytes: got })
+      const text = buf.toString("utf8", 0, got)
+      if (n === size) return waitingFromHooks(text)
+      const events = parseHookLines(text.slice(text.indexOf("\n") + 1))
+      if (events.some((e) => e.event === "Notification" || CLEARS.has(e.event))) return waitingFromHooks(events)
+    } finally { closeSync(fd) }
+    onRead?.(path, { bytes: size })
+    return waitingFromHooks(readFileSync(path, "utf8"))
+  }
+  return function readWaitingCached(hooksDir, sessionId) {
+    const path = join(hooksDir, `${sessionId}.jsonl`)
+    let st
+    try { st = statSync(path) } catch { cache.delete(path); return { waiting: false } }
+    const key = `${st.ino}|${st.size}|${st.mtimeMs}`
+    const hit = cache.get(path)
+    if (hit && hit.key === key) return hit.value
+    let value
+    try { value = read(path, st.size) } catch { value = { waiting: false } }
+    if (cache.size >= CACHED_LOGS) cache.delete(cache.keys().next().value)
+    cache.set(path, { key, value })
+    return value
+  }
 }
 
 /** The settings.json block to merge by hand; `node` and the script are absolute. */

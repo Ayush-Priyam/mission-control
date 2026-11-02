@@ -5,7 +5,7 @@ import { appendFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readd
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { waitingFromHooks } from "../src/hooks.mjs"
+import { createWaitingReader, waitingFromHooks } from "../src/hooks.mjs"
 import create from "../src/sources/claude-code/index.mjs"
 import { createRegistry } from "../src/sources/registry.mjs"
 
@@ -167,4 +167,28 @@ test("hook: dir is created 0700 and the log 0600", () => {
   run(["hook", "Stop"], JSON.stringify({ session_id: "p", hook_event_name: "Stop" }), dir)
   assert.equal(statSync(dir).mode & 0o777, 0o700)
   assert.equal(statSync(join(dir, "p.jsonl")).mode & 0o777, 0o600)
+})
+
+test("I3: hook logs are cached by size+mtime and read from the tail when large", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mc-hooks-tail-"))
+  const reads = []
+  const read = createWaitingReader({ tailBytes: 1024, onRead: (p, r) => reads.push(r.bytes) })
+  const line = (o) => JSON.stringify({ sessionId: "s", ts: "2026-11-02T09:00:00.000Z", ...o }) + "\n"
+  const file = join(dir, "s.jsonl")
+  // ~20 KB of old history, then an open Notification.
+  writeFileSync(file, line({ event: "Stop" }).repeat(300) + line({ event: "Notification", message: "Needs approval" }))
+  const size = statSync(file).size
+  assert.ok(size > 10_000)
+  assert.deepEqual(read(dir, "s"), { waiting: true, message: "Needs approval", since: "2026-11-02T09:00:00.000Z" })
+  assert.deepEqual(reads, [1024]) // tail only
+  read(dir, "s"); read(dir, "s")
+  assert.deepEqual(reads, [1024], "unchanged log is not read again")
+  appendFileSync(file, line({ event: "PreToolUse", tool: "Bash" }))
+  assert.equal(read(dir, "s").waiting, false)
+  assert.equal(reads.length, 2)
+  // A tail with no deciding event (only SubagentStop) falls back to the whole log.
+  writeFileSync(file, line({ event: "Notification", message: "Old ask" }) + line({ event: "SubagentStop" }).repeat(300))
+  assert.equal(read(dir, "s").waiting, true)
+  assert.deepEqual(reads.slice(2), [1024, statSync(file).size])
+  assert.deepEqual(read(dir, "missing"), { waiting: false })
 })
