@@ -76,13 +76,23 @@ export function classify(name, input) {
  * Calls are matched to their tool_result by tool_use_id for ok/error, duration and a short result.
  */
 export function parseTranscript(text, laneId = "main") {
+  const acc = transcriptAcc(laneId)
+  for (const e of lines(text)) acc.feed(e)
+  return acc.result()
+}
+
+/**
+ * parseTranscript as an accumulator: feed(entry) one parsed line at a time (so a growing file is parsed
+ * only for its new lines), result() whenever a snapshot is needed. result() never mutates the state.
+ */
+export function transcriptAcc(laneId = "main") {
   const calls = []
   const byUse = new Map()
   const msgs = new Map() // message key -> { model, usage }
   let anon = 0
   const meta = { cwd: null, branch: null, version: null, sessionId: null, summary: null, title: null }
   let firstTs = null, lastTs = null, firstModel = null, errors = 0, firstUser = null
-  for (const e of lines(text)) {
+  function feed(e) {
     const ts = str(e.timestamp)
     if (ts) { firstTs ??= ts; lastTs = ts }
     meta.cwd ??= str(e.cwd)
@@ -122,22 +132,27 @@ export function parseTranscript(text, laneId = "main") {
       }
     }
   }
-  const tokens = zero()
-  const models = {}
-  const messages = [] // one per assistant message id, for per-day usage
-  let cost = 0
-  for (const { model, usage, ts } of msgs.values()) {
-    const t = { in: num(usage.input_tokens), out: num(usage.output_tokens), cacheRead: num(usage.cache_read_input_tokens), cacheWrite: num(usage.cache_creation_input_tokens) }
-    tokens.in += t.in; tokens.out += t.out; tokens.cacheRead += t.cacheRead; tokens.cacheWrite += t.cacheWrite
-    cost += costOf(model, t)
-    messages.push({ model, ts: ts ?? null, tokens: t })
-    if (model) models[model] = (models[model] ?? 0) + 1
+  function result() {
+    const tokens = zero()
+    const models = {}
+    const messages = [] // one per assistant message id, for per-day usage
+    let cost = 0
+    for (const { model, usage, ts } of msgs.values()) {
+      const t = { in: num(usage.input_tokens), out: num(usage.output_tokens), cacheRead: num(usage.cache_read_input_tokens), cacheWrite: num(usage.cache_creation_input_tokens) }
+      tokens.in += t.in; tokens.out += t.out; tokens.cacheRead += t.cacheRead; tokens.cacheWrite += t.cacheWrite
+      cost += costOf(model, t)
+      messages.push({ model, ts: ts ?? null, tokens: t })
+      if (model) models[model] = (models[model] ?? 0) + 1
+    }
+    const out = { ...meta, title: clip(meta.summary ?? firstUser ?? "", 160) || null }
+    // Snapshot the calls: later lines (a tool_result) mutate the live call objects.
+    const snap = calls.map((c) => ({ ...c }))
+    const open = [...snap].reverse().find((c) => c.ok === undefined)
+    const last = open ?? snap.at(-1)
+    const nowDoing = last ? { name: last.name, kind: last.kind, summary: last.summary, ts: last.ts } : undefined
+    return { calls: snap, tokens, cost, errors, models, messages, firstModel, firstTs, lastTs, meta: out, nowDoing }
   }
-  meta.title = clip(meta.summary ?? firstUser ?? "", 160) || null
-  const open = [...calls].reverse().find((c) => c.ok === undefined)
-  const last = open ?? calls.at(-1)
-  const nowDoing = last ? { name: last.name, kind: last.kind, summary: last.summary, ts: last.ts } : undefined
-  return { calls, tokens, cost, errors, models, messages, firstModel, firstTs, lastTs, meta, nowDoing }
+  return { feed, result }
 }
 
 const TURN_TEXT = 20_000
@@ -163,12 +178,19 @@ function textBlocks(c) {
  * reminders and bad lines are skipped.
  */
 export function parseTurns(text) {
+  const acc = turnsAcc()
+  for (const e of lines(text)) acc.feed(e)
+  return acc.result()
+}
+
+/** parseTurns as an accumulator: feed(entry) per parsed line, result() for the turns so far. */
+export function turnsAcc() {
   const turns = []
   const byMsg = new Map()
   const byUse = new Map()
-  for (const e of lines(text)) {
+  function feed(e) {
     const m = e.message && typeof e.message === "object" ? e.message : null
-    if (!m || e.isMeta) continue
+    if (!m || e.isMeta) return
     const ts = str(e.timestamp)
     if (e.type === "assistant") {
       const key = str(m.id)
@@ -207,5 +229,7 @@ export function parseTurns(text) {
     }
   }
   // An assistant message that was only thinking (no text, no tools) is not a turn; renumber after dropping.
-  return turns.filter((t) => t.text || t.tools.length).map((t, i) => ({ ...t, i }))
+  // Tool chips are copied: a later tool_result mutates the live chip.
+  const result = () => turns.filter((t) => t.text || t.tools.length).map((t, i) => ({ ...t, i, tools: t.tools.map((c) => ({ ...c })) }))
+  return { feed, result }
 }

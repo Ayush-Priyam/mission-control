@@ -10,7 +10,7 @@ const key = (f) => `${f.file}|${f.st.size}|${f.st.mtimeMs}`
 
 /**
  * Incremental per-file usage scan. `files()` lists { session, main, file, st } (main = the session's own
- * transcript, else a subagent one); `parse(text)` is parseTranscript. Each file reduces to day/model token
+ * transcript, else a subagent one); `parseFile(path, st)` (or `parse(text)`) is parseTranscript. Each file reduces to day/model token
  * sums per 15-minute UTC bucket (so any time zone can be applied later), cached under path|size|mtime in memory and (when `cachePath` is set) in a JSON file, so a changed
  * file is the only thing ever re-parsed. A scan yields between files; rows() answers at any time from what
  * is known so far (first scan: partial; later scans keep serving the previous result until they finish).
@@ -20,7 +20,7 @@ const wellFormed = (e) =>
   !!e && typeof e === "object" && Array.isArray(e.days) &&
   e.days.every((d) => d && typeof d.b === "string" && typeof d.model === "string" && ["in", "out", "cacheRead", "cacheWrite"].every((k) => nonNeg(d[k])))
 
-export function createUsageScanner({ files, parse, costOf, cachePath = null, now = () => Date.now() }) {
+export function createUsageScanner({ files, parse, parseFile = (file) => parse(readFileSync(file, "utf8")), costOf, cachePath = null, now = () => Date.now() }) {
   const cache = new Map() // key -> entry
   if (cachePath) {
     try {
@@ -64,7 +64,7 @@ export function createUsageScanner({ files, parse, costOf, cachePath = null, now
     for (const { f, k } of todo) {
       await tick()
       try {
-        const p = parse(readFileSync(f.file, "utf8"))
+        const p = parseFile(f.file, f.st)
         const days = new Map()
         for (const m of p.messages) {
           const b = bucketOf(m.ts) ?? bucketOf(p.firstTs) ?? bucketOf(p.lastTs) ?? bucketOf(new Date(f.st.mtimeMs).toISOString())

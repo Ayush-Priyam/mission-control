@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { mkdtempSync, mkdirSync, statSync, symlinkSync, writeFileSync } from "node:fs"
+import { appendFileSync, mkdtempSync, mkdirSync, statSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -205,4 +205,81 @@ test("CLI: --claude-dir serves claude-code sessions through the multi-source API
     const bad = await fetch(`http://localhost:${port}/api/item/claude-code/s1/session/..%2Fs2.jsonl`)
     assert.equal(bad.status, 400)
   } finally { child.kill() }
+})
+
+/** A synthetic session with `n` subagent lanes, each with one Bash call. */
+function bigSession(n) {
+  const r = mkdtempSync(join(tmpdir(), "mc-big-"))
+  const dir = join(r, "-w", "big", "subagents")
+  mkdirSync(dir, { recursive: true })
+  const ts = (s) => `2026-11-02T09:${String(Math.floor(s / 60) % 60).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}.000Z`
+  const use = (id, at, cmd) => JSON.stringify({ type: "assistant", timestamp: ts(at), message: { id: `m-${id}`, model: "claude-sonnet-4-5", usage: { input_tokens: 10, output_tokens: 5 }, content: [{ type: "tool_use", id, name: "Bash", input: { command: cmd } }] } })
+  const done = (id, at) => JSON.stringify({ type: "user", timestamp: ts(at), message: { content: [{ type: "tool_result", tool_use_id: id, content: "ok" }] } })
+  writeFileSync(join(r, "-w", "big.jsonl"), [JSON.stringify({ type: "user", cwd: "/w", timestamp: ts(0), message: { content: "go wide" } }), use("t-main", 1, "ls"), done("t-main", 2)].join("\n") + "\n")
+  for (let i = 0; i < n; i++) {
+    writeFileSync(join(dir, `agent-a${i}.jsonl`), [use(`t-${i}`, 3 + i, `echo ${i}`), done(`t-${i}`, 4 + i)].join("\n") + "\n")
+    writeFileSync(join(dir, `agent-a${i}.meta.json`), JSON.stringify({ description: `lane ${i}` }))
+  }
+  return { root: r, main: join(r, "-w", "big.jsonl"), sub: (i) => join(dir, `agent-a${i}.jsonl`), use, done }
+}
+
+test("C1: 150 subagent lanes parse once; repeat getItem, getCalls and overview re-parse nothing", async () => {
+  const b = bigSession(150)
+  const reads = []
+  const s = create({ root: b.root, onParse: (path, r) => reads.push({ path, ...r }) })
+  const first = await s.getItem("big")
+  assert.equal(first.lanes.length, 151)
+  assert.equal(reads.length, 151)
+  assert.ok(reads.every((r) => r.full))
+  reads.length = 0
+  for (let k = 0; k < 3; k++) {
+    assert.equal((await s.getItem("big")).lanes.length, 151)
+    assert.equal((await s.getCalls("big")).length, 151)
+    assert.equal((await s.getCalls("big", { lane: "agent-a7" })).length, 1)
+  }
+  await createRegistry([s]).overview([{ source: "claude-code", id: "big", status: "working", live: true }])
+  assert.equal(reads.length, 0, "no re-parse while no file changed")
+  // One subagent grows: only that file, only its new bytes.
+  const line = b.use("t-more", 200, "echo more") + "\n"
+  appendFileSync(b.sub(42), line)
+  assert.equal((await s.getCalls("big", { lane: "agent-a42" })).length, 2)
+  assert.deepEqual(reads.map((r) => [r.path.endsWith("agent-a42.jsonl"), r.bytes, r.full]), [[true, Buffer.byteLength(line), false]])
+})
+
+test("I2: an appended transcript parses only the new bytes; a half-written line waits; a shrunk file re-parses", async () => {
+  const b = bigSession(1)
+  const reads = []
+  const s = create({ root: b.root, onParse: (path, r) => path.endsWith("big.jsonl") && reads.push(r) })
+  assert.equal((await s.getCalls("big", { lane: "main" })).length, 1)
+  assert.equal((await s.getTurns("big", "main")).total, 2)
+  assert.equal(reads.length, 2) // item/calls and turns: one full read each
+  reads.length = 0
+  const full = b.use("t-2", 300, "npm test") + "\n"
+  const half = full.slice(0, 40)
+  appendFileSync(b.main, half)
+  assert.equal((await s.getCalls("big", { lane: "main" })).length, 1, "half-written line is not a call yet")
+  appendFileSync(b.main, full.slice(40) + b.done("t-2", 301) + "\n")
+  const calls = await s.getCalls("big", { lane: "main" })
+  assert.deepEqual(calls.map((c) => [c.id, c.ok]), [["t-main", true], ["t-2", true]])
+  assert.deepEqual(reads.map((r) => [r.bytes, r.full]), [[40, false], [Buffer.byteLength(full) - 40 + Buffer.byteLength(b.done("t-2", 301)) + 1, false]])
+  reads.length = 0
+  assert.equal((await s.getTurns("big", "main")).total, 3)
+  assert.deepEqual(reads.map((r) => r.full), [false])
+  // Rewritten shorter: a full parse, not a stale append.
+  reads.length = 0
+  writeFileSync(b.main, JSON.stringify({ type: "user", cwd: "/w", timestamp: "2026-11-02T10:00:00.000Z", message: { content: "fresh" } }) + "\n")
+  assert.equal((await s.getCalls("big", { lane: "main" })).length, 0)
+  assert.deepEqual(reads.map((r) => r.full), [true])
+})
+
+test("minor 8: a transcript is read in chunks, never as one string, and getSession reads only its cap", async () => {
+  const b = bigSession(0)
+  // ~9 MB of filler lines (more than one read chunk) between the calls.
+  const filler = JSON.stringify({ type: "system", content: "x".repeat(1000) }) + "\n"
+  appendFileSync(b.main, filler.repeat(9000) + b.use("t-late", 400, "late") + "\n")
+  const s = create({ root: b.root })
+  assert.deepEqual((await s.getCalls("big")).map((c) => c.id), ["t-main", "t-late"])
+  const sess = await s.getSession("big", "main.jsonl")
+  assert.equal(sess.truncated, true)
+  assert.equal(Buffer.byteLength(sess.text) <= 200_000 + 3, true)
 })

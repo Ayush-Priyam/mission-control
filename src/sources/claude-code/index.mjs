@@ -3,7 +3,8 @@ import { join, sep } from "node:path"
 import { readWaiting } from "../../hooks.mjs"
 import { capText, isSessionName } from "../../names.mjs"
 import { createCache } from "./cache.mjs"
-import { parseTranscript, parseTurns, peek } from "./parse.mjs"
+import { parseTranscript, peek, transcriptAcc, turnsAcc } from "./parse.mjs"
+import { createTail, parseFileWith } from "./tail.mjs"
 import { costOf } from "./prices.mjs"
 import { createUsageScanner } from "./usage.mjs"
 
@@ -13,6 +14,8 @@ const WAIT_EXPIRY_MS = 12 * 3600 * 1000
 const CLEAR_GAP_MS = 2000
 const HEAD_BYTES = 64 * 1024
 const HEAD_MAX = 1024 * 1024 // read forward this far for the first line carrying a cwd
+const SESSIONS = 256 // parsed sessions kept, whatever their lane count
+const SESSION_TEXT = 200_000 // getSession returns at most this many bytes
 const SAFE = /^[\w-][\w.-]*$/ // one path segment: no separators, never starts with a dot
 const zero = () => ({ in: 0, out: 0, cacheRead: 0, cacheWrite: 0 })
 const add = (a, b) => { a.in += b.in; a.out += b.out; a.cacheRead += b.cacheRead; a.cacheWrite += b.cacheWrite }
@@ -22,11 +25,18 @@ const iso = (ms) => new Date(ms).toISOString()
  * Claude Code sessions as a v2 source. `root` is the projects dir (default ~/.claude/projects),
  * `now` an injectable clock. `hooksDir` holds the level-1 hook logs: a session whose last Notification is
  * unanswered is "waiting" (an idle reminder is "ready", i.e. idle). Read-only; every file read is confined to the real path of `root`. `cachePath` is where the
- * usage scan persists its per-file results (omitted: memory only); `parse` is injectable for tests.
+ * usage scan persists its per-file results (omitted: memory only); `parse` (text -> parseTranscript result,
+ * usage scan only) and `onParse(path, { bytes, full })` (every transcript read for items, calls and turns)
+ * are for tests.
  */
-export function create({ root, now = () => Date.now(), hooksDir, cachePath, parse = parseTranscript } = {}) {
-  const cache = createCache()
-  const turned = createCache(8) // path|size|mtime -> parseTurns of that file, for chat paging
+export function create({ root, now = () => Date.now(), hooksDir, cachePath, parse = parseTranscript, onParse } = {}) {
+  const cache = createCache() // key helper for the head cache below
+  // id -> { stamp, tails, data }: one parse per session version (stamp = identity of all its files), shared by
+  // getItem, getCalls and the overview. tails keeps each file's incremental reader, so a growing
+  // transcript is parsed only for its new lines.
+  const sessions = createCache(SESSIONS)
+  const turned = createCache(8) // real path -> incremental parseTurns of that file, for chat paging
+  const lastTurns = createCache(4096) // path|size|mtime -> newest turn time in the tail of a main log
   const peeked = createCache(8192) // path|size|mtime -> peek of the head, so warm lists skip file reads
   const opened = new Map() // id -> { lastMs, summary } of sessions already fully parsed, for list totals
   let realRoot = null
@@ -42,12 +52,14 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
     } catch { return null }
   }
 
-  function head(file, bytes) {
+  /** The first `bytes` of a file as text (or as a Buffer with `raw`). */
+  function head(file, bytes, raw = false) {
     let fd
     try {
       fd = openSync(file, "r")
       const buf = Buffer.alloc(bytes)
-      return buf.toString("utf8", 0, readSync(fd, buf, 0, bytes, 0))
+      const n = readSync(fd, buf, 0, bytes, 0)
+      return raw ? buf.subarray(0, n) : buf.toString("utf8", 0, n)
     } finally { if (fd !== undefined) closeSync(fd) }
   }
 
@@ -103,29 +115,23 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
     return null
   }
 
-  /** Subagent transcripts of a session with their meta: [{ aid, file, meta }]. */
+  /** Subagent transcripts of a session: [{ aid, file, metaFile }], from the directory listing only. */
   function subagents(s) {
     const dir = join(root, s.slug, s.id, "subagents")
     const out = []
     for (const f of dirs(dir)) {
       const m = /^agent-([\w-]+)\.jsonl$/.exec(f.name)
-      if (!m || !f.isFile()) continue
-      let meta = {}
-      try {
-        const mp = confined(join(dir, `agent-${m[1]}.meta.json`))
-        const j = mp && JSON.parse(readFileSync(mp.real, "utf8"))
-        if (j && typeof j === "object") meta = j
-      } catch { /* missing or broken meta: lane keeps its id as label */ }
-      out.push({ aid: m[1], file: join(dir, f.name), meta })
+      if (m && f.isFile()) out.push({ aid: m[1], file: join(dir, f.name), metaFile: join(dir, `agent-${m[1]}.meta.json`) })
     }
     return out.sort((a, b) => a.aid.localeCompare(b.aid))
   }
 
-  function parseFile(file) {
-    const c = confined(file)
-    if (!c) return null
-    const key = cache.key(c.real, c.st)
-    return cache.get(key) ?? cache.set(key, { ...parseTranscript(readFileSync(c.real, "utf8")), mtimeMs: c.st.mtimeMs })
+  /** A subagent's meta.json ({} when missing or broken: the lane keeps its id as label). */
+  function readMeta(c) {
+    try {
+      const j = c && JSON.parse(readFileSync(c.real, "utf8"))
+      return j && typeof j === "object" && !Array.isArray(j) ? j : {}
+    } catch { return {} }
   }
 
   /** Every transcript that counts toward usage: sessions and their subagents, with stat. */
@@ -142,7 +148,9 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
     }
     return out
   }
-  const scanner = createUsageScanner({ files: usageFiles, parse, costOf, cachePath, now })
+  // The default parser streams the file in chunks (no string size limit); an injected one gets the text.
+  const parseFile = parse === parseTranscript ? (file, st) => parseFileWith(() => transcriptAcc(), file, st) : (file) => parse(readFileSync(file, "utf8"))
+  const scanner = createUsageScanner({ files: usageFiles, parseFile, costOf, cachePath, now })
 
   /** Newest user/assistant record timestamp (ms) in the tail of a main log; summary/system lines are ignored. */
   function lastTurnMs(file, size) {
@@ -175,7 +183,9 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
     const since = Date.parse(w.since)
     if (Number.isFinite(since)) {
       if (now() - since > WAIT_EXPIRY_MS) return null
-      if (lastTurnMs(main.real, main.st.size) > since + CLEAR_GAP_MS) return null
+      const k = cache.key(main.real, main.st)
+      const last = lastTurns.get(k) ?? lastTurns.set(k, lastTurnMs(main.real, main.st.size))
+      if (last > since + CLEAR_GAP_MS) return null
     }
     return w
   }
@@ -197,17 +207,55 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
     return lane
   }
 
-  /** Full parse of one session: summary, lanes, and calls per lane (subagent calls linked to Agent calls). */
-  function load(s) {
+  /**
+   * The parsed files of one session, rebuilt only when one of its files (transcripts or meta) changed:
+   * { main, mp, subs: [{ aid, p, meta, mt }], calls (all lanes, sorted, Agent calls linked), lastMs }.
+   * A changed file is read incrementally (only appended bytes); unchanged ones are not read at all.
+   */
+  function parsed(s) {
     const main = confined(s.file)
-    const mp = main && parseFile(s.file)
+    if (!main) return null
+    const found = subagents(s).map((a) => ({ ...a, c: confined(a.file), m: confined(a.metaFile) })).filter((a) => a.c)
+    const id = (c) => (c ? `${c.real}|${c.st.ino}|${c.st.size}|${c.st.mtimeMs}` : "-")
+    const stamp = [id(main), ...found.map((a) => `${id(a.c)}>${id(a.m)}`)].join("\n")
+    const prev = sessions.get(s.id)
+    if (prev && prev.stamp === stamp) return prev.data
+    const tails = new Map()
+    const read = (c, lane) => {
+      const t = prev?.tails.get(c.real) ?? createTail(() => transcriptAcc(lane), onParse)
+      try { t.update(c.real, c.st) } catch { return null } // vanished or unreadable mid-read
+      tails.set(c.real, t)
+      return t.result()
+    }
+    const mp = read(main, "main")
     if (!mp) return null
-    const subs = subagents(s).map((a) => ({ ...a, p: parseFile(a.file), mt: confined(a.file)?.st.mtimeMs ?? 0 })).filter((a) => a.p)
-    const lastMs = Math.max(main.st.mtimeMs, ...subs.map((a) => a.mt))
-    const live = liveAt(lastMs)
-    const lanes = [laneOf(mp, { id: "main", label: "main", kind: "main", live })]
+    const subs = []
+    for (const a of found) {
+      const p = read(a.c, `agent-${a.aid}`)
+      if (p) subs.push({ aid: a.aid, p, meta: readMeta(a.m), mt: a.c.st.mtimeMs })
+    }
     const calls = mp.calls.map((c) => ({ ...c }))
     const byUse = new Map(calls.map((c) => [c.id, c]))
+    for (const a of subs) {
+      const lane = `agent-${a.aid}`
+      for (const c of a.p.calls) calls.push({ ...c, lane })
+      const link = typeof a.meta.toolUseId === "string" ? byUse.get(a.meta.toolUseId) : null
+      if (link && link.kind === "agent") link.subLane = lane
+    }
+    calls.sort((x, y) => x.ts.localeCompare(y.ts))
+    const lastMs = Math.max(main.st.mtimeMs, ...subs.map((a) => a.mt))
+    const data = { main, mp, subs, calls, lastMs }
+    sessions.set(s.id, { stamp, tails, data })
+    return data
+  }
+
+  /** One session: summary and lanes from the parsed files, with liveness (clock) and hook state applied now. */
+  function load(s) {
+    const d = parsed(s)
+    if (!d) return null
+    const { main, mp, subs, calls, lastMs } = d
+    const live = liveAt(lastMs)
+    const lanes = [laneOf(mp, { id: "main", label: "main", kind: "main", live })]
     for (const a of subs) {
       const id = `agent-${a.aid}`
       const label = typeof a.meta.description === "string" && a.meta.description ? a.meta.description : a.aid
@@ -215,11 +263,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
         ...laneOf(a.p, { id, label, kind: "subagent", parent: "main", model: typeof a.meta.model === "string" ? a.meta.model : undefined, live: liveAt(a.mt), finished: a.meta.finished === true }),
         ...(typeof a.meta.agentType === "string" ? { agentType: a.meta.agentType } : {}),
       })
-      for (const c of a.p.calls) calls.push({ ...c, lane: id })
-      const link = typeof a.meta.toolUseId === "string" ? byUse.get(a.meta.toolUseId) : null
-      if (link && link.kind === "agent") link.subLane = id
     }
-    calls.sort((x, y) => x.ts.localeCompare(y.ts))
     const tokens = zero()
     let cost = 0, errors = 0
     for (const l of lanes) { add(tokens, l.tokens); cost += l.cost; errors += l.errors }
@@ -308,8 +352,9 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
       const file = lane === "main" ? s.file : m ? join(root, s.slug, s.id, "subagents", `agent-${m[1]}.jsonl`) : null
       const c = file && confined(file)
       if (!c) return null
-      const key = turned.key(c.real, c.st)
-      const all = turned.get(key) ?? turned.set(key, parseTurns(readFileSync(c.real, "utf8")))
+      const t = turned.get(c.real) ?? turned.set(c.real, createTail(turnsAcc, onParse))
+      try { t.update(c.real, c.st) } catch { return null }
+      const all = t.result()
       const end = Math.max(0, Math.min(all.length, Number.isInteger(before) ? before : all.length))
       const start = Math.max(0, end - Math.max(1, limit))
       return { lane, total: all.length, start, turns: all.slice(start, end) }
@@ -327,7 +372,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
         if (m) file = join(root, s.slug, s.id, "subagents", `agent-${m[1]}.jsonl`)
       }
       const c = file && confined(file)
-      return c ? capText(readFileSync(c.real)) : null
+      return c ? capText(head(c.real, SESSION_TEXT + 1, true), SESSION_TEXT) : null
     },
 
     /** Rows from the background scan; partial while `usageStatus().complete` is false. */
