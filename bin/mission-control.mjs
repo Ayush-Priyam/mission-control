@@ -76,6 +76,7 @@ try {
   srv = await createServer(adapters, {
     port, config, claudeHome: home, codexHome, prs,
     titlesPath: stateFile("titles.json"), marksPath: stateFile("marks.json"), settingsPath: stateFile("settings.json"),
+    notifyLogPath: stateFile("logs/notifications.log"),
     notifier: process.platform === "darwin",
     // Not for a stand-in home (the demo): the agent would go in the real ~/Library/LaunchAgents.
     autostart: port && !altHome ? createAutostart({ port, argv, script: fileURLToPath(import.meta.url) }) : null,

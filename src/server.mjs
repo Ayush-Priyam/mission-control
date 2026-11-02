@@ -1,5 +1,5 @@
 import { createServer as createHttpServer } from "node:http"
-import { existsSync } from "node:fs"
+import { appendFileSync, existsSync, mkdirSync } from "node:fs"
 import { readFile, realpath } from "node:fs/promises"
 import { dirname, extname, join, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -139,7 +139,7 @@ async function placeFirst(items, git, hideList, keep, limit = Infinity) {
 }
 
 async function apiV2(ctx, req, res, url, parts) {
-  const { registry, git, hide, titles, marks, settings, autostart, onRestart, testNotify, now } = ctx
+  const { registry, git, hide, titles, marks, settings, autostart, onRestart, testNotify, noteLog, now } = ctx
   const get = req.method === "GET" || req.method === "HEAD"
   const q = url.searchParams
   const all = q.get("all") === "1"
@@ -153,6 +153,13 @@ async function apiV2(ctx, req, res, url, parts) {
   // chat that changed session id (parkedInto) always does: the chat is listed once, under its newest id.
   const withArchived = q.get("archived") === "1"
   const listed = async () => (await registry.list()).filter((i) => !i.parkedInto && (withArchived || !i.archived))
+  if (req.method === "POST" && parts[0] === "events" && parts[1] === "ack" && parts.length === 2) {
+    // The page reports what happened to a notification it was sent: shown, error, failed (with why).
+    const b = await readBody(req)
+    const s = (v) => String(v ?? "").replace(/[\r\n]+/g, " ").slice(0, 200)
+    noteLog(`page ${s(b?.result)}: ${s(b?.group)} (permission ${s(b?.permission)}, tab ${s(b?.visible)})`)
+    return json(res, {})
+  }
   if (req.method === "POST" && parts[0] === "settings" && parts[1] === "test" && parts.length === 2) {
     const via = testNotify({ title: "Test", subtitle: "Mission control", message: "Notifications work. Clicking opens the dashboard.", url: "#/", group: "test" })
     return via ? json(res, { via }) : json(res, { error: "notifications are off in this server" }, 501)
@@ -346,7 +353,7 @@ const LOOPBACK = ["localhost", "127.0.0.1", "[::1]"]
  * `input` is one v1 adapter, one source, or an array of either. Every entry becomes a source;
  * the v1 routes (/api/runs, /api/run/..., /api/crew, /api/x/...) stay as aliases for the first adapter.
  */
-export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, config = null, titlesPath = null, marksPath = null, settingsPath = null, autostart = null, onRestart = null, notifier = false, now = () => Date.now(), loops = null, heartbeatMs = 15_000, eventsPollMs = 1000, claudeHome = null, codexHome = null, prs = null } = {}) {
+export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, config = null, titlesPath = null, marksPath = null, settingsPath = null, notifyLogPath = null, autostart = null, onRestart = null, notifier = false, now = () => Date.now(), loops = null, heartbeatMs = 15_000, eventsPollMs = 1000, claudeHome = null, codexHome = null, prs = null } = {}) {
   const entries = Array.isArray(input) ? input : [input]
   // Loop thresholds from config.json {"loops": {...}} (re-read when the file changes); `loops` injects them.
   const loopCfg = typeof loops === "function" ? loops : loops ? () => loops : createLoopConfig(config)
@@ -356,11 +363,17 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
   const marks = createMarks(marksPath)
   const registry = createRegistry(sources, { titles, marks })
   const settings = createSettings(settingsPath)
+  // Each notification sent, and what the page reports back about showing it, also goes to `notifyLogPath`.
+  const noteLog = (text) => {
+    const line = `${new Date().toISOString()} ${text}`
+    console.log(line)
+    if (notifyLogPath) try { mkdirSync(dirname(notifyLogPath), { recursive: true, mode: 0o700 }); appendFileSync(notifyLogPath, line + "\n", { mode: 0o600 }) } catch { /* logging must not break notifying */ }
+  }
   const adapter = entries.find((e) => typeof e.listRuns === "function") ?? null
   // `config`: path of config.json ({ "hide": [...] }); null reads nothing. The CLI passes ~/.mission-control/config.json.
   // `claudeHome` / `codexHome`: where the config readers look (names only); null reads nothing. The CLI passes the real ones.
   // `prs`: a createPrReader() for the per-PR usage view (null: none, so tests never run gh); budgets come from `config`.
-  const ctx = { adapter, registry, git, hide: createHide(config), now, claudeHome, codexHome, configPath: config, prs, budgets: createBudgets(config), windowConfig: createWindowConfig(config), titles, marks, settings, autostart, onRestart, testNotify: (m) => notifyVia?.(m) ?? null }
+  const ctx = { adapter, registry, git, hide: createHide(config), now, claudeHome, codexHome, configPath: config, prs, budgets: createBudgets(config), windowConfig: createWindowConfig(config), titles, marks, settings, autostart, onRestart, testNotify: (m) => notifyVia?.(m) ?? null, noteLog }
   if (!existsSync(join(distDir, "index.html"))) {
     console.error(`mission control: no built page at ${join(distDir, "index.html")} — run npm run build`)
   }
@@ -460,7 +473,7 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
         const via = notifyClients.size ? `page (${notifyClients.size})` : "macOS"
         if (notifyClients.size) send("notify", m, notifyClients)
         else fallback(m)
-        console.log(`${new Date().toISOString()} notify ${m.title}: ${m.subtitle ?? ""} via ${via}`)
+        noteLog(`notify ${m.title}: ${m.subtitle ?? ""} via ${via}`)
         return via
       }
       const notify = notifyVia

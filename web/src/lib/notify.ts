@@ -17,15 +17,33 @@ export async function askNotifyPermission() {
 
 type Payload = { title: string; subtitle?: string; message?: string; url?: string; group?: string }
 
+/** Tell the server what happened to a notification, for its log (~/.mission-control/logs/notifications.log). */
+function ack(m: { group?: string } | null, result: string) {
+  fetch("/api/events/ack", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ group: m?.group ?? "", result, permission: notifyPermission(), visible: document.visibilityState }),
+  }).catch(() => {})
+}
+
 function show(m: Payload) {
-  if (!granted()) return
-  // The tag keeps one notification per session; renotify alerts again when it replaces one, which a
-  // tag alone does silently (a second Done or test would never show).
-  const n = new Notification(m.subtitle ? `${m.title}: ${m.subtitle}` : m.title, { body: m.message ?? "", tag: m.group, renotify: !!m.group } as NotificationOptions)
-  n.onclick = () => {
-    window.focus()
-    if (m.url) location.hash = m.url
-    n.close()
+  if (!granted()) return ack(m, "not shown: permission " + notifyPermission())
+  try {
+    // The tag keeps one notification per session; renotify alerts again when it replaces one (a tag alone
+    // replaces silently), and requireInteraction keeps it on screen until clicked or dismissed (otherwise a
+    // macOS banner slides away at once).
+    const n = new Notification(m.subtitle ? `${m.title}: ${m.subtitle}` : m.title, {
+      body: m.message ?? "", tag: m.group, renotify: !!m.group, requireInteraction: true,
+    } as NotificationOptions)
+    n.onshow = () => ack(m, "shown")
+    n.onerror = () => ack(m, "error")
+    n.onclick = () => {
+      window.focus()
+      if (m.url) location.hash = m.url
+      n.close()
+    }
+  } catch (err) {
+    ack(m, `failed: ${(err as Error)?.message ?? err}`)
   }
 }
 
@@ -37,7 +55,7 @@ export function useNeedsYouNotifications() {
   useEffect(() => {
     setServerNotify(granted)
     const off = onServerNotify((d) => {
-      try { show(d as Payload) } catch { /* a bad event must not stop the next */ }
+      show(d as Payload) // never throws: a failure is reported back instead
     })
     return () => {
       off()
