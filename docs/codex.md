@@ -67,7 +67,7 @@ Spawned agents never appear as sessions of their own on the home page.
 
 ## Costs
 
-Costs are API list-price estimates, marked "est." on the page. OpenAI prices are a dated table in `src/sources/claude-code/prices.mjs` (for example `gpt-5` at $1.25 per million input tokens, $0.125 cached, $10 output). Only model ids in that table are priced, after dropping a date suffix such as `-2025-08-07`. Any other id, including a newer version, costs 0 and shows as unpriced rather than borrowing an older model's price. If you use Codex with a ChatGPT plan you are not billed per token at all; the number shows what the same tokens would cost on the API.
+Costs are API list-price estimates, marked "est." on the page. OpenAI prices are a dated table in `src/sources/claude-code/prices.mjs` (for example `gpt-5` at $1.25 per million input tokens, $0.125 cached, $10 output). Only model ids in that table are priced, after dropping a date suffix such as `-2025-08-07`. Any other id, including a newer version, costs 0 and shows as "–" (no price) rather than borrowing an older model's price. If you use Codex with a ChatGPT plan you are not billed per token at all; the number shows what the same tokens would cost on the API.
 
 ## Needs you: Codex hooks
 

@@ -176,4 +176,4 @@ It keeps the event name, session id, time, a `Notification` message cut to 500 c
 | Hook errors in Claude Code after moving the repo | The block holds absolute paths. Run `hooks install` again and replace the old entries. |
 | A session stays in Needs you after you answered | It clears on the next tool call, prompt or stop, or when the transcript moves on. Reload the page. |
 | Usage page says "partial" | The first scan of all transcripts runs in the background after start. Wait for it to finish; later starts are fast thanks to the cache. |
-| Cost is 0 for a model | The model id is not in the price table (`src/sources/claude-code/prices.mjs`); it is shown as unpriced. |
+| Cost is 0 for a model | The model id is not in the price table (`src/sources/claude-code/prices.mjs`); it shows as "–" (no price). |

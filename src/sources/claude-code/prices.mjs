@@ -3,7 +3,7 @@
 // LIST-PRICE ESTIMATE as of 2026-11-02: list prices drift, plans and discounts differ, and the
 // numbers are what a pay-as-you-go API key would be charged. Edit them when they go stale. Cache write
 // is billed at 1.25x input and cache read at 0.1x input, which is how those columns are derived.
-// Unknown models cost 0 (shown as unpriced).
+// Unknown models cost 0 (shown as "–", no price).
 //
 //   opus 4 / 4.1 (and older)   $15 in / $75 out
 //   opus 4.5 and later         $5 / $25    (incl. opus-5*; a bare "opus" is taken as the latest)
@@ -50,7 +50,7 @@ export function family(model) {
 // OpenAI models (Codex CLI), USD per million tokens. LIST-PRICE ESTIMATE as of 2026-11-02, shown as "est.":
 // pay-as-you-go API prices; a ChatGPT plan is billed differently. OpenAI bills no cache-write premium, so cache
 // write is priced as input. Only exact ids (after dropping a -YYYY-MM-DD suffix) are priced: a model not listed
-// here, including any newer version, costs 0 and shows as unpriced rather than borrowing an older price.
+// here, including any newer version, costs 0 and shows as "–" (no price) rather than borrowing an older price.
 const oa = (input, output, cacheRead) => ({ input, output, cacheWrite: input, cacheRead })
 export const OPENAI_PRICES = {
   "gpt-5": oa(1.25, 10, 0.125),
