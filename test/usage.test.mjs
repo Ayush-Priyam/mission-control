@@ -1,14 +1,15 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import create from "../src/sources/claude-code/index.mjs"
 import { parseTranscript } from "../src/sources/claude-code/parse.mjs"
 import { fromAdapter } from "../src/sources/from-adapter.mjs"
 import { aggregate } from "../src/usage.mjs"
 import { createServer } from "../src/server.mjs"
+import { loadClaude, usageCachePath } from "../src/adapters/load.mjs"
 
 const root = fileURLToPath(new URL("./fixtures/claude/projects", import.meta.url))
 const tmp = () => realpathSync(mkdtempSync(join(tmpdir(), "mc-usage-")))
@@ -257,4 +258,24 @@ test("a nonexistent claude dir: complete with no rows", async () => {
   await s.whenScanned()
   assert.equal(s.usageStatus().complete, true)
   assert.deepEqual(await s.usage(U), [])
+})
+
+test("I1: each claude root has its own usage cache file; a second root never drops the first's entries", async () => {
+  const home = tmp()
+  const other = tmp()
+  mkdirSync(join(other, "-q"))
+  writeFileSync(join(other, "-q", "z.jsonl"), JSON.stringify({ type: "assistant", timestamp: "2026-11-01T10:00:00.000Z", cwd: "/q", message: { id: "z", model: "claude-haiku-4-5", usage: { input_tokens: 3 }, content: [] } }) + "\n")
+  assert.notEqual(usageCachePath(home, root), usageCachePath(home, other))
+  assert.match(usageCachePath(home, root), /\/\.mission-control\/cache\/usage-[0-9a-f]{12}\.json$/)
+  const a = await loadClaude(["--claude-dir", root], process.cwd(), home)
+  const b = await loadClaude(["--claude-dir", other], process.cwd(), home)
+  assert.equal(a.usageCachePath, usageCachePath(home, root))
+  await a.usage(U); await a.whenScanned()
+  const before = readFileSync(a.usageCachePath, "utf8")
+  await b.usage(U); await b.whenScanned()
+  assert.equal(readFileSync(a.usageCachePath, "utf8"), before, "root A's cache untouched by root B")
+  assert.equal(Object.keys(JSON.parse(readFileSync(b.usageCachePath, "utf8")).files).length, 1)
+  // minor 7: private dir and file.
+  assert.equal(statSync(dirname(a.usageCachePath)).mode & 0o777, 0o700)
+  assert.equal(statSync(a.usageCachePath).mode & 0o777, 0o600)
 })

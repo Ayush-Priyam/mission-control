@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
+import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"
 import { bucketOf, defaultTz, localDay, shiftDay } from "../../usage.mjs"
 
@@ -39,9 +39,11 @@ export function createUsageScanner({ files, parse, parseFile = (file) => parse(r
     try {
       const out = {}
       for (const k of keep) if (cache.has(k)) out[k] = cache.get(k)
-      mkdirSync(dirname(cachePath), { recursive: true })
+      // Private: the cache names every project path and session id. Dir 0700, file 0600.
+      mkdirSync(dirname(cachePath), { recursive: true, mode: 0o700 })
+      try { chmodSync(dirname(cachePath), 0o700) } catch { /* not ours to change */ }
       const tmp = `${cachePath}.${process.pid}.tmp`
-      writeFileSync(tmp, JSON.stringify({ v: VERSION, files: out }))
+      writeFileSync(tmp, JSON.stringify({ v: VERSION, files: out }), { mode: 0o600 })
       renameSync(tmp, cachePath)
     } catch { /* the cache is an optimisation; a read-only home must not break the scan */ }
   }

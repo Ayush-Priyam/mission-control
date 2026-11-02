@@ -391,6 +391,8 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
     },
 
     describe: () => ({ source: root }),
+    /** The usage cache file (null: memory only). */
+    usageCachePath: cachePath ?? null,
   }
 }
 

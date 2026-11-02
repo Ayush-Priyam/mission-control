@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import { statSync } from "node:fs"
 import { homedir } from "node:os"
 import { resolve, join } from "node:path"
@@ -75,10 +76,19 @@ export async function loadSources(argv, cwd = process.cwd()) {
  * The Claude Code source, on by default: sessions under ~/.claude/projects, or --claude-dir <projects dir>.
  * null with --no-claude. Lazy import, so --no-claude never touches the module.
  */
+/**
+ * Where the usage scan of one Claude projects root persists: one file per root
+ * (~/.mission-control/cache/usage-<sha1(root)[:12]>.json), so a second root (the demo, --claude-dir)
+ * never overwrites or prunes another root's cache.
+ */
+export function usageCachePath(home, root) {
+  return join(home, ".mission-control", "cache", `usage-${createHash("sha1").update(resolve(root)).digest("hex").slice(0, 12)}.json`)
+}
+
 export async function loadClaude(argv, cwd = process.cwd(), home = homedir()) {
   const a = parseArgs(argv)
   if (a.noClaude) return null
   const root = a["claude-dir"] ? resolve(cwd, a["claude-dir"]) : join(home, ".claude", "projects")
   const { create } = await import("../sources/claude-code/index.mjs")
-  return create({ root, hooksDir: process.env.MISSION_CONTROL_HOOKS_DIR || join(home, ".mission-control", "hooks"), cachePath: join(home, ".mission-control", "cache", "usage.json") })
+  return create({ root, hooksDir: process.env.MISSION_CONTROL_HOOKS_DIR || join(home, ".mission-control", "hooks"), cachePath: usageCachePath(home, root) })
 }
