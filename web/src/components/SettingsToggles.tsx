@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { Bell, BellOff, History, Info, Power, Timer } from "lucide-react"
 import { postSettings, postTestNotification, useSettings, type Settings } from "@/lib/api"
 import { InfoTip } from "@/components/IconAction"
@@ -97,6 +97,12 @@ async function reloadWhenBack() {
 export function SettingsToggles() {
   const s = useSettings()
   const [note, setNote] = useState<string | null>(null)
+  // A note clears itself after 10 s, except while the dashboard restarts (the page reloads when it is back).
+  useEffect(() => {
+    if (!note || note.startsWith("restarting")) return
+    const t = setTimeout(() => setNote(null), 10_000)
+    return () => clearTimeout(t)
+  }, [note])
   const [busy, setBusy] = useState(false)
   const [permission, setPermission] = useState(notifyPermission)
   if (typeof s.data?.notify !== "boolean") return null // not loaded, or a server without settings
