@@ -26,4 +26,12 @@ describe("RightRail flash (the map's you node)", () => {
     await waitFor(() => expect(screen.getByLabelText("Item rail").className).toContain("mc-flash"))
     expect(location.hash).toBe("#/item/claude-code/s1/lanes")
   })
+
+  it("a remount with an old flash value (back from another tab) does not replay the flash", async () => {
+    const { unmount } = render(<RightRail detail={detail(true)} calls={[]} actions={[]} now={0} flash={0} />)
+    unmount()
+    render(<RightRail detail={detail(true)} calls={[]} actions={[]} now={0} flash={3} />)
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.getByLabelText("Needs you").className).not.toContain("mc-flash")
+  })
 })

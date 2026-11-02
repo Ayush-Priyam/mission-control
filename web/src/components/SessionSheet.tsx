@@ -30,7 +30,7 @@ function Body({ runId, name }: { runId: string; name: string }) {
   const r = renderable(name, s.data.text)
   return (
     <div className="flex flex-col gap-3">
-      {s.data.truncated && <p className="font-mono text-[11px] text-needs-you">Cut at 200 KB; the rest is in the file.</p>}
+      {s.data.truncated && <p className="font-mono text-xs text-muted-foreground">Cut at 200 KB; the rest is in the file.</p>}
       {r.kind === "markdown" ? (
         <pre className="font-mono text-xs leading-relaxed whitespace-pre-wrap break-words">{r.text}</pre>
       ) : r.items.length ? (

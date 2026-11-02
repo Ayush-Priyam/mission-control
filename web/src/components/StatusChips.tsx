@@ -46,7 +46,7 @@ export function StatusChips({
               n === 0 && !on && "opacity-60",
             )}
           >
-            <StatusDot status={c.dot} live={c.filter === "working" && !!n} className={c.filter === "waiting" && !n ? "shadow-none" : undefined} />
+            <StatusDot status={c.dot} labelled live={c.filter === "working" && !!n} className={c.filter === "waiting" && !n ? "shadow-none" : undefined} />
             {c.label}
             <span className="font-mono tabular-nums">{n ?? "–"}</span>
           </button>

@@ -129,7 +129,7 @@ export function laneExtras(d: ItemDetail): Map<string, LaneExtra> {
     const st = state.stages?.[lane.id]
     const rounds = Number(st?.rounds) || (card?.rounds ?? 0)
     let chip: Chip | null = null
-    if (lane.status === "waiting") chip = { kind: "waiting", text: lane.reason ?? "waiting on you" }
+    if (lane.status === "waiting") chip = { kind: "waiting", text: lane.reason ?? "needs you" }
     else if (lane.status === "stopped" && lane.reason) chip = { kind: "stopped", text: lane.reason }
     else if (card?.chip) chip = { kind: card.chip.kind, text: card.chip.kind === "consult" ? `answering ${card.chip.text}` : card.chip.text.replace(/ · /, " · from ") }
     else if (lane.reason) chip = { kind: "waiting", text: lane.reason }

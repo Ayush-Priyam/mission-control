@@ -26,10 +26,13 @@ export function RightRail({ detail, calls, actions, now, onActed, onOpen, flash 
   const ask = askOf(detail)
   const rail = useRef<HTMLElement>(null)
   const [lit, setLit] = useState(false)
+  // The flash counter as of mount: a remount (back from another tab) never replays an old click.
+  const seen = useRef(flash)
   useEffect(() => {
-    if (!flash) return
+    if (!flash || flash === seen.current) return
+    seen.current = flash
     const target = rail.current?.querySelector<HTMLElement>("[data-needs-you]") ?? rail.current
-    target?.scrollIntoView?.({ behavior: "smooth", block: "center" })
+    target?.scrollIntoView?.({ behavior: matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ? "auto" : "smooth", block: "center" })
     target?.focus?.({ preventScroll: true })
     setLit(false) // off for one frame so a second click restarts the animation
     const on = requestAnimationFrame(() => setLit(true))
@@ -39,7 +42,7 @@ export function RightRail({ detail, calls, actions, now, onActed, onOpen, flash 
   return (
     <aside ref={rail} tabIndex={-1} data-lit={lit || undefined} className={cn("flex flex-col gap-4 rounded-xl outline-none", lit && !ask && "mc-flash")} aria-label="Item rail">
       {ask && <NeedsYouCard key={`${ask.lane}|${ask.ts}`} source={detail.summary.source} id={detail.summary.id} ask={ask} actions={actions} now={now} onActed={onActed} flash={lit} />}
-      <HealthCard h={health(detail, calls)} />
+      <HealthCard h={health(detail, calls)} live={detail.summary.live} />
       <Findings items={findings(detail, calls ?? [])} onOpen={onOpen} />
     </aside>
   )

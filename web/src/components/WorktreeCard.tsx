@@ -56,7 +56,7 @@ export function WorktreeCard({
         {w.dirty === undefined ? (
           <span className="text-faint">no git status</span>
         ) : w.dirty ? (
-          <span className="rounded bg-needs-you/10 px-1.5 py-0.5 text-needs-you">±{w.dirty} changed</span>
+          <span className="rounded bg-muted px-1.5 py-0.5 text-foreground">±{w.dirty} changed</span>
         ) : (
           <span className="rounded bg-secondary px-1.5 py-0.5 text-muted-foreground">clean</span>
         )}

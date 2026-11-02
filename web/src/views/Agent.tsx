@@ -10,7 +10,7 @@ import { short, stageEvents } from "@/lib/events"
 import { crewCards, crewGraph, currentStop, nodeOf } from "@/lib/graph"
 import { toHash } from "@/lib/route"
 
-const WORD: Record<string, string> = { running: "working now", "needs-you": "waits on you", failed: "failed", done: "done", skipped: "skipped", idle: "idle" }
+const WORD: Record<string, string> = { running: "working", "needs-you": "needs you", failed: "failed", done: "done", skipped: "skipped", idle: "idle" }
 
 /** One stage's console: its events and sessions in order, what you have sent it, and the answer box when allowed. */
 export default function Agent({ id, stage }: { id: string; stage: string }) {

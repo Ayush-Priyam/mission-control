@@ -2,7 +2,8 @@ import type { ReactNode } from "react"
 import type { ItemDetail } from "@/lib/api"
 import { compact } from "@/lib/format"
 import { EST_TIP, estCost, span, summarize } from "@/lib/item"
-import { STATUS_LABEL, STATUS_TEXT } from "@/components/StatusDot"
+import { STATUS_TEXT } from "@/components/StatusDot"
+import { statusTitle } from "@/lib/status-ui"
 import { cn } from "@/lib/utils"
 
 function Cell({ k, children, tip, className }: { k: string; children: ReactNode; tip?: string; className?: string }) {
@@ -34,15 +35,15 @@ export function SummaryStrip({ detail, now }: { detail: ItemDetail; now: number 
   return (
     <section aria-label="Summary" className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-5 xl:grid-cols-10">
       <Cell k="Status" className={cn("text-sm", STATUS_TEXT[s.status])}>
-        {s.status === "waiting" ? "Needs you" : STATUS_LABEL[s.status][0].toUpperCase() + STATUS_LABEL[s.status].slice(1)}
+        {statusTitle(s.status)}
       </Cell>
-      <Cell k="Running" className={s.running ? "text-running" : undefined}>{s.running}</Cell>
+      <Cell k="Lanes working" className={s.running ? "text-running" : undefined}>{s.running}</Cell>
       <Cell k={L.subagents > 0 ? "Lanes" : L.stages > 0 ? "Stages done" : "Lanes"}>{lanes}</Cell>
       <Cell k="Duration">{span(s.durationMs)}</Cell>
       <Cell k="Calls">{compact(s.calls)}</Cell>
-      <Cell k="Errors" className={s.errors ? "text-failed" : undefined}>{s.errors}</Cell>
+      <Cell k="Issues" tip="Failed calls (a session) or issues raised (a run)" className={s.errors ? "text-failed" : undefined}>{s.errors}</Cell>
       <Cell k="Tokens" tip="Input, output, cache writes and cache reads">{compact(s.tokens)}</Cell>
-      <Cell k="Cache hit" className={s.cache !== null ? "text-consult" : undefined} tip="Cache reads over all input">
+      <Cell k="Cache hit" tip="Cache reads over all input">
         {s.cache === null ? "–" : `${Math.round(s.cache * 100)}%`}
       </Cell>
       <Cell k="Cost" tip={EST_TIP}>

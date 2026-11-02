@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils"
 type Report = { verdict: string | null; drift: { level: string; kind?: string; text: string; severity: string }[] }
 type Drift = { intentguard?: Report; planverify?: Report }
 
-const SEVERITY: Record<string, string> = { blocked: "text-failed", review: "text-needs-you" }
+const SEVERITY: Record<string, string> = { blocked: "text-failed", review: "text-foreground" }
 const verdictTone = (v: string | null) => (!v ? "bg-muted text-muted-foreground" : /BLOCK/.test(v) ? "bg-failed/15 text-failed" : /REVIEW/.test(v) ? "bg-needs-you/15 text-needs-you" : "bg-running/15 text-running")
 
 function Inline({ text }: { text: string }) {

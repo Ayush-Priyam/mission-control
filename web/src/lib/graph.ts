@@ -154,7 +154,7 @@ export function crewCards(g: CrewGraph, state: State, events: Ev[], live: boolea
     const progress = findLast(mine, (e) => e.type === "progress" && e.detail)?.detail
     const failure = findLast(mine, (e) => e.type === "stage.end" && e.ok === false)
     const line =
-      status === "needs-you" ? "waits on you"
+      status === "needs-you" ? "needs you"
       : status === "running" ? String(progress ?? "working")
       : halted ? `stopped${here && stop!.rule ? ` (${stop!.rule})` : ""}`
       : status === "failed" ? `failed${failure?.reason ? `: ${failure.reason}` : ""}`

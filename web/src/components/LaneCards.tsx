@@ -26,7 +26,7 @@ const CHIP: Record<Chip["kind"], string> = {
 
 /** The corner word: rounds while active, else the status (a non-owner stop is `stopped`, never `failed`). */
 function corner(lane: Lane, x: LaneExtra | undefined): string {
-  if (lane.status === "waiting") return "waiting on you"
+  if (lane.status === "waiting") return "needs you"
   if (lane.status === "stopped") return "stopped"
   if (lane.status === "failed") return "failed"
   if (x?.skipped) return "skipped"

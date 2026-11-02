@@ -8,7 +8,8 @@ import { LaneTimeline } from "@/components/LaneTimeline"
 import { LaneCards } from "@/components/LaneCards"
 import { LaneSheet } from "@/components/LaneSheet"
 import { RightRail } from "@/components/RightRail"
-import { StatusDot, STATUS_LABEL, STATUS_TEXT } from "@/components/StatusDot"
+import { StatusDot } from "@/components/StatusDot"
+import { STATUS_UI } from "@/lib/status-ui"
 import { SummaryStrip } from "@/components/SummaryStrip"
 import { Thread } from "@/components/Thread"
 import { TokenPanel } from "@/components/TokenPanel"
@@ -45,6 +46,8 @@ const DiffCount = ({ id, refresh }: { id: string; refresh: number }) => <Count n
 
 function Header({ d }: { d: ItemDetail }) {
   const s = d.summary
+  // One status word in its own colour; "live" is a separate neutral tag, never mixed into the status pill.
+  const shown = s.live && s.status !== "waiting" && s.status !== "idle" && s.status !== "failed" ? "working" : s.status
   return (
     <header className="flex flex-wrap items-center gap-x-3 gap-y-1">
       <h1 className="min-w-0 flex-1 truncate text-lg font-bold tracking-tight" title={s.title}>
@@ -54,10 +57,13 @@ function Header({ d }: { d: ItemDetail }) {
         {s.harness} · {s.kind}
         {s.branch ? ` · ${s.branch}` : ""}
       </span>
-      <span className={cn("flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[11px]", s.live && s.status !== "idle" ? "border-running/40 text-running" : STATUS_TEXT[s.status])}>
-        <StatusDot status={s.live && s.status !== "waiting" && s.status !== "idle" ? "working" : s.status} />
-        {s.live && s.status !== "idle" ? (s.status === "waiting" ? "LIVE · needs you" : "LIVE") : STATUS_LABEL[s.status]}
+      <span data-status-pill className={cn("flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-xs", STATUS_UI[shown].border, STATUS_UI[shown].text)}>
+        <StatusDot status={shown} labelled />
+        {STATUS_UI[shown].label}
       </span>
+      {s.live && s.status !== "idle" && (
+        <span data-live-tag className="mc-live rounded-full border border-border px-2 py-0.5 font-mono text-xs text-faint">live</span>
+      )}
     </header>
   )
 }

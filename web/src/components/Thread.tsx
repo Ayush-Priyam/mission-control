@@ -99,7 +99,7 @@ function item(e: Ev, i: number, events: Ev[], runId: string, idea: string, pick:
           <div className="flex gap-4 font-mono text-xs">
             <span><b className="text-running">{pass}</b> pass</span>
             <span><b className="text-failed">{fail}</b> fail</span>
-            <span><b className="text-needs-you">{rows.length - pass - fail}</b> not verified</span>
+            <span><b className="text-foreground">{rows.length - pass - fail}</b> not verified</span>
           </div>
           {rows.filter((r) => r.status !== "pass").slice(0, 3).map((r, k) => (
             <p key={k} className="text-xs"><b className="font-mono">{r.id}</b> {short(r.evidence, 140)}</p>

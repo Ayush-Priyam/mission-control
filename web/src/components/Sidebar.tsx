@@ -31,7 +31,7 @@ function WorktreeRow({ p, w, selected }: { p: ProjectSummary; w: WorktreeSummary
     >
       <StatusDot status={st} live={w.live} className="size-1.5" />
       <span className="min-w-0 flex-1 truncate">{worktreeLabel(w)}</span>
-      {!!w.dirty && <span className="text-[10px] text-needs-you/80" title={`${w.dirty} changed files`}>±{w.dirty}</span>}
+      {!!w.dirty && <span className="text-xs text-muted-foreground" title={`${w.dirty} changed files`}>±{w.dirty}</span>}
       <span className="w-7 text-right text-[11px] tabular-nums text-faint">{w.counts.items || ""}</span>
     </a>
   )

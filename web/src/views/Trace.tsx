@@ -16,7 +16,7 @@ type Ev = Record<string, any>
 /** Every idle stretch is folded to this many ms on the axis. */
 const BREAK = 4000
 /** Axis markers by kind: the tooltip's lead word. */
-const MARK: Record<string, string> = { error: "Error", stop: "Stop", wait: "Waits on you", human: "You", question: "Question", gap: "Not checked" }
+const MARK: Record<string, string> = { error: "Error", stop: "Stop", wait: "Needs you", human: "You", question: "Question", gap: "Not checked" }
 const STEPS = [200, 500, 1, 2, 5, 10, 15, 20, 30, 60, 120, 300, 600, 900, 1200, 1800, 3600, 7200, 10800, 21600, 43200].map((s, i) => (i < 2 ? s : s * 1000))
 
 export const dur = (ms: number) => {
@@ -124,13 +124,13 @@ function io(text: string) {
 
 type Status = TraceData["status"] | "ended"
 const PILL: Record<string, { word: string; cls: string }> = {
-  live: { word: "Live", cls: "text-consult border-consult/40 bg-consult/12" },
-  running: { word: "Running", cls: "text-consult border-consult/40 bg-consult/12" },
-  done: { word: "Done", cls: "text-running border-running/40 bg-running/12" },
-  waiting: { word: "Waiting on you", cls: "text-needs-you border-needs-you/40 bg-needs-you/12" },
-  ended: { word: "Ended", cls: "text-muted-foreground border-muted-foreground/40 bg-muted-foreground/12" },
-  stopped: { word: "Stopped", cls: "text-failed border-failed/40 bg-failed/12" },
-  error: { word: "Error", cls: "text-failed border-failed/40 bg-failed/12" },
+  live: { word: "working", cls: "text-running border-running/40 bg-running/12" },
+  running: { word: "working", cls: "text-running border-running/40 bg-running/12" },
+  done: { word: "done", cls: "text-muted-foreground border-border bg-muted" },
+  waiting: { word: "needs you", cls: "text-needs-you border-needs-you/40 bg-needs-you/12" },
+  ended: { word: "ended", cls: "text-muted-foreground border-muted-foreground/40 bg-muted-foreground/12" },
+  stopped: { word: "stopped", cls: "text-stopped border-stopped/40 bg-stopped/12" },
+  error: { word: "failed", cls: "text-failed border-failed/40 bg-failed/12" },
 }
 function Pill({ status }: { status: string }) {
   const p = PILL[status] ?? PILL.stopped
@@ -179,7 +179,7 @@ function Stats({ tr, wall }: { tr: TraceData; wall: number }) {
               {c.lsub && <small className="ml-1.5 tracking-wide normal-case">{c.lsub}</small>}
             </span>
             <b className={cn("block text-lg leading-tight font-medium tracking-tight whitespace-nowrap tabular-nums md:text-[22px]", c.bad && "text-failed")}>{c.v}</b>
-            {c.sub && <small className="block truncate font-mono text-[10px] text-needs-you">{c.sub}</small>}
+            {c.sub && <small className="block truncate font-mono text-xs text-needs-you">{c.sub}</small>}
           </>
         )
         return c.tip ? (
@@ -246,7 +246,7 @@ function Label({ r, a, b }: { r: Row; a: number; b: number }) {
       style={style}
     >
       {bits.join(" · ")}
-      {s.slowest && <b className="rounded border border-needs-you/40 bg-needs-you/14 px-1 text-[9px] leading-[14px] font-bold tracking-wider text-needs-you">SLOWEST</b>}
+      {s.slowest && <b className="rounded border border-foreground/30 bg-muted px-1 text-xs leading-4 font-semibold text-foreground">slowest</b>}
       {r.run && <i className="size-[9px] animate-spin rounded-full border-[1.5px] border-consult/25 border-t-consult motion-reduce:animate-none" />}
     </span>
   )
@@ -435,7 +435,7 @@ export default function Trace({ runId, events, live, idea }: { runId: string; ev
                 {tr.breaks.map((b, i) => (
                   <Tip
                     key={`ab${i}`}
-                    tip={`${b.reason === "waiting" ? "waiting on you" : "idle"} ${dur(b.realMs)}`}
+                    tip={`${b.reason === "waiting" ? "needs you" : "idle"} ${dur(b.realMs)}`}
                     style={{ left: pct(b.t), width: `${(BREAK / D) * 100}%` }}
                     className="absolute bottom-0 h-3 min-w-1.5 cursor-help border-x bg-[repeating-linear-gradient(135deg,color-mix(in_srgb,var(--muted-foreground)_26%,transparent)_0_2px,transparent_2px_5px)]"
                   >

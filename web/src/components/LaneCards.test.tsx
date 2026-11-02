@@ -36,7 +36,7 @@ describe("LaneCards", () => {
     expect(card("backend").textContent).toContain("fix X3 · from qa")
     expect(card("backend").textContent).toContain("$0.31 est.")
     expect(card("backend").querySelector(".mc-pulse")).toBeTruthy()
-    expect(card("qa").textContent).toContain("waiting on you")
+    expect(card("qa").textContent).toContain("needs you")
     expect(card("build").textContent).toContain("failed")
     expect(card("frontend").dataset.status).toBe("stopped")
     expect(card("frontend").textContent).toContain("stopped")

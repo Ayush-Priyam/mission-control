@@ -5,6 +5,7 @@ import { useShared } from "@/lib/projects-context"
 import { toHash, type Route } from "@/lib/route"
 import { doneToday, worktreeLabel } from "@/lib/tree"
 import { cn } from "@/lib/utils"
+import { workingLine } from "@/lib/status-ui"
 import { CommandPalette, isPaletteKey } from "@/components/CommandPalette"
 import { Sidebar } from "@/components/Sidebar"
 import { chipCounts, StatusChips } from "@/components/StatusChips"
@@ -115,7 +116,6 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
   }, [])
 
   const counts = useMemo(() => chipCounts(overview.data, doneToday(tree)), [overview.data, tree])
-  const live = useMemo(() => tree.reduce((n, p) => n + p.worktrees.reduce((m, w) => m + w.counts.live, 0), 0), [tree])
   const actions = sources.data?.flatMap((s) => s.actions)
 
   return (
@@ -138,8 +138,8 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
         </a>
         <StatusChips counts={counts} active={filter} onPick={setFilter} />
         <div className="ml-auto flex items-center gap-2">
-          <span className="hidden items-center gap-1.5 font-mono text-[11px] whitespace-nowrap text-faint lg:flex">
-            {tree.length} projects · {live ? <span className="text-running">{live} live</span> : "idle"}
+          <span data-working-line className="hidden items-center gap-1.5 font-mono text-xs whitespace-nowrap text-faint xl:flex">
+            {workingLine(overview.data?.live ?? [])}
           </span>
           <button
             type="button"

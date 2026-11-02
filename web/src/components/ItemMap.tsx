@@ -91,7 +91,7 @@ function You({ you, at, w, onYou }: { you: YouNode; at: Map<string, MapNode>; w:
         tabIndex={0}
         data-node="you"
         data-status={you.status}
-        aria-label={waiting ? "You: something waits on you. Show the needs-you card." : "You: your answers in this run"}
+        aria-label={waiting ? "You: something needs you. Show the needs-you card." : "You: your answers in this run"}
         className="cursor-pointer outline-none [&:focus-visible>rect.box]:stroke-ring"
         onClick={() => onYou?.()}
         onKeyDown={(e) => {

@@ -11,8 +11,8 @@ import { isWaiting, repoName } from "@/lib/runs-context"
 import { toHash } from "@/lib/route"
 
 export function RunStatusBadge({ run }: { run: RunSummary }) {
-  if (isWaiting(run)) return <Badge className="bg-needs-you/15 text-needs-you">Waiting on you</Badge>
-  if (run.live) return <Badge className="bg-running/15 text-running">Live</Badge>
+  if (isWaiting(run)) return <Badge className="bg-needs-you/15 text-needs-you">needs you</Badge>
+  if (run.live) return <Badge className="bg-running/15 text-running">working</Badge>
   return <Badge variant="outline">Ended</Badge>
 }
 
