@@ -1,39 +1,86 @@
-import { useEffect, useState, type ReactNode } from "react"
-import { Moon, Sun } from "lucide-react"
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { useCapabilities } from "@/lib/api"
-import { useSharedRuns } from "@/lib/runs-context"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { Moon, PanelLeft, Search, Sun } from "lucide-react"
+import { useOverview, useSources, type ProjectNode } from "@/lib/api"
+import { useShared } from "@/lib/projects-context"
 import { toHash, type Route } from "@/lib/route"
+import { doneToday, worktreeLabel } from "@/lib/tree"
+import { cn } from "@/lib/utils"
+import { CommandPalette, isPaletteKey } from "@/components/CommandPalette"
+import { Sidebar } from "@/components/Sidebar"
+import { chipCounts, StatusChips } from "@/components/StatusChips"
 
 type Theme = "dark" | "light"
-const KEY = "mission-control-theme"
+const THEME_KEY = "mission-control-theme"
+const SIDEBAR_KEY = "mission-control-sidebar"
 
-function initialTheme(): Theme {
+function stored(key: string): string | null {
   try {
-    const v = localStorage.getItem(KEY)
-    if (v === "light" || v === "dark") return v
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+function store(key: string, v: string) {
+  try {
+    localStorage.setItem(key, v)
   } catch {}
-  return "dark"
 }
 
-function Crumbs({ route }: { route: Route }) {
-  const items: { label: string; to?: Route }[] = [{ label: "home", to: { view: "home" } }]
-  if (route.view === "project") items.push({ label: route.repo })
-  if (route.view === "run") items.push({ label: route.id })
-  if (route.view === "agent") {
-    items.push({ label: route.id, to: { view: "run", id: route.id, tab: "map" } }, { label: route.stage })
+/** The footer note: the page writes nothing unless a source declares actions. */
+export const footerNote = (actions: string[] | undefined) =>
+  `${actions?.length ? "read-only except your actions" : "read-only"} · local · 127.0.0.1`
+
+/** Breadcrumbs for a route, with names looked up in the project tree. */
+export function crumbs(route: Route, projects: ProjectNode[]): { label: string; href?: string }[] {
+  const home = { label: "home", href: toHash({ view: "home" }) }
+  const project = (key: string) => projects.find((p) => p.key === key)
+  switch (route.view) {
+    case "home":
+      return [{ label: "home" }]
+    case "usage":
+      return [home, { label: "usage" }]
+    case "project":
+      return [home, { label: project(route.key)?.name ?? route.key }]
+    case "worktree": {
+      const p = project(route.key)
+      const w = p?.worktrees.find((x) => x.path === route.path)
+      return [home, { label: p?.name ?? route.key, href: toHash({ view: "project", key: route.key }) }, { label: w ? worktreeLabel(w) : route.path }]
+    }
+    case "item": {
+      for (const p of projects)
+        for (const w of p.worktrees) {
+          const i = w.items.find((x) => x.source === route.source && x.id === route.id)
+          if (i)
+            return [
+              home,
+              { label: p.name, href: toHash({ view: "project", key: p.key }) },
+              { label: worktreeLabel(w), href: toHash({ view: "worktree", key: p.key, path: w.path }) },
+              { label: i.title || i.id },
+            ]
+        }
+      return [home, { label: `${route.source} · ${route.id}` }]
+    }
+    case "run":
+      return [home, { label: route.id }]
+    case "agent":
+      return [home, { label: route.id, href: toHash({ view: "run", id: route.id, tab: "map" }) }, { label: route.stage }]
+    case "repo":
+      return [home, { label: route.repo }]
   }
+}
+
+function Crumbs({ items }: { items: { label: string; href?: string }[] }) {
   return (
-    <nav className="flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap font-mono text-xs text-muted-foreground">
+    <nav aria-label="Breadcrumb" className="flex h-9 min-w-0 shrink-0 items-center gap-2 overflow-hidden border-b px-5 font-mono text-xs whitespace-nowrap text-muted-foreground">
       {items.map((c, i) => (
-        <span key={i} className="flex items-center gap-2">
-          {i > 0 && <i className="not-italic opacity-60">/</i>}
-          {c.to && i < items.length - 1 ? (
-            <a href={toHash(c.to)} className="hover:text-foreground">
+        <span key={i} className="flex min-w-0 items-center gap-2">
+          {i > 0 && <span className="text-faint">/</span>}
+          {c.href && i < items.length - 1 ? (
+            <a href={c.href} className="hover:text-foreground">
               {c.label}
             </a>
           ) : (
-            <span className="max-w-[280px] truncate text-foreground">{c.label}</span>
+            <span className="max-w-[420px] truncate text-foreground">{c.label}</span>
           )}
         </span>
       ))}
@@ -41,60 +88,94 @@ function Crumbs({ route }: { route: Route }) {
   )
 }
 
-/** The footer note: the page writes nothing unless the adapter declares actions. */
-export const footerNote = (actions: string[] | undefined) =>
-  `${actions?.length ? "read-only except your actions" : "read-only"} · local · 127.0.0.1`
-
 export function Shell({ route, children }: { route: Route; children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(initialTheme)
-  const caps = useCapabilities()
-  const runs = useSharedRuns()
-  const live = (runs.data ?? []).some((r) => r.live)
+  const [theme, setTheme] = useState<Theme>(() => (stored(THEME_KEY) === "light" ? "light" : "dark"))
+  const [sidebar, setSidebar] = useState(() => stored(SIDEBAR_KEY) !== "closed")
+  const [palette, setPalette] = useState(false)
+  const { projects, filter, setFilter } = useShared()
+  const overview = useOverview()
+  const sources = useSources()
+  const tree = projects.data ?? []
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark")
-    try {
-      localStorage.setItem(KEY, theme)
-    } catch {}
+    store(THEME_KEY, theme)
   }, [theme])
+  useEffect(() => store(SIDEBAR_KEY, sidebar ? "open" : "closed"), [sidebar])
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      if (isPaletteKey(e)) {
+        e.preventDefault()
+        setPalette((o) => !o)
+      }
+    }
+    window.addEventListener("keydown", on)
+    return () => window.removeEventListener("keydown", on)
+  }, [])
+
+  const counts = useMemo(() => chipCounts(overview.data, doneToday(tree)), [overview.data, tree])
+  const live = useMemo(() => tree.reduce((n, p) => n + p.worktrees.reduce((m, w) => m + w.items.filter((i) => i.live).length, 0), 0), [tree])
+  const actions = sources.data?.flatMap((s) => s.actions)
 
   return (
-    <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <header className="flex h-12 items-center gap-4 border-b px-4">
-        <a href="#/" className="text-sm font-extrabold tracking-tight">
+    <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
+        <button
+          type="button"
+          onClick={() => setSidebar((s) => !s)}
+          aria-label={sidebar ? "Hide sidebar" : "Show sidebar"}
+          aria-pressed={sidebar}
+          className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          <PanelLeft className="size-4" />
+        </button>
+        <a href="#/" className="mr-3 flex items-center gap-2 text-sm font-semibold tracking-tight whitespace-nowrap">
+          <span className="grid size-4 place-items-center rounded-full border-[1.5px] border-foreground">
+            <span className="size-1.5 rounded-full bg-foreground" />
+          </span>
           mission control
         </a>
-        {caps.data && (
-          <span className="rounded-full border px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
-            {caps.data.adapter}
+        <StatusChips counts={counts} active={filter} onPick={setFilter} />
+        <div className="ml-auto flex items-center gap-2">
+          <span className="hidden items-center gap-1.5 font-mono text-[11px] whitespace-nowrap text-faint lg:flex">
+            {tree.length} projects · {live ? <span className="text-running">{live} live</span> : "idle"}
           </span>
-        )}
-        <Crumbs route={route} />
-        <div className="ml-auto flex items-center gap-3">
-          <span className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-            <span className={`size-2 rounded-full ${live ? "animate-pulse bg-running" : "bg-muted-foreground/40"}`} />
-            {live ? "live" : "idle"}
-          </span>
-          <ToggleGroup
-            value={[theme]}
-            onValueChange={(v) => v[0] && setTheme(v[0] as Theme)}
-            variant="outline"
-            size="sm"
-            aria-label="Theme"
+          <button
+            type="button"
+            onClick={() => setPalette(true)}
+            className="flex h-8 w-56 items-center gap-2 rounded-md border bg-surface/60 px-2.5 text-xs text-faint hover:border-ring hover:text-muted-foreground"
           >
-            <ToggleGroupItem value="light" aria-label="Light theme">
-              <Sun />
-            </ToggleGroupItem>
-            <ToggleGroupItem value="dark" aria-label="Dark theme">
-              <Moon />
-            </ToggleGroupItem>
-          </ToggleGroup>
+            <Search className="size-3.5" />
+            <span className="flex-1 text-left">Search…</span>
+            <kbd className="rounded border px-1 font-mono text-[10px]">⌘K</kbd>
+          </button>
+          <button
+            type="button"
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            aria-label={theme === "dark" ? "Light theme" : "Dark theme"}
+            className="grid size-8 place-items-center rounded-md border text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
+          </button>
         </div>
       </header>
-      <main className="flex-1 p-4">{children}</main>
-      <footer className="border-t px-4 py-2 font-mono text-[11px] text-muted-foreground">
-        {footerNote(caps.data?.actions)}
-      </footer>
+      <div className="flex min-h-0 flex-1">
+        <div inert={!sidebar} className={cn("min-h-0 overflow-hidden transition-[width] duration-150", sidebar ? "w-[264px]" : "w-0")}>
+          <Sidebar
+            projects={tree}
+            loading={projects.loading}
+            error={projects.error}
+            route={route}
+            filter={filter}
+            footer={footerNote(actions)}
+          />
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <Crumbs items={crumbs(route, tree)} />
+          <main className="min-h-0 flex-1 overflow-y-auto p-5">{children}</main>
+        </div>
+      </div>
+      <CommandPalette open={palette} onOpenChange={setPalette} projects={tree} />
     </div>
   )
 }

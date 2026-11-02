@@ -153,10 +153,10 @@ export function BrainCanvas({ data }: { data: BrainData }) {
         ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill()
         if (n === sel) { ctx.strokeStyle = fg; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r + 4, 0, Math.PI * 2); ctx.stroke(); ctx.lineWidth = 1 }
         if (n.type !== "memory") {
-          ctx.font = '700 13px "Space Mono", monospace'; ctx.fillStyle = fg
+          ctx.font = '700 13px ui-monospace, Menlo, monospace'; ctx.fillStyle = fg
           ctx.fillText(n.title, x - ctx.measureText(n.title).width / 2, y - r - 8)
         } else if (n === hover) {
-          ctx.font = '11px "Space Mono", monospace'; ctx.fillStyle = muted
+          ctx.font = '11px ui-monospace, Menlo, monospace'; ctx.fillStyle = muted
           ctx.fillText(short(n.title, 40), x + r + 5, y + 4)
         }
       }

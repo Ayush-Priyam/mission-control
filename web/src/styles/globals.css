@@ -6,12 +6,16 @@
 
 @theme inline {
     --font-heading: var(--font-sans);
-    --font-sans: 'Archivo', system-ui, sans-serif;
-    --font-mono: 'Space Mono', ui-monospace, monospace;
+    --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
     --color-running: var(--running);
     --color-needs-you: var(--needs-you);
     --color-failed: var(--failed);
     --color-consult: var(--consult);
+    --color-stopped: var(--stopped);
+    --color-done: var(--done);
+    --color-surface: var(--surface);
+    --color-faint: var(--faint);
     --color-llm: var(--llm);
     --color-tool: var(--tool);
     --color-sidebar-ring: var(--sidebar-ring);
@@ -78,11 +82,15 @@
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
-    --running: #3fb950;
-    --needs-you: #d29922;
-    --failed: #f85149;
-    --consult: #58a6ff;
+    --radius: 0.5rem;
+    --running: #16a34a;
+    --needs-you: #d97706;
+    --failed: #dc2626;
+    --consult: #0284c7;
+    --stopped: #71717a;
+    --done: #a1a1aa;
+    --surface: #f4f4f5;
+    --faint: #a1a1aa;
     --llm: #8d84d6;
     --tool: #44ad9f;
     --sidebar: oklch(0.985 0 0);
@@ -96,38 +104,56 @@
 }
 
 .dark {
-    --background: #0b0b0b;
-    --foreground: #ececea;
-    --card: #141414;
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: #a3a29e;
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: #2a2a2a;
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
+    /* zinc, per the approved mockups (directions.html, calls.html) */
+    --background: #09090b;
+    --foreground: #e4e4e7;
+    --card: #111113;
+    --card-foreground: #e4e4e7;
+    --popover: #111113;
+    --popover-foreground: #e4e4e7;
+    --primary: #fafafa;
+    --primary-foreground: #09090b;
+    --secondary: #27272a;
+    --secondary-foreground: #fafafa;
+    --muted: #18181b;
+    --muted-foreground: #a1a1aa;
+    --accent: #27272a;
+    --accent-foreground: #fafafa;
+    --destructive: #ef4444;
+    --border: #27272a;
+    --input: #3f3f46;
+    --ring: #52525b;
+    --chart-1: #d4d4d8;
+    --chart-2: #a1a1aa;
+    --chart-3: #71717a;
+    --chart-4: #52525b;
+    --chart-5: #3f3f46;
+    --running: #22c55e;
+    --needs-you: #f59e0b;
+    --failed: #ef4444;
+    --consult: #38bdf8;
+    --stopped: #a1a1aa;
+    --done: #52525b;
+    --surface: #18181b;
+    --faint: #71717a;
+    --sidebar: #0c0c0e;
+    --sidebar-foreground: #d4d4d8;
+    --sidebar-primary: #fafafa;
+    --sidebar-primary-foreground: #09090b;
+    --sidebar-accent: #27272a;
+    --sidebar-accent-foreground: #fafafa;
+    --sidebar-border: #27272a;
+    --sidebar-ring: #52525b;
 }
+
+/* A working status dot breathes; a needs-you dot carries a soft amber halo. */
+@keyframes mc-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--running) 55%, transparent); }
+    50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--running) 0%, transparent); }
+}
+.mc-pulse { animation: mc-pulse 1.6s ease-in-out infinite; }
+.mc-glow { box-shadow: 0 0 0 3px color-mix(in srgb, var(--needs-you) 22%, transparent); }
+@media (prefers-reduced-motion: reduce) { .mc-pulse { animation: none; } }
 
 @layer base {
   * {

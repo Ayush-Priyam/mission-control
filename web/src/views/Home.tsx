@@ -70,7 +70,7 @@ export default function Home() {
             {name === "Runs" ? (
               name
             ) : (
-              <a href={toHash({ view: "project", repo: name })} className="hover:underline">
+              <a href={toHash({ view: "repo", repo: name })} className="hover:underline">
                 {name}
               </a>
             )}
