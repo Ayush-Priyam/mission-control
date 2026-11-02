@@ -8,7 +8,8 @@ export const LOOP_DEFAULTS = Object.freeze({
   repeat: 4, // (a) the same tool + command fails this many times in a row
   cycles: 4, // (b) the same check fails with the same error head this many times, with edits in between
   minutes: 10, // (c) this long since the last file change ...
-  tokens: 300_000, // (c) ... and this many tokens since it, with no passing check
+  tokens: 300_000, // (c) ... and this many new tokens (input + output + cache write; cache reads excluded) since it,
+  cost: 0, // (c) ... or this many est. dollars since it (0: off), with no passing check
 })
 
 /** The `loops` block of config.json merged over the defaults (bad or missing values keep the default). */
@@ -64,21 +65,27 @@ export function errorHead(error) {
 }
 
 const tokensOf = (m) => (typeof m?.tokens === "number" ? m.tokens : 0)
+const cachedOf = (m) => (typeof m?.cached === "number" ? m.cached : 0)
 
 /**
- * Tokens consumed since the last file change (a successful Edit/Write/MultiEdit/apply_patch...), and how
- * long ago that was. A failed edit changes nothing, so it does not reset. With no change at all, it counts
- * from the first message. `end` is the time to measure to (now for a live lane, its last activity else).
- * { tokens, since: iso|null, ms }.
+ * New tokens (input + output + cache write) since the last file change (a successful Edit/Write/MultiEdit/
+ * apply_patch...), the cache reads in that stretch apart (`cached`: on a large context they dwarf the rest and
+ * say little about work done), and how long ago the change was. A failed edit changes nothing, so it does
+ * not reset. With no change at all, it counts from the first message. `end` is the time to measure to (now
+ * for a live lane, its last activity else). { tokens, cached, since: iso|null, ms }.
  */
 export function sinceLastChange({ calls = [], messages = [], end = Date.now() } = {}) {
   let at = NaN
   for (const c of calls) if (isFileChange(c) && Number.isFinite(ms(c.ts))) at = Math.max(Number.isFinite(at) ? at : -Infinity, ms(c.ts))
-  const from = Number.isFinite(at) ? at : Math.min(...messages.map((m) => ms(m.ts)).filter(Number.isFinite), ...calls.map((c) => ms(c.ts)).filter(Number.isFinite))
-  let tokens = 0
-  for (const m of messages) if (!Number.isFinite(at) || ms(m.ts) > at) tokens += tokensOf(m)
+  let from = at
+  if (!Number.isFinite(from)) {
+    from = Infinity
+    for (const x of [...messages, ...calls]) { const t = ms(x.ts); if (t < from) from = t }
+  }
+  let tokens = 0, cached = 0
+  for (const m of messages) if (!Number.isFinite(at) || ms(m.ts) > at) { tokens += tokensOf(m); cached += cachedOf(m) }
   const since = Number.isFinite(from) ? new Date(from).toISOString() : null
-  return { tokens, since, ms: since ? Math.max(0, end - from) : 0 }
+  return { tokens, cached, since, ms: since ? Math.max(0, end - from) : 0 }
 }
 
 const short = (s, n = 48) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
@@ -94,8 +101,9 @@ const k = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.rou
  *  (a) repeat: the last `repeat` finished calls are the same tool + command, all failed;
  *  (b) cycle:  the same check failed with the same error head `cycles` times, with a file change between
  *      each failure and the next, and it has not passed since;
- *  (c) burn:   `minutes` and `tokens` since the last file change, no passing check since, and at least
- *      one failed call in that stretch (a quiet read-only exploration is not a loop).
+ *  (c) burn:   `minutes` and `tokens` new tokens (or `cost` est. dollars, when set) since the last file
+ *      change, no passing check since, and at least 3 failed calls or one failed check in that stretch
+ *      (long read-only work with a stray failed Read is not a loop). Cache reads never count.
  * A failing command that then passes, or different commands failing, is not looping.
  * { looping: false } or { looping: true, rule, since, failures, costSince, firstCallId, reason, command }.
  */
@@ -140,14 +148,17 @@ export function detectLoop({ calls = [], messages = [], now = Date.now(), config
 
   // (c) tokens and minutes since the last file change, nothing passing since
   const s = sinceLastChange({ calls, messages, end: now })
-  if (s.since && s.tokens >= cfg.tokens && s.ms >= cfg.minutes * 60_000) {
+  if (s.since && s.ms >= cfg.minutes * 60_000) {
+    const spent = costSince(s.since, calls.some(isFileChange))
+    const burning = s.tokens >= cfg.tokens || (cfg.cost > 0 && spent >= cfg.cost)
     const from = ms(s.since)
     const after = done.filter((c) => ms(c.ts) >= from)
     const passed = after.some((c) => c.ok === true && isCheck(c))
     const failed = after.filter((c) => c.ok === false)
-    if (!passed && failed.length) {
+    if (burning && !passed && (failed.length >= 3 || failed.some(isCheck))) {
       const first = failed[0]
-      return { ...hit("burn", first, failed.length, `${k(s.tokens)} tok since the last file change, no passing check`, label(first)), since: s.since, costSince: costSince(s.since, calls.some(isFileChange)) }
+      const why = s.tokens >= cfg.tokens ? `${k(s.tokens)} new tok` : `$${spent.toFixed(2)} est.`
+      return { ...hit("burn", first, failed.length, `${why} since the last file change, no passing check`, label(first)), since: s.since, costSince: spent }
     }
   }
   return { looping: false }
@@ -176,24 +187,27 @@ export function runCalls(events, stage) {
       calls.push(last = { id: `${str(e.stage)}:${i}`, ts, name: "stage", summary: `stage ${str(e.stage)}`, check: true, ok: e.ok !== false, ...(e.ok === false ? { error: str(e.reason) || "stage failed" } : {}) })
     } else if (e.type === "session") {
       const t = e.tokens && typeof e.tokens === "object" ? e.tokens : {}
-      messages.push({ ts, tokens: num(t.input_tokens) + num(t.output_tokens) + num(t.cache_read_input_tokens) + num(t.cache_creation_input_tokens), cost: num(e.cost) })
+      messages.push({ ts, tokens: num(t.input_tokens) + num(t.output_tokens) + num(t.cache_creation_input_tokens), cached: num(t.cache_read_input_tokens), cost: num(e.cost) })
     }
   })
   return { calls, messages }
 }
 
-/** Parsed per-message usage ({ model, ts, tokens: { in, out, cacheRead, cacheWrite } }) as { ts, tokens, cost }. */
+/**
+ * Parsed per-message usage ({ model, ts, tokens: { in, out, cacheRead, cacheWrite } }) as { ts, tokens, cached, cost }:
+ * `tokens` is new work (input + output + cache write), `cached` the cache reads.
+ */
 export function tokenMessages(messages, costOf) {
   return (messages ?? []).map((m) => {
     const t = m.tokens ?? {}
-    const sum = (t.in ?? 0) + (t.out ?? 0) + (t.cacheRead ?? 0) + (t.cacheWrite ?? 0)
-    return { ts: m.ts, tokens: sum, cost: costOf ? costOf(m.model, t) : 0 }
+    const sum = (t.in ?? 0) + (t.out ?? 0) + (t.cacheWrite ?? 0)
+    return { ts: m.ts, tokens: sum, cached: t.cacheRead ?? 0, cost: costOf ? costOf(m.model, t) : 0 }
   })
 }
 
 /**
  * Loop state for an item's lanes, in place. `parts`: [{ lane, calls, messages }] (messages as tokenMessages).
- * Every lane gets `sinceChange` ({ tokens, since, ms }: tokens and time since its last file change; time runs
+ * Every lane gets `sinceChange` ({ tokens, cached, since, ms }: new tokens, cache reads and time since its last file change; time runs
  * to now while it works, else to its end). A working lane that loops becomes "looping" with `loop`.
  * `detect` false (the item waits on you or is ready) computes sinceChange only.
  * Returns the item's own { sinceChange, loop } (loop: the first looping lane's, or null).
@@ -211,7 +225,9 @@ export function applyLoops(parts, { now = Date.now(), config = LOOP_DEFAULTS, de
     loop ??= lane.loop
   }
   const busy = parts.some(({ lane }) => lane.status === "working" || lane.status === "looping")
-  const end = busy ? now : Math.max(...parts.map(({ lane }) => endOf(lane)), 0) || now
+  let last = 0
+  for (const { lane } of parts) last = Math.max(last, endOf(lane))
+  const end = busy ? now : last || now
   const sinceChange = sinceLastChange({ calls: parts.flatMap((p) => p.calls).sort((a, b) => str(a.ts).localeCompare(str(b.ts))), messages: parts.flatMap((p) => p.messages), end })
   return { sinceChange, loop }
 }

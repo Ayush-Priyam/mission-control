@@ -20,12 +20,12 @@ export function loopLine(loop: { since: string; reason: string; costSince: numbe
   return `looping ${how === "now" ? "0m" : how} · ${loop.reason}${loop.costSince ? ` · ${money(loop.costSince)} est. since` : ""}`
 }
 
-/** "412k tok since last change · 18m" (null when unknown). */
-export function sinceChangeLine(s: { tokens: number; ms: number } | null | undefined): string | null {
+/** "412k tok (+3.1M cached) since last change · 18m": new tokens, cache reads apart (null when unknown). */
+export function sinceChangeLine(s: { tokens: number; cached?: number; ms: number } | null | undefined): string | null {
   if (!s) return null
   const m = Math.round(s.ms / 60_000)
   const t = m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`
-  return `${compact(s.tokens)} tok since last change · ${t}`
+  return `${compact(s.tokens)} tok${s.cached ? ` (+${compact(s.cached)} cached)` : ""} since last change · ${t}`
 }
 
 /** Dollars: "$0.84", "$12.30", "–" for zero, "<$0.01" for crumbs. */

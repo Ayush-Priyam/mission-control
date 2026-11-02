@@ -138,7 +138,7 @@ export function ItemTable({
                 <td className="px-2 text-right font-mono tabular-nums text-muted-foreground">{i.partial ? "–" : money(i.cost)}</td>
                 <td
                   className={cn("px-2 text-right font-mono whitespace-nowrap tabular-nums", i.status === "looping" ? "text-looping" : "text-muted-foreground")}
-                  title={i.sinceChange ? `${i.sinceChange.tokens.toLocaleString("en-US")} tokens since the last file change (${Math.round(i.sinceChange.ms / 60_000)} min)` : "not known until the session is opened"}
+                  title={i.sinceChange ? `${i.sinceChange.tokens.toLocaleString("en-US")} new tokens${i.sinceChange.cached ? ` (+${i.sinceChange.cached.toLocaleString("en-US")} cached)` : ""} since the last file change (${Math.round(i.sinceChange.ms / 60_000)} min)` : "not known until the session is opened"}
                 >
                   {i.sinceChange ? compact(i.sinceChange.tokens) : "–"}
                 </td>

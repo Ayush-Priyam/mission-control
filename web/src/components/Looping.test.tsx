@@ -21,6 +21,7 @@ describe("looping text", () => {
   it("tokens and time since the last file change", () => {
     expect(sinceChangeLine({ tokens: 412_000, ms: 18 * 60_000 })).toBe("412k tok since last change · 18m")
     expect(sinceChangeLine(undefined)).toBe(null)
+    expect(sinceChangeLine({ tokens: 41_000, cached: 3_100_000, ms: 11 * 60_000 })).toBe("41k tok (+3.1M cached) since last change · 11m")
   })
 })
 

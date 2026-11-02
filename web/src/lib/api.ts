@@ -172,7 +172,8 @@ export async function postAction(id: string, name: string, body: object = {}) {
 
 export type Status = "working" | "waiting" | "looping" | "stopped" | "failed" | "done" | "idle"
 /** Tokens and time since the last successful file change (Edit, Write, apply_patch...). */
-export type SinceChange = { tokens: number; since: string | null; ms: number }
+/** New tokens (input + output + cache write) and, apart, cache reads since the last file change. */
+export type SinceChange = { tokens: number; cached?: number; since: string | null; ms: number }
 /** Why a lane counts as looping (src/loops.mjs): since when, how many failures, cost since, the first failing call. */
 export type LoopInfo = { looping: true; rule: "repeat" | "cycle" | "burn"; since: string; failures: number; costSince: number; firstCallId: string; reason: string; command: string; lane?: string }
 export type Tokens = { in: number; out: number; cacheRead: number; cacheWrite: number }

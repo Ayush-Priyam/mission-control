@@ -36,7 +36,7 @@ test("claude-code: a live session failing npm test 4× is looping (item, lane, o
   assert.equal(got.summary.status, "looping")
   assert.deepEqual([got.lanes[0].status, got.lanes[0].loop.failures, got.lanes[0].loop.firstCallId, got.lanes[0].loop.reason], ["looping", 4, "tu0", "npm test failed 4×"])
   assert.ok(got.lanes[0].loop.costSince > 0)
-  assert.equal(got.summary.sinceChange.tokens, 4 * 11_100)
+  assert.deepEqual([got.summary.sinceChange.tokens, got.summary.sinceChange.cached], [4 * 1_100, 4 * 10_000], "cache reads apart")
   const ov = await createRegistry([src]).overview()
   assert.deepEqual([ov.counts.looping, ov.counts.working], [1, 0])
   assert.deepEqual(ov.looping.map((l) => [l.id, l.lane, l.loop.failures]), [["s1", "main", 4]])

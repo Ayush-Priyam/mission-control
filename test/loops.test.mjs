@@ -51,13 +51,13 @@ test("(b) edit -> test -> same failure, 4 cycles, is looping; a different error 
 
 test("tokens since last file change: resets on a successful edit, ignores failed edits, counts from the start with no edit", () => {
   const messages = [msg(0, 100), msg(2, 200), msg(5, 400), msg(8, 800)]
-  assert.deepEqual(sinceLastChange({ calls: [read("/w/a", 1)], messages, end: T0 + 10 * 60_000 }), { tokens: 1500, since: at(0), ms: 10 * 60_000 })
+  assert.deepEqual(sinceLastChange({ calls: [read("/w/a", 1)], messages, end: T0 + 10 * 60_000 }), { tokens: 1500, cached: 0, since: at(0), ms: 10 * 60_000 })
   const s = sinceLastChange({ calls: [edit("/w/a.ts", 3)], messages, end: T0 + 10 * 60_000 })
-  assert.deepEqual(s, { tokens: 1200, since: at(3), ms: 7 * 60_000 })
+  assert.deepEqual(s, { tokens: 1200, cached: 0, since: at(3), ms: 7 * 60_000 })
   const failed = sinceLastChange({ calls: [edit("/w/a.ts", 3), edit("/w/b.ts", 6, false)], messages, end: T0 + 10 * 60_000 })
-  assert.deepEqual(failed, { tokens: 1200, since: at(3), ms: 7 * 60_000 }, "a failed edit changes nothing")
+  assert.deepEqual(failed, { tokens: 1200, cached: 0, since: at(3), ms: 7 * 60_000 }, "a failed edit changes nothing")
   assert.equal(sinceLastChange({ calls: [edit("/w/a.ts", 3), { ...edit("/w/p", 7), name: "apply_patch" }], messages, end: T0 }).tokens, 800)
-  assert.deepEqual(sinceLastChange({}), { tokens: 0, since: null, ms: 0 })
+  assert.deepEqual(sinceLastChange({}), { tokens: 0, cached: 0, since: null, ms: 0 })
 })
 
 test("(c) 300k tokens and 10 min with no file change and no passing check is looping; a passing check or an edit is not", () => {
@@ -65,7 +65,7 @@ test("(c) 300k tokens and 10 min with no file change and no passing check is loo
   const calls = [edit("/w/a.ts", 0), bash("npm test", false, 2, "boom"), read("/w/b", 5), bash("node x.js", false, 8, "other")]
   const r = detectLoop({ calls, messages: big, now: T0 + 12 * 60_000 })
   assert.deepEqual([r.looping, r.rule, r.since, r.failures, r.costSince], [true, "burn", at(0), 2, 3])
-  assert.match(r.reason, /300k tok since the last file change/)
+  assert.match(r.reason, /300k new tok since the last file change/)
   assert.equal(detectLoop({ calls, messages: big, now: T0 + 9 * 60_000 }).looping, false, "under 10 minutes")
   assert.equal(detectLoop({ calls: [...calls, bash("npm test", true, 10)], messages: big, now: T0 + 12 * 60_000 }).looping, false, "a check passed")
   assert.equal(detectLoop({ calls: [...calls, edit("/w/c.ts", 10)], messages: [...big, msg(11, 10)], now: T0 + 12 * 60_000 }).looping, false, "a new file change resets it")
@@ -76,11 +76,11 @@ test("(c) 300k tokens and 10 min with no file change and no passing check is loo
 test("v1 runs: progress + issue events become failing calls; stage.end ok:false is a failed check", () => {
   const ev = []
   for (let i = 0; i < 4; i++) ev.push({ ts: at(i), type: "progress", stage: "backend", tool: "Bash", detail: "npm test" }, { ts: at(i), type: "issue", stage: "backend", summary: "test failed" })
-  ev.push({ ts: at(5), type: "session", stage: "backend", tokens: { input_tokens: 10, output_tokens: 5 }, cost: 0.2 })
+  ev.push({ ts: at(5), type: "session", stage: "backend", tokens: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 900, cache_creation_input_tokens: 3 }, cost: 0.2 })
   const { calls, messages } = runCalls(ev, "backend")
   assert.equal(calls.length, 4)
   assert.ok(calls.every((c) => c.ok === false && c.error === "test failed"))
-  assert.deepEqual(messages, [{ ts: at(5), tokens: 15, cost: 0.2 }])
+  assert.deepEqual(messages, [{ ts: at(5), tokens: 18, cached: 900, cost: 0.2 }])
   assert.equal(detectLoop({ calls, messages, now: T0 }).rule, "repeat")
   const ends = runCalls([{ ts: at(1), type: "stage.end", stage: "qa", ok: false, reason: "red" }, { ts: at(2), type: "stage.end", stage: "qa", ok: true }], "qa").calls
   assert.deepEqual(ends.map((c) => [c.ok, isCheck(c)]), [[false, true], [true, true]])
@@ -93,4 +93,30 @@ test("thresholds come from config.json {loops}; bad values keep the defaults", (
   assert.deepEqual(readLoopConfig(p), { ...LOOP_DEFAULTS, repeat: 6 })
   assert.deepEqual(readLoopConfig(join(dir, "missing.json")), LOOP_DEFAULTS)
   assert.deepEqual(readLoopConfig(null), LOOP_DEFAULTS)
+})
+
+test("(c) counts new tokens only: a large-context session with one failed Read is not looping; with 3 failing checks it is", async () => {
+  const { tokenMessages } = await import("../src/loops.mjs")
+  // 30 turns over 11 minutes, each 10k new tokens (input + output + cache write) on top of a 200k cached context
+  const raw = Array.from({ length: 30 }, (_, i) => ({ ts: at(i * 0.36), model: "m", tokens: { in: 1000, out: 4000, cacheRead: 200_000, cacheWrite: 5000 } }))
+  const messages = tokenMessages(raw, () => 0.05)
+  const s = sinceLastChange({ calls: [], messages, end: T0 + 11 * 60_000 })
+  assert.deepEqual([s.tokens, s.cached], [300_000, 6_000_000], "cache reads are counted apart")
+  const now = T0 + 11 * 60_000
+  const readFail = { ...read("/w/missing", 3), ok: false, error: "File does not exist." }
+  assert.equal(detectLoop({ calls: [read("/w/a", 1), readFail, read("/w/b", 5)], messages, now }).looping, false, "one failed Read, no edits: long read-only work")
+  const checks = [bash("npm test", false, 2, "FAIL a"), read("/w/a", 3), bash("npm run lint", false, 5, "lint"), bash("npx tsc --noEmit", false, 8, "TS1")]
+  const r = detectLoop({ calls: checks, messages, now })
+  assert.deepEqual([r.looping, r.rule, r.failures], [true, "burn", 3])
+  const cachedOnly = tokenMessages(raw.map((m) => ({ ...m, tokens: { in: 100, out: 100, cacheRead: 400_000, cacheWrite: 0 } })), () => 0.05)
+  assert.equal(detectLoop({ calls: checks, messages: cachedOnly, now }).looping, false, "millions of cache reads alone never trip the threshold")
+  assert.equal(detectLoop({ calls: checks, messages: cachedOnly, now, config: { cost: 1 } }).rule, "burn", "an est. cost threshold (config loops.cost) can trip it instead")
+})
+
+test("(c) needs 3 failures or a failing check in the stretch: two failed non-check calls are not enough", () => {
+  const big = [msg(0, 200_000, 1), msg(9, 200_000, 1)]
+  const now = T0 + 12 * 60_000
+  const two = [bash("node x.js", false, 2, "a"), bash("node y.js", false, 4, "b")]
+  assert.equal(detectLoop({ calls: two, messages: big, now }).looping, false)
+  assert.equal(detectLoop({ calls: [...two, bash("node z.js", false, 6, "c")], messages: big, now }).rule, "burn")
 })

@@ -158,16 +158,16 @@ A session that silently retries a failing test is the expensive kind of stuck. A
 
 1. the same tool and command fails 4 times in a row;
 2. the same check (test, build, lint, typecheck) fails with the same first error line 4 times, with file edits in between;
-3. 300k tokens and 10 minutes since the last file change, with no passing check since and at least one failure.
+3. 300k new tokens (input + output + cache write; cache reads never count) and 10 minutes since the last file change, with no passing check since and at least 3 failed calls or one failed check (test, build, lint...) in that stretch. Long read-only work with a stray failed Read is not a loop. Set `cost` to trip on estimated dollars since the change instead of (or as well as) tokens.
 
 A failing test that then passes is not looping, and different commands failing are not looping. The lane card says how long, what failed how often and the estimated cost since ("looping 14m · npm test failed 9× · $3.20 est. since") and links to the first failing call. It works for Claude Code, Codex and harness runs (`progress` events with `tool`/`detail`, `issue`, `stage.end` with `ok: false`).
 
-Every lane and item also shows **tokens since last file change**: tokens used since the last successful Edit, Write, MultiEdit or apply_patch (a failed edit does not reset it), and how long ago that was ("412k tok since last change · 18m"). It is a sortable "Since change" column in the Home and project tables.
+Every lane and item also shows **tokens since last file change**: new tokens (input, output and cache write) used since the last successful Edit, Write, MultiEdit or apply_patch (a failed edit does not reset it), the cache reads in that stretch apart, and how long ago that was ("41k tok (+3.1M cached) since last change · 18m"). Cache reads are shown but not counted: on a large context they grow by the whole context every turn and say little about work done. It is a sortable "Since change" column in the Home and project tables.
 
 The thresholds live in `~/.mission-control/config.json` (re-read when it changes):
 
 ```json
-{ "loops": { "repeat": 4, "cycles": 4, "minutes": 10, "tokens": 300000 } }
+{ "loops": { "repeat": 4, "cycles": 4, "minutes": 10, "tokens": 300000, "cost": 0 } }
 ```
 
 **Run / session page** has tabs. Lanes shows one card per agent with what it is doing now. Map draws the crew and how work flowed between lanes.
