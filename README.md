@@ -99,7 +99,7 @@ All screenshots come from the synthetic demo data.
 
 ## Costs are estimates
 
-Costs are API list-price estimates computed from token counts (input, output, cache write, cache read) and the model family. They are not your bill: plans, subscriptions and discounts differ, and list prices change. The table is in `src/sources/claude-code/prices.mjs`; edit it when it goes stale. Models it does not know cost nothing and are shown as unpriced.
+Costs are API list-price estimates computed from token counts (input, output, cache write, cache read) and the model family and version (for example Opus 4/4.1 at $15/$75 per million tokens, Opus 4.5 and later at $5/$25; the table is dated). They are not your bill: plans, subscriptions and discounts differ, and list prices change. The table is in `src/sources/claude-code/prices.mjs`; edit it when it goes stale. Models it does not know cost nothing and are shown as unpriced.
 
 ## Hiding projects
 

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import create from "../src/sources/claude-code/index.mjs"
-import { PRICES, costOf, family } from "../src/sources/claude-code/prices.mjs"
+import { PRICES, costOf, family, version } from "../src/sources/claude-code/prices.mjs"
 import { parseTranscript } from "../src/sources/claude-code/parse.mjs"
 import { createCache } from "../src/sources/claude-code/cache.mjs"
 import { spawn } from "node:child_process"
@@ -92,11 +92,34 @@ test("tokens count once per assistant message id; cost uses the price table", as
 })
 
 test("prices: family match, table values, unknown model is free", () => {
-  assert.equal(family("claude-opus-4-1-20250805"), "opus")
+  assert.equal(family("claude-opus-4-1-20250805"), "opus-4")
   assert.equal(family("gpt-x"), null)
   near(costOf("claude-sonnet-4-5", { in: 1e6, out: 1e6, cacheRead: 1e6, cacheWrite: 1e6 }), PRICES.sonnet.input + PRICES.sonnet.output + PRICES.sonnet.cacheRead + PRICES.sonnet.cacheWrite)
   assert.equal(costOf("mystery", { in: 5, out: 5, cacheRead: 5, cacheWrite: 5 }), 0)
   assert.ok(PRICES.opus.output > PRICES.sonnet.output && PRICES.sonnet.output > PRICES.haiku.output)
+})
+
+test("I4 prices: by family and version, list-price estimate", () => {
+  const cases = {
+    "claude-opus-4-1-20250805": "opus-4", "claude-opus-4-1": "opus-4", "claude-opus-4-20250514": "opus-4", "claude-3-opus-20240229": "opus-4",
+    "claude-opus-4-5-20251101": "opus", "claude-opus-4-6": "opus", "claude-opus-5-5": "opus", "claude-opus-5": "opus", opus: "opus", "Opus 4.5": "opus",
+    "claude-sonnet-4-5": "sonnet", "claude-3-7-sonnet-20250219": "sonnet", sonnet: "sonnet",
+    "claude-3-5-haiku-20241022": "haiku-3", "claude-haiku-4-5-20251001": "haiku", haiku: "haiku",
+    "gpt-x": null, "": null,
+  }
+  for (const [m, f] of Object.entries(cases)) assert.equal(family(m), f, m)
+  assert.deepEqual(version("claude-opus-5-5"), { family: "opus", major: 5, minor: 5 })
+  assert.deepEqual(version("claude-3-5-haiku-20241022"), { family: "haiku", major: 3, minor: 5 })
+  assert.deepEqual(version("opus"), { family: "opus", major: null, minor: 0 })
+  const m1 = { in: 1e6, out: 0, cacheRead: 0, cacheWrite: 0 }, o1 = { in: 0, out: 1e6, cacheRead: 0, cacheWrite: 0 }
+  const pair = (m) => [costOf(m, m1), costOf(m, o1)]
+  assert.deepEqual(pair("claude-opus-4-1"), [15, 75])
+  assert.deepEqual(pair("claude-opus-5-5"), [5, 25])
+  assert.deepEqual(pair("opus"), [5, 25])
+  assert.deepEqual(pair("claude-sonnet-4-5"), [3, 15])
+  assert.deepEqual(pair("claude-3-5-haiku-20241022"), [0.8, 4])
+  assert.deepEqual(pair("claude-haiku-4-5"), [1, 5])
+  near(costOf("claude-opus-5-5", { in: 0, out: 0, cacheRead: 1e6, cacheWrite: 1e6 }), 5 * 0.1 + 5 * 1.25)
 })
 
 test("live: mtime within two minutes of the injected now", async () => {
