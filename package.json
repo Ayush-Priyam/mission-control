@@ -22,6 +22,7 @@
   "scripts": {
     "build": "vite build web --outDir ../dist --emptyOutDir",
     "dev": "vite web",
+    "demo": "node scripts/demo.mjs",
     "test": "node --test test/ && vitest run --root web",
     "typecheck": "tsc -p web --noEmit",
     "prepublishOnly": "npm run build"
