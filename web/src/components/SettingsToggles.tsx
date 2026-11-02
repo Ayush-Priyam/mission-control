@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import { Bell, BellOff, History, Info, Power } from "lucide-react"
 import { postSettings, postTestNotification, useSettings, type Settings } from "@/lib/api"
 import { InfoTip } from "@/components/IconAction"
@@ -6,8 +6,22 @@ import { askNotifyPermission, notifyPermission } from "@/lib/notify"
 import { cn } from "@/lib/utils"
 
 const BROWSER_INFO =
-  "Lets this page show the notifications. Clicking one opens that session here. Without it, macOS shows them, but a click does nothing. Works while a dashboard tab is open, even in the background."
-const row = "flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left hover:bg-sidebar-accent/60 hover:text-muted-foreground disabled:opacity-50 [&_svg]:size-3"
+  "Browser notifications: this page shows them, and clicking one opens that session here. Without them, macOS shows them, but a click does nothing. Works while a dashboard tab is open, even in the background."
+// Every row: icon, label, value on the right. `row` is the clickable variant.
+const line = "flex h-6 w-full items-center gap-1.5 rounded px-1 [&_svg]:size-3 [&_svg]:shrink-0"
+const row = `${line} text-left hover:bg-sidebar-accent/60 hover:text-muted-foreground disabled:opacity-50`
+
+function Section({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="flex flex-col gap-0.5">
+      <div className="flex items-center justify-between px-1 pb-0.5 text-[11px] tracking-wide uppercase">
+        <span>{title}</span>
+        {action}
+      </div>
+      {children}
+    </section>
+  )
+}
 
 const DEFAULT_DAYS = 30 // Claude Code's own default for cleanupPeriodDays
 const PRESETS = [DEFAULT_DAYS, 60, 90]
@@ -24,7 +38,7 @@ function RetentionRow({ retention, busy, onSet }: { retention: NonNullable<Setti
   const title = `How long Claude Code keeps session history (cleanupPeriodDays in ${retention.configDir}/settings.json, default 30). Older sessions are deleted when Claude Code starts. Applies from its next start.`
   if (retention.error) {
     return (
-      <div className={row} title={retention.error}>
+      <div className={line} title={retention.error}>
         <History />
         <span className="flex-1">Keep sessions</span>
         <span className="text-failed">settings.json invalid</span>
@@ -32,8 +46,8 @@ function RetentionRow({ retention, busy, onSet }: { retention: NonNullable<Setti
     )
   }
   return (
-    <div className="flex flex-col gap-0.5 px-1 py-0.5" title={title}>
-      <div className="flex items-center gap-1.5 [&_svg]:size-3">
+    <div className="flex flex-col gap-1" title={title}>
+      <div className={line}>
         <History />
         <span className="flex-1">Keep sessions</span>
         <input
@@ -49,11 +63,11 @@ function RetentionRow({ retention, busy, onSet }: { retention: NonNullable<Setti
             if (e.key === "Enter") e.currentTarget.blur()
             if (e.key === "Escape") setDraft(null)
           }}
-          className="w-14 rounded border border-sidebar-border bg-transparent px-1 text-right text-foreground outline-none focus-visible:border-ring"
+          className="h-5 w-12 rounded border border-sidebar-border bg-transparent px-1 text-right text-foreground outline-none [appearance:textfield] focus-visible:border-ring [&::-webkit-inner-spin-button]:appearance-none"
         />
         <span>days</span>
       </div>
-      <div className="flex items-center justify-end gap-1">
+      <div className="flex items-center gap-1 pl-[18px]">
         {PRESETS.map((d) => (
           <button
             key={d}
@@ -61,7 +75,7 @@ function RetentionRow({ retention, busy, onSet }: { retention: NonNullable<Setti
             disabled={busy}
             aria-pressed={retention.days === d}
             onClick={() => { setDraft(null); if (d !== retention.days) onSet(d) }}
-            className={cn("rounded px-1.5 hover:bg-sidebar-accent/60 hover:text-muted-foreground", retention.days === d && "bg-sidebar-accent text-foreground")}
+            className={cn("rounded border border-sidebar-border px-1.5 leading-5 hover:text-muted-foreground", retention.days === d && "border-foreground/40 text-foreground")}
           >
             {d === DEFAULT_DAYS ? `${d} (default)` : d}
           </button>
@@ -116,48 +130,48 @@ export function SettingsToggles() {
       <span className={cn(on && "text-foreground")}>{on ? "on" : "off"}</span>
     </button>
   )
+  const sendTest = async () => {
+    try {
+      const { via } = await postTestNotification()
+      setNote(via.startsWith("page")
+        ? "test sent to this page: none showing? Allow your browser in macOS System Settings → Notifications, and check Focus"
+        : "test sent as a macOS notification (this page has not allowed browser notifications)")
+    } catch (e) { setNote(String((e as Error).message ?? e)) }
+  }
+  const browser =
+    permission === "granted" ? <span className="text-foreground">allowed</span>
+    : permission === "denied" ? <span title="Blocked in the browser's site settings: macOS notifications show instead, without a click action">blocked</span>
+    : permission === "unsupported" ? <span>n/a</span>
+    : <button type="button" className="text-foreground underline underline-offset-2 hover:text-muted-foreground" onClick={async () => setPermission(await askNotifyPermission())}>allow</button>
   return (
-    <div className="flex flex-col gap-0.5 border-t border-sidebar-border px-2 py-1.5 font-mono text-xs text-faint">
-      <span className="px-1 pb-0.5 text-[11px] uppercase tracking-wide">Notifications</span>
-      {toggle(notify, "Needs you", "When a session needs you: a permission prompt or a question", () => change({ notify: !notify }))}
-      {toggle(notifyDone, "Done", "When a session finishes your prompt and is ready for the next one", () => change({ notifyDone: !notifyDone }))}
-      {any && permission === "default" && (
-        <div className="flex items-center gap-1">
-          <button type="button" className={cn(row, "flex-1 text-foreground")} onClick={async () => setPermission(await askNotifyPermission())}>
-            <Bell />
-            <span className="flex-1">Allow notifications (browser)</span>
-          </button>
+    <div className="flex flex-col gap-2.5 border-t border-sidebar-border px-2 py-2 font-mono text-xs text-faint">
+      <Section
+        title="Notifications"
+        action={any && <button type="button" disabled={busy} onClick={sendTest} className="normal-case tracking-normal underline-offset-2 hover:text-muted-foreground hover:underline">send test</button>}
+      >
+        {toggle(notify, "Needs you", "When a session needs you: a permission prompt or a question", () => change({ notify: !notify }))}
+        {toggle(notifyDone, "Done", "When a session finishes your prompt and is ready for the next one", () => change({ notifyDone: !notifyDone }))}
+        <div className={line}>
+          <Bell />
+          <span className="flex-1">Browser</span>
+          {browser}
           <InfoTip text={BROWSER_INFO}>
             <Info />
           </InfoTip>
         </div>
-      )}
-      {any && (
-        <button type="button" className={row} disabled={busy}
-          onClick={async () => {
-            try {
-              const { via } = await postTestNotification()
-              setNote(via.startsWith("page")
-                ? "sent to this page: none showing? Allow your browser in macOS System Settings → Notifications, and check Focus"
-                : "sent as a macOS notification (no page has allowed browser notifications)")
-            } catch (e) { setNote(String((e as Error).message ?? e)) }
-          }}>
-          <Bell />
-          <span className="flex-1">Send test</span>
-        </button>
-      )}
-      {any && permission === "denied" && (
-        <span className="px-1 text-[11px]" title="Allow notifications for this site in the browser's site settings">
-          browser blocked notifications: macOS ones show, without a click action
-        </span>
-      )}
+      </Section>
       {retention && (
-        <RetentionRow retention={retention} busy={busy} onSet={(days) => change({ retentionDays: days })} />
+        <Section title="History">
+          <RetentionRow retention={retention} busy={busy} onSet={(days) => change({ retentionDays: days })} />
+        </Section>
       )}
-      {autostart.supported &&
-        toggle(autostart.enabled, "Start at login", `Start this dashboard at login and restart it if it stops (LaunchAgent ${autostart.label ?? ""})`,
-          () => change({ autostart: !autostart.enabled }), <Power />)}
-      {note && <span className="px-1 text-[11px]">{note}</span>}
+      {autostart.supported && (
+        <Section title="Startup">
+          {toggle(autostart.enabled, "Start at login", `Start this dashboard at login and restart it if it stops (LaunchAgent ${autostart.label ?? ""})`,
+            () => change({ autostart: !autostart.enabled }), <Power />)}
+        </Section>
+      )}
+      {note && <span className="px-1 text-[11px] leading-snug">{note}</span>}
     </div>
   )
 }
