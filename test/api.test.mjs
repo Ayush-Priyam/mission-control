@@ -180,9 +180,12 @@ test("actions: non-object bodies become {}, undefined result becomes {}", async 
   })
 })
 
+// CLI children get a temp HOME: they must never read the owner's ~/.mission-control or ~/.claude.
+const tempHome = () => ({ ...process.env, HOME: mkdtempSync(join(tmpdir(), "mc-home-")) })
+
 const run = (args) =>
   new Promise((done) => {
-    const p = spawn("node", [join(root, "bin/mission-control.mjs"), "--no-claude", ...args], { cwd: root })
+    const p = spawn("node", [join(root, "bin/mission-control.mjs"), "--no-claude", ...args], { cwd: root, env: tempHome() })
     let out = "", err = ""
     p.stdout.on("data", (d) => { out += d })
     p.stderr.on("data", (d) => { err += d })
@@ -205,7 +208,7 @@ test("prints the startup line", async () => {
   await new Promise((r) => probe.listen(0, "127.0.0.1", r))
   const p = probe.address().port
   await new Promise((r) => probe.close(r))
-  const child = spawn("node", [join(root, "bin/mission-control.mjs"), "--runs", "test/fixtures/runs", "--port", String(p), "--no-open", "--no-claude"], { cwd: root })
+  const child = spawn("node", [join(root, "bin/mission-control.mjs"), "--runs", "test/fixtures/runs", "--port", String(p), "--no-open", "--no-claude"], { cwd: root, env: tempHome() })
   try {
     const first = await new Promise((res, rej) => {
       let buf = ""
@@ -256,7 +259,7 @@ test("M3: the port comes from --port or MISSION_CONTROL_PORT; PORT is ignored", 
   const p = probe.address().port
   await new Promise((r) => probe.close(r))
   const child = spawn("node", [join(root, "bin/mission-control.mjs"), "--runs", "test/fixtures/runs", "--no-open", "--no-claude"], {
-    cwd: root, env: { ...process.env, PORT: "not-a-port", MISSION_CONTROL_PORT: String(p) },
+    cwd: root, env: { ...tempHome(), PORT: "not-a-port", MISSION_CONTROL_PORT: String(p) },
   })
   try {
     const first = await new Promise((res, rej) => {

@@ -105,15 +105,27 @@ async function sendExtra(res, r) {
 }
 
 // v2 routes, one set for every source: /api/overview, /api/items, /api/projects, /api/project/:key, /api/item/:source/:id[/...]
-/** Every item with `project` ({ key, name, worktree }) and `hidden` when its project is noise. */
-async function placed(registry, git, hide) {
-  const items = await registry.list()
+/** `items` with `project` ({ key, name, worktree }) and `hidden` when its project is noise. */
+async function place(items, git, hideList) {
   const where = await projectsOf(items.map((i) => i.cwd), { git })
-  const list = hide.list()
   return items.map((i) => {
     const p = (i.cwd && where.get(i.cwd)) || NO_PROJECT_INFO
-    return { ...i, project: { key: p.key, name: p.name, worktree: p.worktree }, ...(isNoise(p, list) ? { hidden: true } : {}) }
+    return { ...i, project: { key: p.key, name: p.name, worktree: p.worktree }, ...(isNoise(p, hideList) ? { hidden: true } : {}) }
   })
+}
+
+/**
+ * The first `limit` items (newest first) that pass `keep`, placed. Items are placed a chunk at a time,
+ * so a limit of 100 places about 100 items, not every session on the machine.
+ */
+async function placeFirst(items, git, hideList, keep, limit = Infinity) {
+  if (limit === Infinity) return (await place(items, git, hideList)).filter(keep)
+  const out = []
+  const chunk = Math.max(limit, 50)
+  for (let i = 0; i < items.length && out.length < limit; i += chunk) {
+    for (const x of await place(items.slice(i, i + chunk), git, hideList)) if (keep(x) && out.length < limit) out.push(x)
+  }
+  return out
 }
 
 async function apiV2({ registry, git, hide, now }, req, res, url, parts) {
@@ -121,7 +133,9 @@ async function apiV2({ registry, git, hide, now }, req, res, url, parts) {
   const q = url.searchParams
   const all = q.get("all") === "1"
   const tzOf = () => q.get("tz") ?? defaultTz()
-  const isHidden = (p) => isNoise(p, hide.list())
+  let hideList // read config.json at most once per request
+  const hidden = () => (hideList ??= hide.list())
+  const isHidden = (p) => isNoise(p, hidden())
   if (get && parts[0] === "sources" && parts.length === 1) {
     await registry.list() // refresh per-source errors
     return json(res, registry.sources().map((s) => ({
@@ -130,7 +144,7 @@ async function apiV2({ registry, git, hide, now }, req, res, url, parts) {
     })))
   }
   if (get && parts[0] === "overview" && parts.length === 1) {
-    const items = await placed(registry, git, hide)
+    const items = await place(await registry.list(), git, hidden())
     const shown = all ? items : items.filter((i) => !i.hidden)
     return json(res, { ...(await registry.overview(shown)), hidden: items.length - shown.length })
   }
@@ -138,11 +152,10 @@ async function apiV2({ registry, git, hide, now }, req, res, url, parts) {
     const limit = q.get("limit")
     if (limit !== null && !/^\d{1,6}$/.test(limit)) return json(res, { error: "bad limit" }, 400)
     const source = q.get("source"), id = q.get("id")
-    let items = await placed(registry, git, hide)
-    if (!all) items = items.filter((i) => !i.hidden)
+    let items = await registry.list()
     if (source !== null) items = items.filter((i) => i.source === source)
     if (id !== null) items = items.filter((i) => i.id === id)
-    return json(res, limit === null ? items : items.slice(0, Number(limit)))
+    return json(res, await placeFirst(items, git, hidden(), (i) => all || !i.hidden, limit === null ? Infinity : Number(limit)))
   }
   if (get && parts[0] === "projects" && parts.length === 1) {
     const tz = tzOf()

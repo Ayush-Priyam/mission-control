@@ -63,6 +63,9 @@ export function createLoader<T>(url: string, onData: (d: T) => void, onError: (e
         onData(JSON.parse(text) as T)
       } else onData((await r.json()) as T)
     } catch (e: any) {
+      // Forget what we had: the next good answer must dispatch (and so clear the error), even if unchanged.
+      etag = null
+      last = null
       onError(String(e?.message ?? e))
     } finally {
       inFlight = false

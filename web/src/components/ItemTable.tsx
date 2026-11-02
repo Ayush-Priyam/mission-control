@@ -64,7 +64,7 @@ export function ItemTable({
 
   const cols: Col[] = [
     { key: "title", label: "Title", first: "asc" },
-    { key: "where", label: showProject ? "Project / branch" : "Branch", first: "asc", className: "w-[17%]" },
+    { key: "where", label: showProject ? "Project / branch" : "Branch", first: "asc", className: "w-[22%]" },
     { key: "harness", label: "Harness", first: "asc", className: "w-[92px]" },
     { key: "status", label: "Status", first: "asc", className: "w-[90px]" },
     { key: "lanes", label: "Lanes", first: "desc", num: true, className: "w-[54px]" },
@@ -115,10 +115,9 @@ export function ItemTable({
                     {i.title || i.id}
                   </a>
                 </td>
-                <td className="truncate px-2 font-mono text-[11px] text-muted-foreground">
-                  {showProject && i.project && <span className="text-foreground/80">{i.project.name}</span>}
-                  {showProject && i.project && branch && <span className="text-faint"> · </span>}
-                  {branch}
+                <td className="px-2 py-1 font-mono text-[11px] leading-tight text-muted-foreground" title={[i.project?.name, branch].filter(Boolean).join(" · ")}>
+                  {showProject && i.project && <div className="truncate text-foreground/80">{i.project.name}</div>}
+                  {branch && <div className="truncate">{branch}</div>}
                 </td>
                 <td className="truncate px-2 font-mono text-[11px] text-muted-foreground">{i.harness}</td>
                 <td className="px-2 whitespace-nowrap">

@@ -56,6 +56,23 @@ describe("createLoader", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2)
   })
 
+  it("after an error, the next good answer dispatches even when unchanged (clears the error)", async () => {
+    const answers = [answer(200, '{"n":1}', 'W/"a"'), answer(500, ""), answer(200, '{"n":1}', 'W/"a"')]
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) =>
+      // a server would answer 304 to the old tag; the loader must not send it after a failure
+      (init?.headers as Record<string, string> | undefined)?.["if-none-match"] && answers.length === 1 ? answer(304, "") : answers.shift()!,
+    )
+    const onData = vi.fn()
+    const onError = vi.fn()
+    const load = createLoader("/api/x", onData, onError, fetchImpl)
+    await load()
+    await load()
+    await load()
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(onData.mock.calls).toEqual([[{ n: 1 }], [{ n: 1 }]])
+    expect(fetchImpl.mock.calls[2]).toEqual(["/api/x"])
+  })
+
   it("reports errors and stays usable", async () => {
     const fetchImpl = vi.fn(async () => answer(500, ""))
     const onError = vi.fn()

@@ -123,6 +123,7 @@ test("/api/items: placed in a project, hidden left out unless all=1, limit and l
     assert.equal(w1.project.worktree, "/work/shop")
     const tree = await (await fetch(`${base}/api/projects?slim=1`)).json()
     assert.equal(w1.project.key, tree.find((p) => p.name === "shop").key)
+    assert.match(w1.project.key, /^shop-[0-9a-f]{8}$/) // V10: folder name, not ".git"
     assert.equal((await (await fetch(`${base}/api/items?all=1`)).json()).length, 6)
     assert.equal((await (await fetch(`${base}/api/items?limit=2`)).json()).length, 2)
     const one = await (await fetch(`${base}/api/items?all=1&source=cc&id=noise1`)).json()
@@ -148,6 +149,39 @@ test("JSON GETs carry an ETag and answer 304 to a matching If-None-Match", async
     assert.equal(e.status, 404)
     assert.equal(e.headers.get("etag"), null)
   })
+})
+
+test("overview loads live items' details at most 6 at a time", async () => {
+  let running = 0, peak = 0, calls = 0
+  const many = Array.from({ length: 20 }, (_, k) => item(`L${k}`, "/work/shop", { live: true, status: "working" }))
+  const src = {
+    name: "cc", harness: "claude-code", listItems: async () => many, getCalls: async () => [], getSession: async () => null,
+    getItem: async (id) => {
+      calls++; running++; peak = Math.max(peak, running)
+      await new Promise((r) => setTimeout(r, 5))
+      running--
+      return { summary: many.find((i) => i.id === id), lanes: [lane("main", { status: "working" })], events: [] }
+    },
+  }
+  const ov = await createRegistry([src]).overview()
+  assert.equal(calls, 20)
+  assert.ok(peak > 1, `ran serially (peak ${peak})`)
+  assert.ok(peak <= 6, `peak ${peak}`)
+  assert.equal(ov.live.length, 20)
+})
+
+test("/api/items?limit places only about the first chunk", async () => {
+  const many = Array.from({ length: 400 }, (_, k) => item(`m${k}`, `/work/p${k}`, { updatedAt: new Date(1e12 - k * 1000).toISOString() }))
+  const seen = new Set()
+  const git = { ...stubGit, resolve: async (cwd) => { seen.add(cwd); return { commonDir: `${cwd}/.git`, toplevel: cwd } } }
+  const dist = mkdtempSync(join(tmpdir(), "mc-dist-"))
+  writeFileSync(join(dist, "index.html"), "<h1>ok</h1>")
+  const srv = await createServer({ ...source(), listItems: async () => many }, { port: 0, distDir: dist, git })
+  try {
+    const got = await (await fetch(`http://127.0.0.1:${srv.port}/api/items?limit=10`)).json()
+    assert.deepEqual(got.map((i) => i.id), many.slice(0, 10).map((i) => i.id))
+    assert.ok(seen.size <= 50, `resolved ${seen.size} cwds`)
+  } finally { await srv.close() }
 })
 
 test("registry overview accepts a pre-filtered item list", async () => {

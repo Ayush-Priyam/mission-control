@@ -1,3 +1,5 @@
+const OVERVIEW_POOL = 6
+
 /** One place that fans out over every source. Later tasks add sources by passing more to createRegistry. */
 export function createRegistry(sources) {
   const byName = new Map()
@@ -10,7 +12,13 @@ export function createRegistry(sources) {
   const all = () => [...byName.values()]
 
   const errors = new Map() // source name -> last listItems failure
-  async function list() {
+  // Requests that arrive together (overview, slim tree, items on one poll) share one listing.
+  let listing = null
+  function list() {
+    listing ??= listAll().finally(() => { listing = null })
+    return listing
+  }
+  async function listAll() {
     const lists = await Promise.all(
       all().map(async (s) => {
         try {
@@ -48,9 +56,18 @@ export function createRegistry(sources) {
     const where = (i) => ({ title: i.title, cwd: i.cwd ?? null, branch: i.branch ?? null, harness: i.harness, updatedAt: i.updatedAt ?? null, ...(i.project ? { project: i.project } : {}) })
     const needsYou = []
     const live = []
-    const detail = async (i) => { try { return await get(i.source, i.id) } catch { return null } }
-    for (const i of items.filter((x) => x.status === "waiting" || x.live || x.status === "working")) {
-      const d = await detail(i)
+    const busy = items.filter((x) => x.status === "waiting" || x.live || x.status === "working")
+    // Details load at most OVERVIEW_POOL at a time; results keep the list order.
+    const details = new Array(busy.length)
+    let next = 0
+    await Promise.all(Array.from({ length: Math.min(OVERVIEW_POOL, busy.length) }, async () => {
+      while (next < busy.length) {
+        const k = next++
+        try { details[k] = await get(busy[k].source, busy[k].id) } catch { details[k] = null }
+      }
+    }))
+    for (const [k, i] of busy.entries()) {
+      const d = details[k]
       if (i.status === "waiting") {
         const lane = d?.lanes.find((l) => l.status === "waiting")
         needsYou.push({ source: i.source, id: i.id, ...where(i), lane: lane?.id ?? "", detail: lane?.reason ?? "" })

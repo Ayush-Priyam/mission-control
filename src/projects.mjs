@@ -89,14 +89,16 @@ export function createGit({ ttl = STATUS_TTL_MS, now = () => Date.now(), exec: e
 
 export const realGit = createGit()
 
-const keyOf = (path) => `${basename(path).replace(/[^\w.-]/g, "_") || "root"}-${createHash("sha1").update(path).digest("hex").slice(0, 8)}`
+/** "<folder name>-<8 hex of identity>": readable in URLs, unique per identity (a cwd or a git common dir). */
+const keyOf = (name, identity = name) => `${basename(name).replace(/[^\w.-]/g, "_") || "root"}-${createHash("sha1").update(identity).digest("hex").slice(0, 8)}`
 const NO_PROJECT = "no-project"
 
 /** Key, name and path of the project a cwd belongs to, given its git location (or null). */
 function projectInfo(cwd, loc) {
   if (loc) {
     const path = basename(loc.commonDir) === ".git" ? dirname(loc.commonDir) : loc.commonDir
-    return { key: keyOf(loc.commonDir), name: basename(path), path }
+    // Named after the main checkout's folder (the toplevel of the main worktree), hashed on the common dir.
+    return { key: keyOf(path, loc.commonDir), name: basename(path), path }
   }
   if (cwd) return { key: keyOf(cwd), name: basename(cwd) || cwd, path: cwd }
   return { key: NO_PROJECT, name: "(no project)", path: "" }

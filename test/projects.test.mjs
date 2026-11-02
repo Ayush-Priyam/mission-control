@@ -37,6 +37,7 @@ test("items in the main checkout and a linked worktree group under one project",
   const p = tree[0]
   assert.equal(p.name, "shop")
   assert.equal(p.path, r.main)
+  assert.match(p.key, /^shop-[0-9a-f]{8}$/) // V10: named after the main checkout, not ".git"
   assert.equal(p.worktrees.length, 3) // main, linked, and the empty one added from `git worktree list`
   const by = Object.fromEntries(p.worktrees.map((w) => [w.path, w]))
   assert.deepEqual(by[r.main].items.map((i) => i.id).sort(), ["a", "c"])
