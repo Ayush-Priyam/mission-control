@@ -17,18 +17,22 @@ export function Panel({ title, count, aside, children, className, bodyClassName,
   )
 }
 
-/** A row of numbers in hairline cells (the item page's summary strip style). */
+/**
+ * A row of numbers in hairline cells (the item page's summary strip style). Each cell draws its own
+ * hairline (a 1px ring into the 1px gap; the outer edge is clipped), so a short last row leaves card
+ * colour behind it, never an empty grey cell.
+ */
 export function Strip({ children, label, className }: { children: ReactNode; label?: string; className?: string }) {
   return (
-    <section aria-label={label} className={cn("grid gap-px overflow-hidden rounded-xl border bg-border", className)}>
+    <section aria-label={label} data-strip className={cn("grid gap-px overflow-hidden rounded-xl border bg-card", className)}>
       {children}
     </section>
   )
 }
 
-export function StripCell({ k, children, tip, className, sub }: { k: string; children: ReactNode; tip?: string; className?: string; sub?: ReactNode }) {
+export function StripCell({ k, children, tip, className, sub, cellClassName }: { k: string; children: ReactNode; tip?: string; className?: string; sub?: ReactNode; cellClassName?: string }) {
   return (
-    <div className="min-w-0 bg-card px-3 py-2.5" title={tip}>
+    <div data-strip-cell className={cn("min-w-0 bg-card px-3 py-2.5 shadow-[0_0_0_1px_var(--border)]", cellClassName)} title={tip}>
       <div className="truncate text-xs text-muted-foreground">{k}</div>
       <div className={cn("mt-0.5 truncate text-lg font-semibold tracking-tight tabular-nums", className)}>{children}</div>
       {sub && <div className="font-mono text-xs text-muted-foreground">{sub}</div>}

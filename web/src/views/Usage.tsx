@@ -162,12 +162,19 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
             {!harness.data && <Skeleton className="h-20" />}
             {harness.data && harnessSlices.length === 0 && <p className="font-mono text-xs text-muted-foreground">No harness reported usage in this range.</p>}
             {harnessSlices.length > 0 && (
-              <Strip className="grid-cols-[repeat(auto-fit,minmax(220px,1fr))]">
+              <Strip className="grid-cols-[repeat(auto-fit,minmax(240px,1fr))]">
                 {harnessSlices.map((s) => (
                   <StripCell
                     key={s.key}
                     k={s.key === "(other)" ? s.label : harnessName(s.key)}
-                    sub={<>{compact(s.tokens)} · <span title={EST_TIP}>{estMoney(s.cost)}</span> · {s.sessions} sessions</>}
+                    // wraps between the parts when narrow; never clipped
+                    sub={
+                      <span data-harness-sub className="flex flex-wrap gap-x-1.5">
+                        <span className="whitespace-nowrap">{compact(s.tokens)}</span>
+                        <span className="whitespace-nowrap">· <span title={EST_TIP}>{estMoney(s.cost)}</span></span>
+                        <span className="whitespace-nowrap">· {s.sessions} sessions</span>
+                      </span>
+                    }
                   >
                     <span className="flex items-center gap-2">
                       <i aria-hidden className="inline-block size-2 rounded-full" style={{ background: s.color }} />

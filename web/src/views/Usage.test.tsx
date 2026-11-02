@@ -107,6 +107,25 @@ describe("Usage page", () => {
     expect(th.getAttribute("title")).toBe("API list prices; subscription plans differ")
     expect(screen.getByText("$2.00 est.")).toBeTruthy() // harness card
   })
+  it("summary strips leave no grey filler cells, and harness details wrap instead of clipping", async () => {
+    stub(full)
+    render(<Usage />)
+    await waitFor(() => expect(screen.getByTestId("usage-total").textContent).toBe("1,000"))
+    for (const strip of document.querySelectorAll("[data-strip]")) {
+      // the gap shows the strip's own card colour; each cell draws its hairline
+      expect(strip.className).not.toMatch(/\bbg-border\b/)
+      expect(strip.className).toMatch(/\bbg-card\b/)
+      for (const cell of strip.querySelectorAll(":scope > [data-strip-cell]")) expect(cell.className).toContain("shadow-[0_0_0_1px_var(--border)]")
+    }
+    // 7 totals at 4 columns: the total spans two so both rows are full
+    const totals = screen.getByLabelText("Usage totals").querySelector("[data-strip]")!
+    const cells = [...totals.querySelectorAll(":scope > [data-strip-cell]")]
+    expect(cells).toHaveLength(7)
+    expect(cells[0].className).toContain("sm:col-span-2")
+    const sub = document.querySelector("[data-harness-sub]")!
+    expect(sub.textContent).toMatch(/sessions/)
+    expect(sub.closest(".truncate")).toBeNull()
+  })
 
   it("main fresh but harness still loading: the harness section keeps its own old span, never the new range's", async () => {
     stub(full, (url) => (isWeek(url) && url.searchParams.get("by") === "harness" ? new Promise<Reply>(() => {}) : null))
