@@ -5,6 +5,7 @@ import { Panel } from "@/components/Panel"
 import { ItemTable } from "@/components/ItemTable"
 import { LiveActivity } from "@/components/LiveActivity"
 import { NeedsYouQueue } from "@/components/NeedsYouQueue"
+import { ReadyList } from "@/components/ReadyList"
 import { useItems, useSources, type ItemSummary } from "@/lib/api"
 import { useNow } from "@/lib/format"
 import { useShared } from "@/lib/projects-context"
@@ -44,6 +45,11 @@ export default function Home() {
             onActed={overview.reload}
             now={now}
           />
+        )}
+        {overview.data?.ready && overview.data.ready.length > 0 && (
+          <div className="mt-3">
+            <ReadyList entries={overview.data.ready} now={now} />
+          </div>
         )}
       </aside>
       <div className="flex min-w-0 flex-col gap-5 p-5">

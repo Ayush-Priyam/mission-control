@@ -216,3 +216,9 @@ export function askOf(w) {
   for (const k of ["since", "tool", "target"]) if (typeof w?.[k] === "string") out[k] = w[k]
   return out
 }
+
+/** Summary fields for a ready session (done, waiting for your next prompt): { ready, readySince? } or {}. */
+export function readyOf(w) {
+  if (!w?.ready) return {}
+  return typeof w.since === "string" ? { ready: true, readySince: w.since } : { ready: true }
+}

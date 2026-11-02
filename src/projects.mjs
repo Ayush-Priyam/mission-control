@@ -209,11 +209,12 @@ export function shapeTree(tree, { tz = "UTC", now = Date.now(), slim = false, is
   const today = dayIn(now, tz)
   return tree.map((p) => {
     const worktrees = p.worktrees.map((w) => {
-      const counts = { items: w.items.length, live: 0 }
+      const counts = { items: w.items.length, live: 0, ready: 0 }
       for (const s of STATUSES) counts[s] = 0
       let doneToday = 0, updatedAt = null
       for (const i of w.items) {
         if (i.live) counts.live++
+        if (i.ready && i.status !== "waiting") counts.ready++
         if (STATUSES.includes(i.status)) counts[i.status]++
         if (i.status === "done" && i.updatedAt && dayIn(i.updatedAt, tz) === today) doneToday++
         if (i.updatedAt && (!updatedAt || String(i.updatedAt) > updatedAt)) updatedAt = String(i.updatedAt)

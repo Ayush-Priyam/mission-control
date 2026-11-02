@@ -267,3 +267,17 @@ test("stale prompt: answered while the dashboard was down and the hooks predate 
   utimesSync(log, (T + 20_000) / 1000, (T + 20_000) / 1000)
   assert.equal((await overviewFrom(root, hooksDir, T + 40_000)).needsYou.length, 0)
 })
+
+test("ready: Claude's idle reminder makes the session ready (counted and listed in the overview, not in Needs you)", async () => {
+  const { root, hooksDir } = fixture([{ event: "Notification", sessionId: "sess1", ts: new Date(T).toISOString(), kind: "idle_prompt", message: "Claude is waiting for your input" }], { logMtime: T - 5000 })
+  const src = create({ root, hooksDir, now: () => T + 10_000 })
+  const [item] = await src.listItems()
+  assert.deepEqual([item.ready, item.readySince, item.status], [true, new Date(T).toISOString(), "idle"])
+  assert.equal((await src.getItem("sess1")).summary.ready, true)
+  const ov = await createRegistry([src]).overview()
+  assert.deepEqual([ov.counts.ready, ov.counts.waiting, ov.needsYou.length], [1, 0, 0])
+  assert.deepEqual(ov.ready.map((r) => [r.id, r.since]), [["sess1", new Date(T).toISOString()]])
+  const { shapeTree, buildTree } = await import("../src/projects.mjs")
+  const tree = shapeTree(await buildTree(await src.listItems(), { git: stubGit }), { now: T })
+  assert.equal(tree[0].worktrees[0].counts.ready, 1)
+})

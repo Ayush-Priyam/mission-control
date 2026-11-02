@@ -46,14 +46,18 @@ export function createRegistry(sources) {
    */
   async function overview(items) {
     items ??= await list()
-    const counts = { waiting: 0, working: 0, stopped: 0, done: 0 }
+    const counts = { waiting: 0, working: 0, stopped: 0, done: 0, ready: 0 }
+    const ready = []
     for (const i of items) {
+      if (i.ready && i.status !== "waiting") counts.ready++
       if (i.status === "waiting") counts.waiting++
       else if (i.status === "working") counts.working++
       else if (i.status === "done") counts.done++
       else if (i.status === "stopped" || i.status === "failed") counts.stopped++
     }
     const where = (i) => ({ title: i.title, cwd: i.cwd ?? null, branch: i.branch ?? null, harness: i.harness, updatedAt: i.updatedAt ?? null, ...(i.project ? { project: i.project } : {}) })
+    for (const i of items) if (i.ready && i.status !== "waiting") ready.push({ source: i.source, id: i.id, ...where(i), since: i.readySince ?? i.updatedAt ?? null })
+    ready.sort((a, b) => String(b.since ?? "").localeCompare(String(a.since ?? "")))
     const needsYou = []
     const live = []
     const busy = items.filter((x) => x.status === "waiting" || x.live || x.status === "working")
@@ -84,7 +88,7 @@ export function createRegistry(sources) {
     }
     const at = (l) => String(l.nowDoing?.ts ?? l.startedAt ?? l.updatedAt ?? "")
     live.sort((a, b) => at(b).localeCompare(at(a)))
-    return { counts, needsYou, live }
+    return { counts, needsYou, ready, live }
   }
 
   return {

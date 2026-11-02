@@ -1,6 +1,6 @@
 import { closeSync, openSync, readSync, readdirSync, realpathSync, statSync } from "node:fs"
 import { join, sep } from "node:path"
-import { askOf, createWaitingReader } from "../../hooks.mjs"
+import { askOf, createWaitingReader, readyOf } from "../../hooks.mjs"
 import { capText, isSessionName } from "../../names.mjs"
 import { createCache } from "../claude-code/cache.mjs"
 import { costOf } from "../claude-code/prices.mjs"
@@ -9,6 +9,7 @@ import { createUsageScanner } from "../claude-code/usage.mjs"
 import { peek, rolloutAcc, turnsAcc } from "./parse.mjs"
 
 const LIVE_MS = 2 * 60 * 1000
+const READY_TURN_MS = 30 * 60 * 1000
 const TAIL_BYTES = 64 * 1024
 const WAIT_EXPIRY_MS = 12 * 3600 * 1000
 const CLEAR_GAP_MS = 2000
@@ -155,6 +156,8 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, onPa
     const since = Date.parse(w.since)
     if (Number.isFinite(since)) {
       if (now() - since > WAIT_EXPIRY_MS) return null
+      // A finished turn counts as ready for 30 minutes; after that the session is just idle.
+      if (w.turnEnd && now() - since > READY_TURN_MS) return null
       const k = cache.key(r.c.real, r.c.st)
       const last = lastTurns.get(k) ?? lastTurns.set(k, lastTurnMs(r.c.real, r.c.st.size))
       if (last > since + CLEAR_GAP_MS) return null
@@ -232,6 +235,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, onPa
       startedAt: meta.startedAt ?? mp.firstTs, updatedAt: iso(lastMs),
       counts: { lanes: lanes.length, calls: calls.length, errors },
       tokens, cost,
+      ...readyOf(w),
     }
     if (meta.version) summary.version = meta.version
     opened.set(r.id, { lastMs, summary })
@@ -280,6 +284,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, onPa
             startedAt: m?.startedAt ?? r.h.startedAt, updatedAt: iso(lastMs),
             counts: { lanes: 1 + kids.length, calls: done?.counts.calls ?? 0, errors: done?.counts.errors ?? 0 },
             tokens: done?.tokens ?? zero(), cost: done?.cost ?? 0,
+            ...readyOf(w),
             ...(done ? {} : { partial: true }),
           })
         } catch { /* one unreadable file must not hide the rest */ }

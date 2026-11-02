@@ -38,7 +38,7 @@ describe("crumbs", () => {
 
 describe("chipCounts", () => {
   it("shows a dash until the overview loads; done is today's count", () => {
-    expect(chipCounts(null, 2)).toEqual({ waiting: null, working: null, stopped: null, done: 2 })
-    expect(chipCounts({ counts: { waiting: 1, working: 2, stopped: 3, done: 40 }, needsYou: [], live: [], hidden: 0 }, 0)).toEqual({ waiting: 1, working: 2, stopped: 3, done: 0 })
+    expect(chipCounts(null, 2)).toEqual({ waiting: null, ready: null, working: null, stopped: null, done: 2 })
+    expect(chipCounts({ counts: { waiting: 1, working: 2, stopped: 3, done: 40 }, needsYou: [], live: [], hidden: 0 }, 0)).toEqual({ waiting: 1, ready: 0, working: 2, stopped: 3, done: 0 })
   })
 })

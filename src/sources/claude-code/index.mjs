@@ -1,6 +1,6 @@
 import { closeSync, openSync, readSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs"
 import { join, sep } from "node:path"
-import { askOf, createWaitingReader } from "../../hooks.mjs"
+import { askOf, createWaitingReader, readyOf } from "../../hooks.mjs"
 import { capText, isSessionName } from "../../names.mjs"
 import { createCache } from "./cache.mjs"
 import { parseTranscript, peek, transcriptAcc, turnsAcc } from "./parse.mjs"
@@ -287,6 +287,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
       startedAt: mp.firstTs, updatedAt: iso(lastMs),
       counts: { lanes: lanes.length, calls: calls.length, errors },
       tokens, cost,
+      ...readyOf(w),
     }
     if (mp.meta.version) summary.version = mp.meta.version
     opened.set(s.id, { lastMs, summary })
@@ -322,6 +323,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
             startedAt: h.startedAt, updatedAt: iso(lastMs),
             counts: { lanes: 1 + subs.length, calls: done?.counts.calls ?? 0, errors: done?.counts.errors ?? 0 },
             tokens: done?.tokens ?? zero(), cost: done?.cost ?? 0,
+            ...readyOf(w),
             ...(done ? {} : { partial: true }), // totals appear once the session is opened
           })
         } catch { /* one unreadable file must not hide the rest */ }

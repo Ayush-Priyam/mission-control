@@ -190,6 +190,9 @@ export type ItemSummary = {
   project?: Placed
   /** Its project is hidden (noise) by default. */
   hidden?: boolean
+  /** Done and waiting for your next prompt (Claude's idle reminder, or a Codex turn that ended < 30 min ago). */
+  ready?: boolean
+  readySince?: string
 }
 export type Placed = { key: string; name: string; worktree: string }
 export type Lane = {
@@ -245,14 +248,17 @@ export type LiveLane = Where & {
   nowDoing: Lane["nowDoing"] | null
   startedAt: string | null
 }
+/** A session that is done and waiting for your next prompt: not urgent, but findable. */
+export type ReadyItem = Where & { since: string | null }
 export type Overview = {
-  counts: { waiting: number; working: number; stopped: number; done: number }
+  counts: { waiting: number; working: number; stopped: number; done: number; ready?: number; looping?: number }
   needsYou: NeedsYou[]
+  ready?: ReadyItem[]
   live: LiveLane[]
   /** Items left out because their project is hidden. */
   hidden: number
 }
-export type StatusCounts = Record<Status, number> & { items: number; live: number }
+export type StatusCounts = Record<Status, number> & { items: number; live: number; ready?: number; looping?: number }
 /** A worktree as the sidebar sees it (`/api/projects?slim=1`): counts, no item list. */
 export type WorktreeSummary = {
   path: string
