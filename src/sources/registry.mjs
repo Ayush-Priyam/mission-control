@@ -32,8 +32,12 @@ export function createRegistry(sources) {
     return item ? { ...item, summary: { ...item.summary, source: s.name } } : null
   }
 
-  async function overview() {
-    const items = await list()
+  /**
+   * Status counts, what needs you, and what each live lane is doing now (newest first). `items`
+   * (default: every item) lets the caller leave some out, such as hidden projects.
+   */
+  async function overview(items) {
+    items ??= await list()
     const counts = { waiting: 0, working: 0, stopped: 0, done: 0 }
     for (const i of items) {
       if (i.status === "waiting") counts.waiting++
@@ -41,13 +45,24 @@ export function createRegistry(sources) {
       else if (i.status === "done") counts.done++
       else if (i.status === "stopped" || i.status === "failed") counts.stopped++
     }
+    const where = (i) => ({ title: i.title, cwd: i.cwd ?? null, branch: i.branch ?? null, harness: i.harness, updatedAt: i.updatedAt ?? null, ...(i.project ? { project: i.project } : {}) })
     const needsYou = []
-    for (const i of items.filter((x) => x.status === "waiting")) {
-      let lane
-      try { lane = (await get(i.source, i.id))?.lanes.find((l) => l.status === "waiting") } catch { /* keep empty lane/detail */ }
-      needsYou.push({ source: i.source, id: i.id, title: i.title, lane: lane?.id ?? "", detail: lane?.reason ?? "" })
+    const live = []
+    const detail = async (i) => { try { return await get(i.source, i.id) } catch { return null } }
+    for (const i of items.filter((x) => x.status === "waiting" || x.live || x.status === "working")) {
+      const d = await detail(i)
+      if (i.status === "waiting") {
+        const lane = d?.lanes.find((l) => l.status === "waiting")
+        needsYou.push({ source: i.source, id: i.id, ...where(i), lane: lane?.id ?? "", detail: lane?.reason ?? "" })
+      }
+      for (const l of d?.lanes ?? []) {
+        if (l.status !== "working") continue
+        live.push({ source: i.source, id: i.id, ...where(i), lane: l.id, label: l.label, kind: l.kind, model: l.model ?? null, nowDoing: l.nowDoing ?? null, startedAt: l.startedAt ?? null })
+      }
     }
-    return { counts, needsYou }
+    const at = (l) => String(l.nowDoing?.ts ?? l.startedAt ?? l.updatedAt ?? "")
+    live.sort((a, b) => at(b).localeCompare(at(a)))
+    return { counts, needsYou, live }
   }
 
   return {

@@ -15,12 +15,6 @@ export type RunDetail = { state: Record<string, any>; events: Record<string, any
 
 export type Remote<T> = { data: T | null; error: string | null; loading: boolean; reload: () => void }
 
-async function getJson<T>(url: string): Promise<T> {
-  const r = await fetch(url)
-  if (!r.ok) throw new Error(`${url}: ${r.status}`)
-  return r.json()
-}
-
 export type FetchState<T> = { url: string | null; data: T | null; error: string | null; loading: boolean }
 export type FetchAction<T> =
   | { type: "reset"; url: string | null }
@@ -42,6 +36,40 @@ export function fetchReducer<T>(state: FetchState<T>, action: FetchAction<T>): F
   return { ...state, error: action.error, loading: false }
 }
 
+type FetchLike = (url: string, init?: RequestInit) => Promise<Pick<Response, "ok" | "status" | "json"> & Partial<Pick<Response, "text" | "headers">>>
+
+/**
+ * One url's loader. `load()` does nothing while a request is in flight (a slow answer never stacks
+ * polls), sends the last ETag as If-None-Match, and calls `onData` only when the payload changed:
+ * a 304 or an identical body is dropped, so an unchanged poll costs no render.
+ */
+export function createLoader<T>(url: string, onData: (d: T) => void, onError: (e: string) => void, fetchImpl: FetchLike = fetch) {
+  let inFlight = false
+  let etag: string | null = null
+  let last: string | null = null
+  return async function load(): Promise<void> {
+    if (inFlight) return
+    inFlight = true
+    try {
+      const r = etag ? await fetchImpl(url, { headers: { "if-none-match": etag } }) : await fetchImpl(url)
+      if (r.status === 304) return
+      if (!r.ok) throw new Error(`${url}: ${r.status}`)
+      const tag = r.headers?.get("etag") ?? null
+      if (typeof r.text === "function") {
+        const text = await r.text()
+        etag = tag
+        if (text === last) return
+        last = text
+        onData(JSON.parse(text) as T)
+      } else onData((await r.json()) as T)
+    } catch (e: any) {
+      onError(String(e?.message ?? e))
+    } finally {
+      inFlight = false
+    }
+  }
+}
+
 /** `refresh`: any value; when it changes the url is fetched again (data kept until the answer). */
 function useFetch<T>(url: string | null, pollMs = 0, refresh: unknown = 0): Remote<T> {
   const [raw, dispatch] = useReducer(fetchReducer<T>, url, initialFetch<T>)
@@ -55,11 +83,11 @@ function useFetch<T>(url: string | null, pollMs = 0, refresh: unknown = 0): Remo
     if (url === null) return
     let cancelled = false
     let timer: ReturnType<typeof setInterval> | undefined
-    const load = () =>
-      getJson<T>(url).then(
-        (data) => !cancelled && dispatch({ type: "ok", url, data }),
-        (e) => !cancelled && dispatch({ type: "fail", url, error: String(e.message ?? e) }),
-      )
+    const load = createLoader<T>(
+      url,
+      (data) => !cancelled && dispatch({ type: "ok", url, data }),
+      (error) => !cancelled && dispatch({ type: "fail", url, error }),
+    )
     const start = () => {
       if (pollMs && timer === undefined) timer = setInterval(load, pollMs)
     }
@@ -70,11 +98,11 @@ function useFetch<T>(url: string | null, pollMs = 0, refresh: unknown = 0): Remo
     const onVis = () => {
       if (document.hidden) stop()
       else {
-        load()
+        void load()
         start()
       }
     }
-    load()
+    void load()
     if (!document.hidden) start()
     if (pollMs) document.addEventListener("visibilitychange", onVis)
     return () => {
@@ -137,7 +165,12 @@ export type ItemSummary = {
   counts: { lanes: number; calls: number; errors: number }
   tokens: Tokens
   cost: number
+  /** Set by /api/items: the project and worktree the item's cwd belongs to. */
+  project?: Placed
+  /** Its project is hidden (noise) by default. */
+  hidden?: boolean
 }
+export type Placed = { key: string; name: string; worktree: string }
 export type Lane = {
   id: string
   label: string
@@ -169,21 +202,41 @@ export type Call = {
   result?: unknown
 }
 export type ItemDetail = { summary: ItemSummary; lanes: Lane[]; events: Record<string, any>[]; state?: Record<string, any> }
+type Where = { source: string; id: string; title: string; cwd: string | null; branch: string | null; harness: string; updatedAt: string | null; project?: Placed }
+export type NeedsYou = Where & { lane: string; detail: string }
+export type LiveLane = Where & {
+  lane: string
+  label: string
+  kind: Lane["kind"]
+  model: string | null
+  nowDoing: Lane["nowDoing"] | null
+  startedAt: string | null
+}
 export type Overview = {
   counts: { waiting: number; working: number; stopped: number; done: number }
-  needsYou: { source: string; id: string; title: string; lane: string; detail: string }[]
+  needsYou: NeedsYou[]
+  live: LiveLane[]
+  /** Items left out because their project is hidden. */
+  hidden: number
 }
-export type WorktreeNode = {
+export type StatusCounts = Record<Status, number> & { items: number; live: number }
+/** A worktree as the sidebar sees it (`/api/projects?slim=1`): counts, no item list. */
+export type WorktreeSummary = {
   path: string
   branch: string | null
-  items: ItemSummary[]
   live: boolean
   waiting: boolean
   dirty?: number
   ahead?: number
   behind?: number
+  counts: StatusCounts
+  /** Items done today in the viewer's zone. */
+  doneToday: number
+  updatedAt: string | null
 }
-export type ProjectNode = { key: string; name: string; path: string; worktrees: WorktreeNode[] }
+export type ProjectSummary = { key: string; name: string; path: string; hidden?: boolean; worktrees: WorktreeSummary[] }
+export type WorktreeNode = WorktreeSummary & { items: ItemSummary[] }
+export type ProjectNode = { key: string; name: string; path: string; hidden?: boolean; worktrees: WorktreeNode[] }
 export type SourceInfo = { name: string; harness: string; extras: string[]; actions: string[]; source: string | null; error?: string }
 export type UsageBy = "model" | "project" | "harness" | "day" | "worktree" | "branch"
 export type UsageQuery = { from?: string; to?: string; by?: UsageBy }
@@ -216,14 +269,34 @@ export const usageUrl = (q: UsageQuery, tz: string) => `/api/usage${qs({ from: q
 
 const PROJECTS_POLL = 5000
 
-export const useOverview = () => useFetch<Overview>("/api/overview", POLL)
+/** Overview counts leave hidden projects out unless `all`. */
+export const overviewUrl = (all = false) => `/api/overview${all ? "?all=1" : ""}`
+export const projectsUrl = (tz: string) => `/api/projects${qs({ slim: "1", tz })}`
+export const projectUrl = (key: string, tz: string) => `/api/project/${encodeURIComponent(key)}${qs({ tz })}`
+export const itemsUrl = (q: { all?: boolean; limit?: number; source?: string; id?: string } = {}) =>
+  `/api/items${qs({ all: q.all ? "1" : undefined, limit: q.limit === undefined ? undefined : String(q.limit), source: q.source, id: q.id })}`
+
+export const useOverview = (all = false) => useFetch<Overview>(overviewUrl(all), POLL)
 export const useSources = () => useFetch<SourceInfo[]>("/api/sources")
-/** The full project tree with every item; large on a busy machine, so it polls slower. Share it via ProjectsProvider. */
-export const useProjects = () => useFetch<ProjectNode[]>("/api/projects", PROJECTS_POLL)
-export const useProject = (key: string | null) =>
-  useFetch<ProjectNode>(key ? `/api/project/${encodeURIComponent(key)}` : null, PROJECTS_POLL)
-export const useItems = () => useFetch<ItemSummary[]>("/api/items", POLL)
+/** The slim project tree (counts per worktree, no items) for the sidebar and chips. Share it via ProjectsProvider. */
+export const useProjects = () => useFetch<ProjectSummary[]>(projectsUrl(browserTz()), PROJECTS_POLL)
+/** One project with its items: only for the open project page. */
+export const useProject = (key: string | null) => useFetch<ProjectNode>(key ? projectUrl(key, browserTz()) : null, PROJECTS_POLL)
+/** Items with their project; `poll` false loads once (the palette, a crumb lookup). */
+export const useItems = (q: Parameters<typeof itemsUrl>[0] = {}, enabled = true, poll = true) =>
+  useFetch<ItemSummary[]>(enabled ? itemsUrl(q) : null, poll ? POLL : 0)
 export const useItem = (source: string, id: string | null) => useFetch<ItemDetail>(id ? itemUrl(source, id) : null, POLL)
 export const useCalls = (source: string, id: string | null, f: CallFilter = {}) =>
   useFetch<Call[]>(id ? callsUrl(source, id, f) : null, POLL)
 export const useUsage = (q: UsageQuery = {}) => useFetch<UsageResult>(usageUrl(q, browserTz()))
+
+export async function postItemAction(source: string, id: string, name: string, body: object = {}) {
+  const r = await fetch(`${itemUrl(source, id)}/action/${encodeURIComponent(name)}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  })
+  const j = await r.json().catch(() => ({}))
+  if (!r.ok) throw new Error(j.error ?? j.message ?? `action ${name}: ${r.status}`)
+  return j
+}

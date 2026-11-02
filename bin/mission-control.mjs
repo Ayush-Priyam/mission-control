@@ -27,6 +27,7 @@ if (argv[0] === "hooks" && argv[1] === "install") {
 
 const { spawn } = await import("node:child_process")
 const { createServer } = await import("../src/server.mjs")
+const { defaultConfigPath } = await import("../src/hidden.mjs")
 const { loadClaude, loadSources, parseArgs } = await import("../src/adapters/load.mjs")
 let args
 try { args = parseArgs(argv) } catch (e) {
@@ -52,7 +53,7 @@ try {
 }
 
 let srv
-try { srv = await createServer(adapters, { port }) } catch { process.exit(1) }
+try { srv = await createServer(adapters, { port, config: defaultConfigPath() }) } catch { process.exit(1) }
 
 if (!args.noOpen && process.platform === "darwin") {
   spawn("open", [`http://localhost:${srv.port}`], { stdio: "ignore", detached: true }).on("error", () => {}).unref()

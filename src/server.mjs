@@ -6,7 +6,9 @@ import { fileURLToPath } from "node:url"
 import { isRunId, isSessionName } from "./names.mjs"
 import { crewStats } from "./crew.mjs"
 import { fromAdapter } from "./sources/from-adapter.mjs"
-import { buildTree, projectsOf } from "./projects.mjs"
+import { createHash } from "node:crypto"
+import { buildTree, NO_PROJECT_INFO, projectsOf, shapeTree } from "./projects.mjs"
+import { createHide, isNoise } from "./hidden.mjs"
 import { aggregate, defaultTz, isBy, isTz } from "./usage.mjs"
 import { createRegistry } from "./sources/registry.mjs"
 
@@ -25,9 +27,25 @@ const TYPES = {
   ".map": "application/json; charset=utf-8",
 }
 
+/**
+ * A 200 answer to a GET carries a weak ETag; a request whose If-None-Match names it gets 304 and no
+ * body, so a poll of an unchanged tree costs a hash, not a transfer. Still no-store: the page sends
+ * If-None-Match itself and keeps its own copy.
+ */
 function json(res, body, status = 200) {
-  res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" })
-  res.end(JSON.stringify(body))
+  const text = JSON.stringify(body)
+  const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }
+  const req = res.req
+  if (status === 200 && req && (req.method === "GET" || req.method === "HEAD")) {
+    const tag = `W/"${createHash("sha1").update(text).digest("hex").slice(0, 20)}"`
+    headers.etag = tag
+    if (String(req.headers["if-none-match"] ?? "").split(/\s*,\s*/).includes(tag)) {
+      res.writeHead(304, { etag: tag, "cache-control": "no-store" })
+      return res.end()
+    }
+  }
+  res.writeHead(status, headers)
+  res.end(text)
 }
 
 async function serveStatic(res, distDir, pathname) {
@@ -87,8 +105,23 @@ async function sendExtra(res, r) {
 }
 
 // v2 routes, one set for every source: /api/overview, /api/items, /api/projects, /api/project/:key, /api/item/:source/:id[/...]
-async function apiV2(registry, git, req, res, url, parts) {
+/** Every item with `project` ({ key, name, worktree }) and `hidden` when its project is noise. */
+async function placed(registry, git, hide) {
+  const items = await registry.list()
+  const where = await projectsOf(items.map((i) => i.cwd), { git })
+  const list = hide.list()
+  return items.map((i) => {
+    const p = (i.cwd && where.get(i.cwd)) || NO_PROJECT_INFO
+    return { ...i, project: { key: p.key, name: p.name, worktree: p.worktree }, ...(isNoise(p, list) ? { hidden: true } : {}) }
+  })
+}
+
+async function apiV2({ registry, git, hide, now }, req, res, url, parts) {
   const get = req.method === "GET" || req.method === "HEAD"
+  const q = url.searchParams
+  const all = q.get("all") === "1"
+  const tzOf = () => q.get("tz") ?? defaultTz()
+  const isHidden = (p) => isNoise(p, hide.list())
   if (get && parts[0] === "sources" && parts.length === 1) {
     await registry.list() // refresh per-source errors
     return json(res, registry.sources().map((s) => ({
@@ -96,17 +129,35 @@ async function apiV2(registry, git, req, res, url, parts) {
       ...(registry.error(s.name) ? { error: registry.error(s.name) } : {}),
     })))
   }
-  if (get && parts[0] === "overview" && parts.length === 1) return json(res, await registry.overview())
-  if (get && parts[0] === "items" && parts.length === 1) return json(res, await registry.list())
-  if (get && parts[0] === "projects" && parts.length === 1) return json(res, await buildTree(await registry.list(), { git }))
+  if (get && parts[0] === "overview" && parts.length === 1) {
+    const items = await placed(registry, git, hide)
+    const shown = all ? items : items.filter((i) => !i.hidden)
+    return json(res, { ...(await registry.overview(shown)), hidden: items.length - shown.length })
+  }
+  if (get && parts[0] === "items" && parts.length === 1) {
+    const limit = q.get("limit")
+    if (limit !== null && !/^\d{1,6}$/.test(limit)) return json(res, { error: "bad limit" }, 400)
+    const source = q.get("source"), id = q.get("id")
+    let items = await placed(registry, git, hide)
+    if (!all) items = items.filter((i) => !i.hidden)
+    if (source !== null) items = items.filter((i) => i.source === source)
+    if (id !== null) items = items.filter((i) => i.id === id)
+    return json(res, limit === null ? items : items.slice(0, Number(limit)))
+  }
+  if (get && parts[0] === "projects" && parts.length === 1) {
+    const tz = tzOf()
+    if (!isTz(tz)) return json(res, { error: "bad tz" }, 400)
+    const tree = await buildTree(await registry.list(), { git })
+    return json(res, shapeTree(tree, { tz, now: now(), slim: q.get("slim") === "1", isHidden }))
+  }
   if (get && parts[0] === "project" && parts.length === 2) {
     const key = decode(parts[1])
-    if (!isKey(key)) return json(res, { error: "not allowed" }, 400)
+    const tz = tzOf()
+    if (!isKey(key) || !isTz(tz)) return json(res, { error: "not allowed" }, 400)
     const p = (await buildTree(await registry.list(), { git, only: key })).find((x) => x.key === key)
-    return p ? json(res, p) : json(res, { error: "no such project" }, 404)
+    return p ? json(res, shapeTree([p], { tz, now: now(), isHidden })[0]) : json(res, { error: "no such project" }, 404)
   }
   if (get && parts[0] === "usage" && parts.length === 1) {
-    const q = url.searchParams
     const from = q.get("from") ?? undefined, to = q.get("to") ?? undefined, by = q.get("by") ?? "model"
     const tz = q.get("tz") ?? defaultTz()
     const day = { test: (v) => /^\d{4}-\d{2}-\d{2}$/.test(v) && Number.isFinite(Date.parse(`${v}T00:00:00Z`)) && new Date(`${v}T00:00:00Z`).toISOString().startsWith(v) }
@@ -129,7 +180,6 @@ async function apiV2(registry, git, req, res, url, parts) {
     return item ? json(res, item) : json(res, { error: "no such item" }, 404)
   }
   if (get && parts[3] === "calls" && parts.length === 4) {
-    const q = url.searchParams
     return json(res, await registry.calls(source, id, { lane: q.get("lane") ?? undefined, kind: q.get("kind") ?? undefined, q: q.get("q") ?? undefined }))
   }
   if (get && parts[3] === "session" && parts.length === 5) {
@@ -155,11 +205,12 @@ async function apiV2(registry, git, req, res, url, parts) {
   return false
 }
 
-async function api({ adapter, registry, git }, req, res, url) {
+async function api(ctx, req, res, url) {
+  const { adapter } = ctx
   const parts = url.pathname.split("/").slice(2) // after "/api"
   const get = req.method === "GET" || req.method === "HEAD"
   try {
-    if ((await apiV2(registry, git, req, res, url, parts)) !== false) return
+    if ((await apiV2(ctx, req, res, url, parts)) !== false) return
     // v1 routes below: aliases for the first adapter-backed source.
     if (!adapter) return notFound(res)
     if (get && parts[0] === "runs" && parts.length === 1) return json(res, await adapter.listRuns())
@@ -209,12 +260,13 @@ const LOOPBACK = ["localhost", "127.0.0.1", "[::1]"]
  * `input` is one v1 adapter, one source, or an array of either. Every entry becomes a source;
  * the v1 routes (/api/runs, /api/run/..., /api/crew, /api/x/...) stay as aliases for the first adapter.
  */
-export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git } = {}) {
+export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, config = null, now = () => Date.now() } = {}) {
   const entries = Array.isArray(input) ? input : [input]
   const sources = entries.map((e) => (typeof e.listItems === "function" ? e : fromAdapter(e)))
   const registry = createRegistry(sources)
   const adapter = entries.find((e) => typeof e.listRuns === "function") ?? null
-  const ctx = { adapter, registry, git }
+  // `config`: path of config.json ({ "hide": [...] }); null reads nothing. The CLI passes ~/.mission-control/config.json.
+  const ctx = { adapter, registry, git, hide: createHide(config), now }
   if (!existsSync(join(distDir, "index.html"))) {
     console.error(`mission control: no built page at ${join(distDir, "index.html")} — run npm run build`)
   }

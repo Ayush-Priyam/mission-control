@@ -2,11 +2,12 @@ import { useEffect, useState, type ReactNode } from "react"
 import { Shell } from "@/components/Shell"
 import Home from "@/views/Home"
 import Project from "@/views/Project"
+import ProjectPage from "@/views/ProjectPage"
 import Run from "@/views/Run"
 import Agent from "@/views/Agent"
-import { RunsProvider, useSharedRuns, repoName } from "@/lib/runs-context"
-import { ProjectsProvider, useShared } from "@/lib/projects-context"
-import { parseRoute, toHash, TABS, type Route, type Tab } from "@/lib/route"
+import { RunsProvider, useSharedRuns } from "@/lib/runs-context"
+import { ProjectsProvider } from "@/lib/projects-context"
+import { parseRoute, TABS, type Route, type Tab } from "@/lib/route"
 
 function useRoute(): Route {
   const [route, setRoute] = useState(() => parseRoute(location.hash))
@@ -42,43 +43,16 @@ function Item({ source, id, tab }: { source: string; id: string; tab: string }) 
   )
 }
 
-function ProjectPending({ projectKey }: { projectKey: string }) {
-  const { projects } = useShared()
-  const runs = useSharedRuns()
-  const name = projects.data?.find((p) => p.key === projectKey)?.name
-  const v1 = name && runs.data?.some((r) => repoName(r.repo) === name)
-  return (
-    <Pending task="Task 7" title={`Project page${name ? ` for ${name}` : ""}`}>
-      Worktree cards and this project's runs and sessions.
-      {v1 && (
-        <>
-          {" "}
-          Meanwhile:{" "}
-          <a className="underline hover:text-foreground" href={toHash({ view: "repo", repo: name })}>
-            v1 project page
-          </a>
-          .
-        </>
-      )}
-    </Pending>
-  )
-}
-
 function Page({ route }: { route: Route }) {
   switch (route.view) {
     case "home":
-      return (
-        <div className="flex flex-col gap-6">
-          <Pending task="Task 7" title="Home: needs-you queue, live activity, recent runs and sessions" />
-          <Home />
-        </div>
-      )
+      return <Home />
     case "usage":
       return <Pending task="Task 11" title="Usage: totals, split by model and harness, heatmap, daily and per-project tables" />
     case "project":
-      return <ProjectPending key={route.key} projectKey={route.key} />
+      return <ProjectPage key={route.key} projectKey={route.key} />
     case "worktree":
-      return <Pending task="Task 7" title={`Worktree ${route.path}`}>Its runs and sessions, filtered from the project page.</Pending>
+      return <ProjectPage key={`${route.key}|${route.path}`} projectKey={route.key} worktree={route.path} />
     case "item":
       return <Item key={`${route.source}/${route.id}`} source={route.source} id={route.id} tab={route.tab} />
     case "run":

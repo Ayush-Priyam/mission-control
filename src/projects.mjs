@@ -102,15 +102,15 @@ function projectInfo(cwd, loc) {
   return { key: NO_PROJECT, name: "(no project)", path: "" }
 }
 
-/** cwd -> { key, name } for each distinct cwd, using the same keys as buildTree. "" and missing -> no-project. */
+/** cwd -> { key, name, path, worktree } for each distinct cwd, using the same keys and worktree paths as buildTree. */
 export async function projectsOf(cwds, { git = realGit } = {}) {
   const list = [...new Set(cwds.filter((c) => typeof c === "string" && c))]
   const out = new Map()
   await pool(list, async (cwd) => {
     let loc = null
     try { loc = await git.resolve(cwd) } catch { /* fall back to the cwd */ }
-    const { key, name } = projectInfo(cwd, loc)
-    out.set(cwd, { key, name })
+    const { key, name, path } = projectInfo(cwd, loc)
+    out.set(cwd, { key, name, path, worktree: loc ? loc.toplevel : cwd })
   })
   return out
 }
@@ -186,4 +186,39 @@ export async function buildTree(items, { git = realGit, only } = {}) {
     return { key: p.key, name: p.name, path: p.path, worktrees }
   }).sort((a, b) => Math.max(...b.worktrees.map((w) => +!!w.live)) - Math.max(...a.worktrees.map((w) => +!!w.live)) ||
     newest(b.worktrees[0]).localeCompare(newest(a.worktrees[0])) || a.name.localeCompare(b.name))
+}
+
+/** Where an item with no usable cwd is filed (matches buildTree's fallback). */
+export const NO_PROJECT_INFO = Object.freeze({ key: NO_PROJECT, name: "(no project)", path: "", worktree: "" })
+
+const STATUSES = ["waiting", "working", "stopped", "failed", "done", "idle"]
+
+/** The day of `ts` in zone `tz` (YYYY-MM-DD), or null. */
+const dayIn = (ts, tz) => {
+  const d = new Date(ts)
+  return Number.isFinite(d.getTime()) ? d.toLocaleDateString("en-CA", { timeZone: tz }) : null
+}
+
+/**
+ * Per-worktree counts by status, live count, done-today (in `tz`) and newest update; `hidden` on noise
+ * projects (`isHidden(project)`). `slim` drops the item lists, leaving what the sidebar and chips need.
+ */
+export function shapeTree(tree, { tz = "UTC", now = Date.now(), slim = false, isHidden = () => false } = {}) {
+  const today = dayIn(now, tz)
+  return tree.map((p) => {
+    const worktrees = p.worktrees.map((w) => {
+      const counts = { items: w.items.length, live: 0 }
+      for (const s of STATUSES) counts[s] = 0
+      let doneToday = 0, updatedAt = null
+      for (const i of w.items) {
+        if (i.live) counts.live++
+        if (STATUSES.includes(i.status)) counts[i.status]++
+        if (i.status === "done" && i.updatedAt && dayIn(i.updatedAt, tz) === today) doneToday++
+        if (i.updatedAt && (!updatedAt || String(i.updatedAt) > updatedAt)) updatedAt = String(i.updatedAt)
+      }
+      const { items, ...rest } = w
+      return { ...rest, ...(slim ? {} : { items }), counts, doneToday, updatedAt }
+    })
+    return { ...p, ...(isHidden(p) ? { hidden: true } : {}), worktrees }
+  })
 }

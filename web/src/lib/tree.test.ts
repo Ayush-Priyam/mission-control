@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import type { ItemSummary, ProjectNode } from "./api"
-import { doneToday, filterTree, matchesFilter, paletteResults, rollup, worktreeLabel } from "./tree"
+import type { ItemSummary, ProjectSummary, StatusCounts, WorktreeSummary } from "./api"
+import { doneToday, filterCount, filterTree, matchesFilter, paletteResults, rollup, rollupCounts, visibleProjects, worktreeLabel } from "./tree"
 
 const item = (id: string, status: ItemSummary["status"], extra: Partial<ItemSummary> = {}): ItemSummary => ({
   source: "claude-code",
@@ -21,23 +21,39 @@ const item = (id: string, status: ItemSummary["status"], extra: Partial<ItemSumm
   ...extra,
 })
 
-const tree = (): ProjectNode[] => [
+const counts = (c: Partial<StatusCounts> = {}): StatusCounts => ({ items: 0, live: 0, waiting: 0, working: 0, stopped: 0, failed: 0, done: 0, idle: 0, ...c })
+const wt = (path: string, branch: string | null, c: Partial<StatusCounts>, extra: Partial<WorktreeSummary> = {}): WorktreeSummary => ({
+  path,
+  branch,
+  live: !!c.live,
+  waiting: !!c.waiting,
+  counts: counts(c),
+  doneToday: 0,
+  updatedAt: null,
+  ...extra,
+})
+
+const tree = (): ProjectSummary[] => [
   {
     key: "app-1",
     name: "app",
     path: "/w/app",
     worktrees: [
-      { path: "/w/app", branch: "main", items: [item("a", "working"), item("b", "done")], live: true, waiting: false },
-      { path: "/w/app-feat", branch: "feat/login", items: [item("c", "waiting")], live: false, waiting: true },
-      { path: "/w/app-old", branch: null, items: [], live: false, waiting: false },
+      wt("/w/app", "main", { items: 2, live: 1, working: 1, done: 1 }, { doneToday: 1 }),
+      wt("/w/app-feat", "feat/login", { items: 1, waiting: 1 }),
+      wt("/w/app-old", null, {}),
     ],
   },
-  {
-    key: "shop-2",
-    name: "shop",
-    path: "/w/shop",
-    worktrees: [{ path: "/w/shop", branch: "main", items: [item("d", "failed", { title: "Checkout flow" }), item("e", "stopped")], live: false, waiting: false }],
-  },
+  { key: "shop-2", name: "shop", path: "/w/shop", worktrees: [wt("/w/shop", "main", { items: 2, failed: 1, stopped: 1 })] },
+  { key: "mem-3", name: "observer-sessions", path: "/h/.claude-mem/observer-sessions", hidden: true, worktrees: [wt("/h/.claude-mem/observer-sessions", null, { items: 9, done: 9 }, { doneToday: 4 })] },
+]
+const placed = (key: string, name: string, worktree: string) => ({ project: { key, name, worktree } })
+const items = (): ItemSummary[] => [
+  item("a", "working", placed("app-1", "app", "/w/app")),
+  item("b", "done", placed("app-1", "app", "/w/app")),
+  item("c", "waiting", { ...placed("app-1", "app", "/w/app-feat"), branch: "feat/login" }),
+  item("d", "failed", { title: "Checkout flow", ...placed("shop-2", "shop", "/w/shop") }),
+  item("e", "stopped", placed("shop-2", "shop", "/w/shop")),
 ]
 
 describe("rollup", () => {
@@ -48,6 +64,11 @@ describe("rollup", () => {
     expect(rollup([item("a", "stopped"), item("c", "done")])).toBe("stopped")
     expect(rollup([item("a", "idle"), item("c", "done")])).toBe("done")
     expect(rollup([])).toBe("idle")
+  })
+  it("works the same over status counts", () => {
+    expect(rollupCounts([counts({ done: 3 }), counts({ working: 1 })])).toBe("working")
+    expect(rollupCounts([counts({ failed: 1, waiting: 1 })])).toBe("waiting")
+    expect(rollupCounts([counts()])).toBe("idle")
   })
 })
 
@@ -61,32 +82,45 @@ describe("matchesFilter", () => {
   })
 })
 
-describe("doneToday", () => {
-  it("counts items finished on the viewer's day", () => {
-    const now = new Date("2026-11-02T18:00:00.000Z")
-    expect(doneToday(tree(), now)).toBe(1)
-    expect(doneToday(tree(), new Date("2026-11-20T12:00:00.000Z"))).toBe(0)
+describe("doneToday and hidden projects", () => {
+  it("sums the server's per-worktree done-today counts", () => {
+    expect(doneToday(tree())).toBe(5)
+    expect(doneToday(visibleProjects(tree(), false))).toBe(1)
+  })
+  it("hidden projects show only when asked", () => {
+    expect(visibleProjects(tree(), false).map((p) => p.key)).toEqual(["app-1", "shop-2"])
+    expect(visibleProjects(tree(), true)).toHaveLength(3)
+  })
+})
+
+describe("filterCount", () => {
+  it("stopped includes failed; done is done today", () => {
+    const w = wt("/w", null, { items: 6, stopped: 1, failed: 2, done: 3, waiting: 1 }, { doneToday: 2 })
+    expect(filterCount(w, null)).toBe(6)
+    expect(filterCount(w, "stopped")).toBe(3)
+    expect(filterCount(w, "done")).toBe(2)
+    expect(filterCount(w, "waiting")).toBe(1)
   })
 })
 
 describe("filterTree", () => {
-  const now = new Date("2026-11-02T18:00:00.000Z")
   it("no query and no filter keeps everything", () => {
-    expect(filterTree(tree(), "", null, now)).toHaveLength(2)
+    expect(filterTree(tree(), "", null)).toHaveLength(3)
   })
-  it("a status filter keeps only worktrees with matching items, items narrowed", () => {
-    const t = filterTree(tree(), "", "waiting", now)
+  it("a status filter keeps only worktrees with matching items, the count narrowed", () => {
+    const t = filterTree(tree(), "", "waiting")
     expect(t.map((p) => p.key)).toEqual(["app-1"])
-    expect(t[0].worktrees.map((w) => w.path)).toEqual(["/w/app-feat"])
+    expect(t[0].worktrees.map((w) => [w.path, w.counts.items])).toEqual([["/w/app-feat", 1]])
+    expect(filterTree(tree(), "", "stopped")[0].worktrees[0].counts.items).toBe(2)
   })
   it("the query matches project name, branch or path, case-insensitive", () => {
-    expect(filterTree(tree(), "SHOP", null, now).map((p) => p.key)).toEqual(["shop-2"])
-    const t = filterTree(tree(), "login", null, now)
+    expect(filterTree(tree(), "SHOP", null).map((p) => p.key)).toEqual(["shop-2"])
+    const t = filterTree(tree(), "login", null)
     expect(t.map((p) => p.key)).toEqual(["app-1"])
     expect(t[0].worktrees.map((w) => w.branch)).toEqual(["feat/login"])
   })
   it("a project-name hit keeps all its worktrees", () => {
-    expect(filterTree(tree(), "app", null, now)[0].worktrees).toHaveLength(3)
+    expect(filterTree(tree(), "app", null)[0].worktrees).toHaveLength(3)
   })
 })
 
@@ -100,26 +134,26 @@ describe("worktreeLabel", () => {
 
 describe("paletteResults", () => {
   it("empty query lists pages, then projects, then needs-you and live items first", () => {
-    const r = paletteResults(tree(), "")
+    const r = paletteResults(visibleProjects(tree(), false), items(), "")
     expect(r.slice(0, 2).map((x) => x.label)).toEqual(["Home", "Usage"])
     expect(r.filter((x) => x.kind === "project").map((x) => x.label)).toEqual(["app", "shop"])
-    const items = r.filter((x) => x.kind === "item")
-    expect(items[0].id).toBe("item:claude-code/c")
-    expect(items[1].id).toBe("item:claude-code/a")
+    const found = r.filter((x) => x.kind === "item")
+    expect(found[0].id).toBe("item:claude-code/c")
+    expect(found[1].id).toBe("item:claude-code/a")
   })
   it("matches item titles and ids, and links items to their route", () => {
-    const r = paletteResults(tree(), "checkout")
+    const r = paletteResults(tree(), items(), "checkout")
     expect(r).toHaveLength(1)
     expect(r[0]).toMatchObject({ kind: "item", label: "Checkout flow", hint: "shop · main", href: "#/item/claude-code/d/lanes", status: "failed" })
   })
   it("keeps each kind together so group headers show once", () => {
-    const kinds = paletteResults(tree(), "w").map((x) => x.kind)
+    const kinds = paletteResults(tree(), items(), "w").map((x) => x.kind)
     expect(kinds).toContain("worktree")
     const runs = kinds.filter((k, i) => k !== kinds[i - 1])
     expect(runs).toEqual([...new Set(runs)])
   })
   it("caps the list", () => {
-    const many: ProjectNode[] = [{ ...tree()[0], worktrees: [{ ...tree()[0].worktrees[0], items: Array.from({ length: 300 }, (_, i) => item(`n${i}`, "done")) }] }]
-    expect(paletteResults(many, "title").length).toBeLessThanOrEqual(50)
+    const many = Array.from({ length: 300 }, (_, i) => item(`n${i}`, "done"))
+    expect(paletteResults(tree(), many, "title").length).toBeLessThanOrEqual(50)
   })
 })

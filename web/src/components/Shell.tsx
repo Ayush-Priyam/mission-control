@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { Moon, PanelLeft, Search, Sun } from "lucide-react"
-import { useOverview, useSources, type ProjectNode } from "@/lib/api"
+import { useItems, useSources, type ItemSummary, type ProjectSummary } from "@/lib/api"
 import { useShared } from "@/lib/projects-context"
 import { toHash, type Route } from "@/lib/route"
 import { doneToday, worktreeLabel } from "@/lib/tree"
@@ -30,8 +30,8 @@ function store(key: string, v: string) {
 export const footerNote = (actions: string[] | undefined) =>
   `${actions?.length ? "read-only except your actions" : "read-only"} · local · 127.0.0.1`
 
-/** Breadcrumbs for a route, with names looked up in the project tree. */
-export function crumbs(route: Route, projects: ProjectNode[]): { label: string; href?: string }[] {
+/** Breadcrumbs for a route, with names looked up in the project tree (`item`: the item route's summary, placed). */
+export function crumbs(route: Route, projects: ProjectSummary[], item?: ItemSummary | null): { label: string; href?: string }[] {
   const home = { label: "home", href: toHash({ view: "home" }) }
   const project = (key: string) => projects.find((p) => p.key === key)
   switch (route.view) {
@@ -47,17 +47,16 @@ export function crumbs(route: Route, projects: ProjectNode[]): { label: string; 
       return [home, { label: p?.name ?? route.key, href: toHash({ view: "project", key: route.key }) }, { label: w ? worktreeLabel(w) : route.path }]
     }
     case "item": {
-      for (const p of projects)
-        for (const w of p.worktrees) {
-          const i = w.items.find((x) => x.source === route.source && x.id === route.id)
-          if (i)
-            return [
-              home,
-              { label: p.name, href: toHash({ view: "project", key: p.key }) },
-              { label: worktreeLabel(w), href: toHash({ view: "worktree", key: p.key, path: w.path }) },
-              { label: i.title || i.id },
-            ]
-        }
+      const at = item?.project
+      if (item && at) {
+        const w = project(at.key)?.worktrees.find((x) => x.path === at.worktree)
+        return [
+          home,
+          { label: at.name, href: toHash({ view: "project", key: at.key }) },
+          { label: w ? worktreeLabel(w) : item.branch || worktreeLabel({ path: at.worktree, branch: null }), href: toHash({ view: "worktree", key: at.key, path: at.worktree }) },
+          { label: item.title || item.id },
+        ]
+      }
       return [home, { label: `${route.source} · ${route.id}` }]
     }
     case "run":
@@ -92,10 +91,12 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
   const [theme, setTheme] = useState<Theme>(() => (stored(THEME_KEY) === "light" ? "light" : "dark"))
   const [sidebar, setSidebar] = useState(() => stored(SIDEBAR_KEY) !== "closed")
   const [palette, setPalette] = useState(false)
-  const { projects, filter, setFilter } = useShared()
-  const overview = useOverview()
+  const { projects, visible: tree, hiddenCount, showHidden, setShowHidden, overview, filter, setFilter } = useShared()
   const sources = useSources()
-  const tree = projects.data ?? []
+  // The item route's summary, placed in its project: for the crumbs and the sidebar selection.
+  const isItem = route.view === "item"
+  const found = useItems(isItem ? { all: true, source: route.source, id: route.id } : {}, isItem, false)
+  const item = isItem ? (found.data?.[0] ?? null) : null
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark")
@@ -114,7 +115,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
   }, [])
 
   const counts = useMemo(() => chipCounts(overview.data, doneToday(tree)), [overview.data, tree])
-  const live = useMemo(() => tree.reduce((n, p) => n + p.worktrees.reduce((m, w) => m + w.items.filter((i) => i.live).length, 0), 0), [tree])
+  const live = useMemo(() => tree.reduce((n, p) => n + p.worktrees.reduce((m, w) => m + w.counts.live, 0), 0), [tree])
   const actions = sources.data?.flatMap((s) => s.actions)
 
   return (
@@ -166,16 +167,20 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
             loading={projects.loading}
             error={projects.error}
             route={route}
+            itemWhere={item?.project ?? null}
             filter={filter}
             footer={footerNote(actions)}
+            hiddenCount={hiddenCount}
+            showHidden={showHidden}
+            onShowHidden={setShowHidden}
           />
         </div>
         <div className="flex min-w-0 flex-1 flex-col">
-          <Crumbs items={crumbs(route, tree)} />
+          <Crumbs items={crumbs(route, projects.data ?? [], item)} />
           <main className="min-h-0 flex-1 overflow-y-auto p-5">{children}</main>
         </div>
       </div>
-      <CommandPalette open={palette} onOpenChange={setPalette} projects={tree} />
+      <CommandPalette open={palette} onOpenChange={setPalette} projects={tree} showHidden={showHidden} />
     </div>
   )
 }

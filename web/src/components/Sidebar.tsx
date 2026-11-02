@@ -1,27 +1,24 @@
 import { useMemo, useState } from "react"
-import { BarChart3, ChevronRight, House, Search } from "lucide-react"
-import type { ProjectNode, WorktreeNode } from "@/lib/api"
+import { BarChart3, ChevronRight, Eye, EyeOff, House, Search } from "lucide-react"
+import type { Placed, ProjectSummary, WorktreeSummary } from "@/lib/api"
 import { toHash, type Route } from "@/lib/route"
-import { filterTree, rollup, worktreeLabel, type ChipFilter } from "@/lib/tree"
+import { filterTree, rollupCounts, worktreeLabel, type ChipFilter } from "@/lib/tree"
 import { cn } from "@/lib/utils"
 import { StatusDot } from "@/components/StatusDot"
 
-const count = (ws: WorktreeNode[]) => ws.reduce((n, w) => n + w.items.length, 0)
+const count = (ws: WorktreeSummary[]) => ws.reduce((n, w) => n + w.counts.items, 0)
 
 /** Which project/worktree the current route points at (an item page selects the worktree holding it). */
-function selection(route: Route, projects: ProjectNode[]): { key?: string; path?: string } {
+function selection(route: Route, itemWhere: Placed | null): { key?: string; path?: string } {
   if (route.view === "project") return { key: route.key }
   if (route.view === "worktree") return { key: route.key, path: route.path }
-  if (route.view === "item")
-    for (const p of projects)
-      for (const w of p.worktrees)
-        if (w.items.some((i) => i.source === route.source && i.id === route.id)) return { key: p.key, path: w.path }
+  if (route.view === "item" && itemWhere) return { key: itemWhere.key, path: itemWhere.worktree }
   return {}
 }
 
-function WorktreeRow({ p, w, selected }: { p: ProjectNode; w: WorktreeNode; selected: boolean }) {
-  const st = rollup(w.items)
-  const live = w.items.filter((i) => i.live).length
+function WorktreeRow({ p, w, selected }: { p: ProjectSummary; w: WorktreeSummary; selected: boolean }) {
+  const st = rollupCounts([w.counts])
+  const live = w.counts.live
   return (
     <a
       href={toHash({ view: "worktree", key: p.key, path: w.path })}
@@ -35,7 +32,7 @@ function WorktreeRow({ p, w, selected }: { p: ProjectNode; w: WorktreeNode; sele
       <StatusDot status={st} live={w.live} className="size-1.5" />
       <span className="min-w-0 flex-1 truncate">{worktreeLabel(w)}</span>
       {!!w.dirty && <span className="text-[10px] text-needs-you/80" title={`${w.dirty} changed files`}>±{w.dirty}</span>}
-      <span className="w-7 text-right text-[11px] tabular-nums text-faint">{w.items.length || ""}</span>
+      <span className="w-7 text-right text-[11px] tabular-nums text-faint">{w.counts.items || ""}</span>
     </a>
   )
 }
@@ -48,17 +45,16 @@ function ProjectRow({
   showEmpty,
   onShowEmpty,
 }: {
-  p: ProjectNode
+  p: ProjectSummary
   open: boolean
   onToggle: () => void
   sel: { key?: string; path?: string }
   showEmpty: boolean
   onShowEmpty: () => void
 }) {
-  const all = p.worktrees.flatMap((w) => w.items)
-  const st = rollup(all)
+  const st = rollupCounts(p.worktrees.map((w) => w.counts))
   const live = p.worktrees.some((w) => w.live)
-  const used = p.worktrees.filter((w) => w.items.length || w.path === sel.path)
+  const used = p.worktrees.filter((w) => w.counts.items || w.path === sel.path)
   const empty = p.worktrees.length - used.length
   const shown = showEmpty ? p.worktrees : used
   const selected = sel.key === p.key && !sel.path
@@ -81,7 +77,7 @@ function ProjectRow({
         </button>
         <a href={toHash({ view: "project", key: p.key })} title={p.path} className="flex h-8 min-w-0 flex-1 items-center gap-2 pr-2">
           <StatusDot status={st} live={live} />
-          <span className="min-w-0 flex-1 truncate font-medium">{p.name}</span>
+          <span className={cn("min-w-0 flex-1 truncate font-medium", p.hidden && "text-faint italic")}>{p.name}</span>
           <span className="font-mono text-[11px] tabular-nums text-faint">{count(p.worktrees)}</span>
         </a>
       </div>
@@ -131,24 +127,34 @@ export function Sidebar({
   loading,
   error,
   route,
+  itemWhere = null,
   filter,
   footer,
+  hiddenCount = 0,
+  showHidden = false,
+  onShowHidden,
 }: {
-  projects: ProjectNode[]
+  projects: ProjectSummary[]
   loading: boolean
   error: string | null
   route: Route
+  /** For an item route: the project and worktree holding the item. */
+  itemWhere?: Placed | null
   filter: ChipFilter | null
   footer: string
+  /** Noise projects left out of `projects`; the footer toggle shows them. */
+  hiddenCount?: number
+  showHidden?: boolean
+  onShowHidden?: (v: boolean) => void
 }) {
   const [query, setQuery] = useState("")
   const [toggled, setToggled] = useState<Record<string, boolean>>({})
   const [emptyShown, setEmptyShown] = useState<Record<string, boolean>>({})
   const tree = useMemo(() => filterTree(projects, query, filter), [projects, query, filter])
-  const sel = useMemo(() => selection(route, projects), [route, projects])
+  const sel = useMemo(() => selection(route, itemWhere), [route, itemWhere])
   const searching = query.trim() !== "" || filter !== null
   // Open by default: projects with something live or waiting, and the selected one. A click overrides.
-  const isOpen = (p: ProjectNode) =>
+  const isOpen = (p: ProjectSummary) =>
     toggled[p.key] ?? (searching || sel.key === p.key || p.worktrees.some((w) => w.live || w.waiting))
 
   return (
@@ -197,7 +203,21 @@ export function Sidebar({
           ))}
         </ul>
       </div>
-      <div className="border-t border-sidebar-border px-3 py-2 font-mono text-[10px] text-faint">{footer}</div>
+      <div className="flex items-center justify-between gap-2 border-t border-sidebar-border px-3 py-2 font-mono text-[10px] text-faint">
+        <span className="truncate">{footer}</span>
+        {hiddenCount > 0 && onShowHidden && (
+          <button
+            type="button"
+            aria-pressed={showHidden}
+            onClick={() => onShowHidden(!showHidden)}
+            title="Projects that are a tool's own data (claude-mem observers) or listed in ~/.mission-control/config.json hide"
+            className="flex shrink-0 items-center gap-1 rounded px-1 py-0.5 hover:bg-sidebar-accent/60 hover:text-muted-foreground [&_svg]:size-3"
+          >
+            {showHidden ? <EyeOff /> : <Eye />}
+            {showHidden ? "Hide" : "Show"} hidden ({hiddenCount})
+          </button>
+        )}
+      </div>
     </aside>
   )
 }

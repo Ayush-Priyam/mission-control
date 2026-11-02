@@ -187,7 +187,8 @@ test("event-only stage holding the open stop is the waiting lane; broken source 
   assert.deepEqual(item.lanes.map((l) => [l.id, l.status]), [["build", "done"], ["memory", "failed"], ["learn", "waiting"]])
   const broken = { name: "bad", harness: "bad", listItems: async () => { throw new Error("boom") }, getItem: async () => null, getCalls: async () => [], getSession: async () => null }
   const reg = createRegistry([fromAdapter(adapter), broken])
-  assert.deepEqual((await reg.overview()).needsYou, [{ source: "ronin", id: "r1", title: "x", lane: "learn", detail: "approve the lesson" }])
+  const pick = ({ source, id, title, lane, detail }) => ({ source, id, title, lane, detail })
+  assert.deepEqual((await reg.overview()).needsYou.map(pick), [{ source: "ronin", id: "r1", title: "x", lane: "learn", detail: "approve the lesson" }])
   await withServer([adapter, broken], async (base) => {
     const list = await (await fetch(base + "/api/sources")).json()
     assert.equal(list[0].error, undefined)

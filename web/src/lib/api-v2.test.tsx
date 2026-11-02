@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { renderHook, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { browserTz, callsUrl, itemUrl, useCalls, useItem, useOverview, useProjects, useUsage, usageUrl } from "./api"
+import { browserTz, callsUrl, itemsUrl, itemUrl, useCalls, useItem, useOverview, useProjects, useUsage, usageUrl } from "./api"
 
 let urls: string[]
 beforeEach(() => {
@@ -36,11 +36,19 @@ describe("v2 urls", () => {
 })
 
 describe("v2 hooks", () => {
-  it("useOverview and useProjects read their routes", async () => {
+  it("useOverview and useProjects read their routes (the tree slim, in the browser zone)", async () => {
     const o = renderHook(() => useOverview())
+    const a = renderHook(() => useOverview(true))
     const p = renderHook(() => useProjects())
     await waitFor(() => expect(o.result.current.data).toEqual({ url: "/api/overview" }))
-    await waitFor(() => expect(p.result.current.data).toEqual({ url: "/api/projects" }))
+    await waitFor(() => expect(a.result.current.data).toEqual({ url: "/api/overview?all=1" }))
+    await waitFor(() => expect(p.result.current.data).toEqual({ url: `/api/projects?slim=1&tz=${encodeURIComponent(browserTz())}` }))
+  })
+
+  it("items url: all, limit and lookup filters", () => {
+    expect(itemsUrl()).toBe("/api/items")
+    expect(itemsUrl({ all: true, limit: 50 })).toBe("/api/items?all=1&limit=50")
+    expect(itemsUrl({ source: "claude-code", id: "a b" })).toBe("/api/items?source=claude-code&id=a+b")
   })
 
   it("useItem with no id fetches nothing", async () => {

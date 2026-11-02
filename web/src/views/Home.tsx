@@ -1,11 +1,16 @@
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { useMemo } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Skeleton } from "@/components/ui/skeleton"
 import { StageBar } from "@/components/StageBar"
-import { useCapabilities, type RunSummary } from "@/lib/api"
-import { isWaiting, repoName, useSharedRuns } from "@/lib/runs-context"
+import { ItemTable } from "@/components/ItemTable"
+import { LiveActivity } from "@/components/LiveActivity"
+import { NeedsYouQueue } from "@/components/NeedsYouQueue"
+import { useItems, useSources, type ItemSummary, type RunSummary } from "@/lib/api"
+import { useNow } from "@/lib/format"
+import { useShared } from "@/lib/projects-context"
+import { isWaiting } from "@/lib/runs-context"
 import { toHash } from "@/lib/route"
+import { matchesFilter } from "@/lib/tree"
 
 export function RunStatusBadge({ run }: { run: RunSummary }) {
   if (isWaiting(run)) return <Badge className="bg-needs-you/15 text-needs-you">Waiting on you</Badge>
@@ -32,57 +37,89 @@ export function RunCard({ run }: { run: RunSummary }) {
   )
 }
 
-export default function Home() {
-  const runs = useSharedRuns()
-  const caps = useCapabilities()
+const RECENT = 100
+const DAY_MS = 24 * 3600 * 1000
 
-  if (runs.loading) return <Skeleton className="h-32 w-full" />
-  if (runs.error && !runs.data)
-    return (
-      <Alert variant="destructive">
-        <AlertTitle>Could not load runs</AlertTitle>
-        <AlertDescription>{runs.error}</AlertDescription>
-      </Alert>
-    )
-  const list = runs.data ?? []
-  if (!list.length) {
-    const dir = caps.data?.source ?? "the runs directory"
-    return (
-      <Alert>
-        <AlertTitle>No runs yet</AlertTitle>
-        <AlertDescription>
-          No runs found in {dir}. Start with <code className="font-mono">mission-control --runs {dir}</code>.
-        </AlertDescription>
-      </Alert>
-    )
-  }
+/** Items that stopped or failed in the last day, newest first (the queue's Stopped list). */
+export function recentlyStopped(items: ItemSummary[], now: number, max = 4): ItemSummary[] {
+  return items
+    .filter((i) => (i.status === "stopped" || i.status === "failed") && i.updatedAt && now - Date.parse(i.updatedAt) < DAY_MS)
+    .slice(0, max)
+}
 
-  const groups = new Map<string, RunSummary[]>()
-  for (const r of list) {
-    const k = repoName(r.repo) || "Runs"
-    groups.set(k, [...(groups.get(k) ?? []), r])
-  }
+function Panel({ title, count, aside, children }: { title: string; count?: number; aside?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-8">
-      {[...groups].map(([name, rs]) => (
-        <section key={name} className="flex flex-col gap-3">
-          <h2 className="flex items-baseline gap-2 text-sm font-extrabold tracking-tight">
-            {name === "Runs" ? (
-              name
-            ) : (
-              <a href={toHash({ view: "repo", repo: name })} className="hover:underline">
-                {name}
-              </a>
-            )}
-            <span className="font-mono text-[11px] font-normal text-muted-foreground">{rs.length}</span>
-          </h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {rs.map((r) => (
-              <RunCard key={r.id} run={r} />
-            ))}
-          </div>
-        </section>
-      ))}
+    <section className="rounded-xl border bg-card">
+      <div className="flex h-10 items-center justify-between gap-3 border-b px-4">
+        <h2 className="text-sm font-medium">
+          {title}
+          {count !== undefined && <span className="ml-1.5 font-mono text-xs text-faint">{count}</span>}
+        </h2>
+        {aside}
+      </div>
+      <div className="p-2">{children}</div>
+    </section>
+  )
+}
+
+/**
+ * Home (directions.html B): the needs-you queue on the left; live activity (what each live lane is
+ * doing now) and recent runs and sessions on the right. Hidden projects stay out unless shown.
+ */
+export default function Home() {
+  const { overview, filter, showHidden } = useShared()
+  const sources = useSources()
+  const recent = useItems({ all: showHidden, limit: RECENT })
+  const now = useNow()
+  const actions = useMemo(() => Object.fromEntries((sources.data ?? []).map((s) => [s.name, s.actions])), [sources.data])
+  const items = recent.data ?? []
+  const shown = useMemo(() => items.filter((i) => matchesFilter(i, filter)), [items, filter])
+  const live = overview.data?.live ?? []
+
+  return (
+    <div className="-m-5 grid min-h-[calc(100%+2.5rem)] lg:grid-cols-[300px_minmax(0,1fr)]">
+      <aside className="border-b p-4 lg:border-r lg:border-b-0" aria-label="Needs you">
+        {overview.error && !overview.data ? (
+          <p className="text-xs text-failed">Could not load what needs you: {overview.error}</p>
+        ) : (
+          <NeedsYouQueue
+            entries={overview.data?.needsYou ?? []}
+            stopped={recentlyStopped(items, now)}
+            actions={actions}
+            onActed={overview.reload}
+            now={now}
+          />
+        )}
+      </aside>
+      <div className="flex min-w-0 flex-col gap-5 p-5">
+        <Panel
+          title="Live now"
+          aside={live.length > 0 && <span className="font-mono text-[11px] text-running">● {live.length} lane{live.length === 1 ? "" : "s"} working</span>}
+        >
+          <LiveActivity lanes={live} now={now} />
+        </Panel>
+        <Panel
+          title="Recent"
+          aside={
+            <span className="font-mono text-[11px] text-faint">
+              {filter ? `${shown.length} of ${items.length} · filtered by the status chip` : `latest ${items.length} runs and sessions`}
+            </span>
+          }
+        >
+          {recent.error && !recent.data ? (
+            <p className="px-2 py-4 text-xs text-failed">Could not load runs and sessions: {recent.error}</p>
+          ) : recent.loading && !recent.data ? (
+            <p className="px-2 py-4 text-xs text-faint">loading…</p>
+          ) : (
+            <ItemTable
+              items={shown}
+              cap={50}
+              now={now}
+              empty={filter ? "Nothing recent matches the status filter" : "No runs or sessions yet. Start a Claude Code session or pass --runs <dir>."}
+            />
+          )}
+        </Panel>
+      </div>
     </div>
   )
 }

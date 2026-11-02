@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { BarChart3, FolderGit2, GitBranch, House, Search } from "lucide-react"
-import type { ProjectNode } from "@/lib/api"
+import { useItems, type ProjectSummary } from "@/lib/api"
 import { paletteResults, type PaletteEntry } from "@/lib/tree"
 import { cn } from "@/lib/utils"
 import { StatusDot } from "@/components/StatusDot"
@@ -21,12 +21,27 @@ function Icon({ e }: { e: PaletteEntry }) {
 export const isPaletteKey = (e: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey">) =>
   e.key.toLowerCase() === "k" && (e.metaKey || e.ctrlKey)
 
+/** The next active row for an arrow key, clamped to the list (0 when the list is empty). */
+export const paletteStep = (active: number, delta: number, length: number) => Math.max(0, Math.min(active + delta, length - 1))
+
 /** ⌘K: jump to a page, project, worktree or item. Arrow keys move, Enter opens, Esc closes. */
-export function CommandPalette({ open, onOpenChange, projects }: { open: boolean; onOpenChange: (o: boolean) => void; projects: ProjectNode[] }) {
+export function CommandPalette({
+  open,
+  onOpenChange,
+  projects,
+  showHidden = false,
+}: {
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  projects: ProjectSummary[]
+  showHidden?: boolean
+}) {
   const [query, setQuery] = useState("")
   const [active, setActive] = useState(0)
   const list = useRef<HTMLDivElement>(null)
-  const results = useMemo(() => (open ? paletteResults(projects, query) : []), [open, projects, query])
+  // Items load when the palette opens (once; the slim tree has no item lists).
+  const items = useItems({ all: showHidden }, open, false)
+  const results = useMemo(() => (open ? paletteResults(projects, items.data ?? [], query) : []), [open, projects, items.data, query])
 
   useEffect(() => {
     if (!open) setQuery("")
@@ -42,8 +57,8 @@ export function CommandPalette({ open, onOpenChange, projects }: { open: boolean
     onOpenChange(false)
   }
   const onKey = (ev: React.KeyboardEvent) => {
-    if (ev.key === "ArrowDown") setActive((a) => Math.min(a + 1, results.length - 1))
-    else if (ev.key === "ArrowUp") setActive((a) => Math.max(a - 1, 0))
+    if (ev.key === "ArrowDown") setActive((a) => paletteStep(a, 1, results.length))
+    else if (ev.key === "ArrowUp") setActive((a) => paletteStep(a, -1, results.length))
     else if (ev.key === "Enter") go(results[active])
     else return
     ev.preventDefault()
