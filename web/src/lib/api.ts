@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useState } from "react"
+import { markFail, markOk } from "@/lib/freshness"
 
 export type Capabilities = { adapter: string; extras: string[]; actions: string[]; source: string | null }
 export type RunSummary = {
@@ -38,6 +39,8 @@ export function fetchReducer<T>(state: FetchState<T>, action: FetchAction<T>): F
 
 type FetchLike = (url: string, init?: RequestInit) => Promise<Pick<Response, "ok" | "status" | "json"> & Partial<Pick<Response, "text" | "headers">>>
 
+class HttpError extends Error {}
+
 /**
  * One url's loader. `load()` does nothing while a request is in flight (a slow answer never stacks
  * polls), sends the last ETag as If-None-Match, and calls `onData` only when the payload changed:
@@ -52,11 +55,16 @@ export function createLoader<T>(url: string, onData: (d: T) => void, onError: (e
     inFlight = true
     try {
       const r = etag ? await fetchImpl(url, { headers: { "if-none-match": etag } }) : await fetchImpl(url)
-      if (r.status === 304) return
+      if (r.status === 304) {
+        markOk()
+        return
+      }
       if (!r.ok) {
         const j: { error?: string } | null = await Promise.resolve(r.json?.()).catch(() => null)
-        throw new Error(j?.error ?? `${url}: ${r.status}`)
+        markOk() // reachable, just an error answer
+        throw new HttpError(j?.error ?? `${url}: ${r.status}`)
       }
+      markOk() // the server answered; a 4xx above is the item's problem, not the connection's
       const tag = r.headers?.get("etag") ?? null
       if (typeof r.text === "function") {
         const text = await r.text()
@@ -69,6 +77,7 @@ export function createLoader<T>(url: string, onData: (d: T) => void, onError: (e
       // Forget what we had: the next good answer must dispatch (and so clear the error), even if unchanged.
       etag = null
       last = null
+      if (!(e instanceof HttpError)) markFail()
       onError(String(e?.message ?? e))
     } finally {
       inFlight = false

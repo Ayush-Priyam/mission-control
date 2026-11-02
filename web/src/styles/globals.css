@@ -207,6 +207,9 @@
     100% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 35%, transparent); }
 }
 .mc-flash { animation: mc-flash 1.6s ease-out both; }
+/* Stale data (no server answer for 15s): nothing pulses or spins, live tags dim. */
+html[data-stale] :is(.mc-pulse, .mc-halo, .mc-dash, .animate-pulse, .animate-spin) { animation: none; }
+html[data-stale] :is(.mc-live, [data-live-tag], [data-status-pill]) { opacity: 0.45; }
 @media (prefers-reduced-motion: reduce) { .mc-pulse, .mc-halo, .mc-dash, .mc-flash { animation: none; } }
 
 /* One focus style everywhere: a 2px ring in the --focus token (≥3:1 on every surface), offset 2px.

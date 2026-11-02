@@ -6,6 +6,7 @@ import { toHash, type Route } from "@/lib/route"
 import { doneToday, worktreeLabel } from "@/lib/tree"
 import { cn } from "@/lib/utils"
 import { workingLine } from "@/lib/status-ui"
+import { FreshnessBadge } from "@/components/Freshness"
 import { CommandPalette, isPaletteKey } from "@/components/CommandPalette"
 import { Sidebar } from "@/components/Sidebar"
 import { chipCounts, StatusChips } from "@/components/StatusChips"
@@ -141,6 +142,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
         </a>
         <StatusChips counts={counts} active={filter} onPick={setFilter} />
         <div className="ml-auto flex items-center gap-2">
+          <FreshnessBadge />
           <span data-working-line className="hidden items-center gap-1.5 font-mono text-xs whitespace-nowrap text-faint xl:flex">
             {workingLine(overview.data?.live ?? [])}
           </span>
