@@ -9,6 +9,8 @@ const APPEARANCES: { id: Appearance; label: string }[] = [
   { id: "light", label: "Light" },
   { id: "dark", label: "Dark" },
 ]
+/** A real .itermcolors file is a few KB; anything past this is not one, so it is refused before it is read. */
+export const MAX_ITERM_BYTES = 256 * 1024
 const BASE_LABEL: Record<BaseId, string> = { warm: "Warm", neutral: "Neutral", cool: "Cool" }
 
 function Swatches({ colors }: { colors: string[] }) {
@@ -57,6 +59,10 @@ export function ThemePicker({ theme }: { theme: ThemeState }) {
     const f = e.target.files?.[0]
     e.target.value = ""
     if (!f) return
+    if (f.size > MAX_ITERM_BYTES) {
+      setError(`That file is ${Math.ceil(f.size / 1024)} KB; an .itermcolors file is at most 256 KB.`)
+      return
+    }
     try {
       const t = itermTheme(f.name.replace(/\.itermcolors$/i, ""), parseItermColors(await f.text()))
       setError(null)

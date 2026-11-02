@@ -79,4 +79,20 @@ describe("theme picker", () => {
     expect(screen.queryByRole("dialog")).toBeNull()
     expect(document.activeElement).toBe(b)
   })
+
+  it("refuses an import over 256 KB before reading it, with a visible error", async () => {
+    render(<Harness />)
+    fireEvent.click(screen.getByRole("button", { name: "Theme" }))
+    fireEvent.click(screen.getByRole("radio", { name: /^Custom/ }))
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+    const f = new File(["x"], "huge.itermcolors", { type: "application/xml" })
+    Object.defineProperty(f, "size", { value: 256 * 1024 + 1 })
+    const text = vi.spyOn(f, "text")
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [f] } })
+    })
+    expect(text).not.toHaveBeenCalled()
+    expect(screen.getByRole("alert").textContent).toMatch(/at most 256 KB/)
+    expect(localStorage.getItem(KEYS.custom)).not.toMatch(/huge/)
+  })
 })
