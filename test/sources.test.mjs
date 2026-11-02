@@ -195,3 +195,17 @@ test("event-only stage holding the open stop is the waiting lane; broken source 
     assert.equal(list[1].error, "boom")
   })
 })
+
+test("fromAdapter: a stage whose state says running on a run that is not live is idle, not working", async () => {
+  const stub = (live) => fromAdapter({
+    name: "stub",
+    listRuns: async () => [{ id: "r1" }],
+    getRun: async () => ({ live, state: { idea: "x", stages: { a: { status: "running" }, b: { status: "done" } } }, events: [] }),
+    getSession: async () => null,
+  })
+  const dead = await stub(false).getItem("r1")
+  assert.deepEqual(dead.lanes.map((l) => [l.id, l.status]), [["a", "idle"], ["b", "done"]])
+  assert.notEqual(dead.summary.status, "working")
+  const alive = await stub(true).getItem("r1")
+  assert.equal(alive.lanes[0].status, "working")
+})

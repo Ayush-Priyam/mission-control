@@ -75,7 +75,8 @@ function buildLanes(state, events, calls, live) {
   const stop = openStop(events)
   const labels = graphLabels(state.graph)
   const lanes = Object.entries(state.stages && typeof state.stages === "object" ? state.stages : {}).map(([id, st]) => {
-    const status = STAGE_STATUS[st?.status] ?? "idle"
+    // A stage left "running" in state on a run that is no longer live is not working: idle (the shared rule).
+    const status = st?.status === "running" && !live ? "idle" : STAGE_STATUS[st?.status] ?? "idle"
     const lane = { id, label: labels.get(id) ?? id, kind: "stage", status, calls: 0, errors: 0, tokens: zeroTokens(), cost: 0 }
     if (stop && stop.stage === id && status !== "done" && status !== "failed") {
       lane.status = stop.rule === "human" ? "waiting" : "stopped"
