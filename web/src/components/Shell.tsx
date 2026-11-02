@@ -157,7 +157,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
         <StatusChips counts={counts} active={filter} onPick={setFilter} />
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <FreshnessBadge />
-          <span data-working-line className="hidden items-center gap-1.5 font-mono text-xs whitespace-nowrap text-faint xl:flex">
+          <span data-working-line className="hidden items-center gap-1.5 border-l pl-2 font-mono text-xs whitespace-nowrap text-faint xl:flex">
             {workingLine(overview.data?.live ?? [])}
           </span>
           <button

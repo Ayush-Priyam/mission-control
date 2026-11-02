@@ -1,3 +1,4 @@
+import { workingLine } from "@/lib/status-ui"
 import { useMemo } from "react"
 import { ItemTable } from "@/components/ItemTable"
 import { LiveActivity } from "@/components/LiveActivity"
@@ -65,7 +66,7 @@ export default function Home() {
       <div className="flex min-w-0 flex-col gap-5 p-5">
         <Panel
           title="Live now"
-          aside={live.length > 0 && <span className="font-mono text-xs text-running">● {live.length} lane{live.length === 1 ? "" : "s"} working</span>}
+          aside={live.length > 0 && <span className="font-mono text-xs text-running">{workingLine(live)}</span>}
         >
           <LiveActivity lanes={live} now={now} />
         </Panel>

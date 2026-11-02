@@ -3,6 +3,9 @@ import type { LiveLane } from "@/lib/api"
 import { ago } from "@/lib/format"
 import { toHash } from "@/lib/route"
 import { StatusDot } from "@/components/StatusDot"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { modelName } from "@/lib/item"
+import { groupLive, itemTitle, shortCommand } from "@/lib/live"
 
 /** An icon for what a lane is doing: edits, shell, reads, MCP, skills, agents, any other tool. */
 export function doingIcon(d: { name: string; kind: string } | null | undefined): LucideIcon {
@@ -16,47 +19,78 @@ export function doingIcon(d: { name: string; kind: string } | null | undefined):
   return Wrench
 }
 
-/** Every live lane, newest activity first: project · item · lane, what it is doing now, and how long ago. */
+/**
+ * Live now, grouped by item: one row per item (title, project · branch, age), its working lanes nested
+ * as chips (lane · tool · short target · age). The title is the row's link; each chip shows the full
+ * command in a tooltip on hover or focus.
+ */
 export function LiveActivity({ lanes, now = Date.now() }: { lanes: LiveLane[]; now?: number }) {
-  if (!lanes.length) return <p className="px-1 py-4 text-xs text-faint">Nothing running right now</p>
+  if (!lanes.length) return <p className="px-1 py-4 text-xs text-faint">Nothing working right now</p>
   return (
-    <ul className="flex flex-col">
-      {lanes.map((l) => {
-        const d = l.nowDoing
-        const Icon = doingIcon(d)
-        return (
-          <li key={`${l.source}/${l.id}/${l.lane}`} className="border-b border-border/60 last:border-0">
-            <a
-              href={toHash({ view: "item", source: l.source, id: l.id, tab: "lanes" })}
-              className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 rounded-md px-2 py-2 hover:bg-surface/60"
-            >
-              <StatusDot status="working" className="mt-1" />
-              <div className="min-w-0">
-                <div className="flex min-w-0 items-baseline gap-1.5 text-xs">
-                  <span className="shrink-0 text-muted-foreground">{l.project?.name ?? "(no project)"}</span>
-                  <span className="text-faint">·</span>
-                  <span className="truncate text-foreground/90">{l.title || l.id}</span>
-                  <span className="text-faint">·</span>
-                  <span className="shrink-0 font-mono text-xs text-running">{l.label}</span>
-                  {l.model && <span className="shrink-0 font-mono text-xs text-faint">{l.model}</span>}
+    <TooltipProvider delay={150}>
+      <ul className="flex flex-col">
+        {groupLive(lanes).map((g) => {
+          const f = g.first
+          const title = itemTitle({ title: f.title, id: f.id, project: f.project?.name, ts: f.startedAt ?? f.updatedAt })
+          return (
+            <li key={g.key} className="relative border-b border-border/60 last:border-0 hover:bg-surface/60">
+              <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 rounded-md px-2 py-2.5">
+                <StatusDot status="working" className="mt-1.5" />
+                <div className="min-w-0">
+                  <a
+                    href={toHash({ view: "item", source: g.source, id: g.id, tab: "lanes" })}
+                    className="block truncate text-sm font-medium text-foreground after:absolute after:inset-0 after:content-['']"
+                    title={f.title || f.id}
+                  >
+                    {title}
+                  </a>
+                  <div className="truncate font-mono text-xs text-muted-foreground">
+                    {[f.project?.name ?? "(no project)", f.branch].filter(Boolean).join(" · ")}
+                    {g.lanes.length > 1 && <span className="text-faint"> · {g.lanes.length} lanes working</span>}
+                  </div>
+                  <ul className="relative z-[1] mt-1.5 flex flex-wrap gap-1.5" aria-label="Working lanes">
+                    {g.lanes.map((l) => (
+                      <LaneChip key={l.lane} lane={l} now={now} />
+                    ))}
+                  </ul>
                 </div>
-                <div className="mt-0.5 flex min-w-0 items-center gap-1.5 font-mono text-xs text-muted-foreground">
-                  <Icon aria-hidden className="size-3 shrink-0 text-faint" />
-                  {d ? (
-                    <>
-                      <span className="shrink-0 text-foreground/80">{d.name}</span>
-                      <span className="truncate">{d.summary}</span>
-                    </>
-                  ) : (
-                    <span className="text-faint">thinking…</span>
-                  )}
-                </div>
+                <span className="font-mono text-xs tabular-nums text-faint">{ago(g.latest || null, now)}</span>
               </div>
-              <span className="font-mono text-xs tabular-nums text-faint">{ago(d?.ts ?? l.startedAt ?? l.updatedAt, now)}</span>
-            </a>
-          </li>
-        )
-      })}
-    </ul>
+            </li>
+          )
+        })}
+      </ul>
+    </TooltipProvider>
+  )
+}
+
+function LaneChip({ lane: l, now }: { lane: LiveLane; now: number }) {
+  const d = l.nowDoing
+  const Icon = doingIcon(d)
+  const full = d ? `${d.name} ${d.summary}` : "thinking…"
+  return (
+    <li>
+      <Tooltip>
+        <TooltipTrigger
+          render={<span tabIndex={0} />}
+          className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-md border bg-card px-2 font-mono text-xs"
+          aria-label={`${l.label}${l.model ? ` (${modelName(l.model)})` : ""}: ${full}, ${ago(d?.ts ?? l.startedAt ?? l.updatedAt, now)} ago`}
+        >
+          <span className="max-w-[24ch] shrink-0 truncate text-foreground">{l.label}</span>
+          {l.model && <span className="shrink-0 text-faint">{modelName(l.model)}</span>}
+          <Icon aria-hidden className="size-3 shrink-0 text-faint" />
+          {d ? (
+            <>
+              <span className="shrink-0 text-foreground/80">{d.name}</span>
+              <span className="min-w-0 truncate text-muted-foreground">{shortCommand(d.summary)}</span>
+            </>
+          ) : (
+            <span className="text-faint">thinking…</span>
+          )}
+          <span className="shrink-0 text-faint tabular-nums">{ago(d?.ts ?? l.startedAt ?? l.updatedAt, now)}</span>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-[60ch] font-mono text-xs break-all">{full}</TooltipContent>
+      </Tooltip>
+    </li>
   )
 }

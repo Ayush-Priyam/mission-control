@@ -132,18 +132,36 @@ describe("LiveActivity", () => {
     nowDoing: { name: "Bash", kind: "tool", summary: "npm test", ts },
     startedAt: null,
   })
-  it("one row per live lane: project · item · lane, now doing, age", () => {
-    render(<LiveActivity lanes={[lane("s1", "2026-11-02T09:59:48.000Z")]} now={Date.parse("2026-11-02T10:00:00.000Z")} />)
-    const row = screen.getByRole("link")
-    expect(row.textContent).toContain("app")
-    expect(row.textContent).toContain("session s1")
-    expect(row.textContent).toContain("Bash")
-    expect(row.textContent).toContain("npm test")
-    expect(row.textContent).toContain("12s")
-    expect(row.getAttribute("href")).toBe("#/item/claude-code/s1/lanes")
+  it("one row per item, its working lanes nested as chips with a short command", () => {
+    const at = "2026-11-02T09:59:48.000Z"
+    render(
+      <LiveActivity
+        lanes={[
+          lane("s1", at),
+          { ...lane("s1", at), lane: "qa", label: "qa", nowDoing: { name: "Bash", kind: "tool", summary: "cd /Users/someone/work/app && npm run lint", ts: at } },
+          lane("s2", at),
+        ]}
+        now={Date.parse("2026-11-02T10:00:00.000Z")}
+      />,
+    )
+    const links = screen.getAllByRole("link")
+    expect(links.map((l) => l.textContent)).toEqual(["session s1", "session s2"]) // one row per item
+    expect(links[0].getAttribute("href")).toBe("#/item/claude-code/s1/lanes")
+    const row = links[0].closest("li")!
+    const chips = within(row).getAllByRole("listitem")
+    expect(chips).toHaveLength(2)
+    expect(row.textContent).toContain("2 lanes working")
+    expect(chips[1].textContent).toContain("npm run lint")
+    expect(chips[1].textContent).not.toContain("/Users/") // the cd prefix is gone; the full text is in the tooltip
+    expect(within(chips[1]).getByLabelText(/qa \(opus\): Bash cd \/Users\/someone\/work\/app && npm run lint/)).toBeTruthy()
+    expect(chips[0].textContent).toContain("12s")
+  })
+  it("a UUID-only title reads Untitled session · project · time", () => {
+    render(<LiveActivity lanes={[{ ...lane("0b6f3a2e-1c4d-4e5f-9a8b-7c6d5e4f3a2b", "2026-11-02T09:59:48.000Z"), title: "0b6f3a2e-1c4d-4e5f-9a8b-7c6d5e4f3a2b" }]} />)
+    expect(screen.getByRole("link").textContent).toMatch(/^Untitled session · app · \d\d:\d\d$/)
   })
   it("says so when nothing is running", () => {
     render(<LiveActivity lanes={[]} />)
-    expect(screen.getByText("Nothing running right now")).toBeTruthy()
+    expect(screen.getByText("Nothing working right now")).toBeTruthy()
   })
 })
