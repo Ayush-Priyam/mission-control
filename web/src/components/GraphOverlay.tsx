@@ -33,7 +33,13 @@ export function GraphOverlay({ title, onClose, children }: { title: string; onCl
   const content = useRef<HTMLDivElement>(null)
   const close = useRef<HTMLButtonElement>(null)
   const [t, setT] = useState({ k: 1, x: 0, y: 0 })
-  const drag = useRef<{ x: number; y: number; tx: number; ty: number; moved: boolean } | null>(null)
+  const drag = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null)
+  // Parents pass an inline onClose, so hold the latest in a ref: the open/close effect runs once,
+  // and a re-render (every poll) never steals focus or resets the body's overflow.
+  const onCloseRef = useRef(onClose)
+  useLayoutEffect(() => {
+    onCloseRef.current = onClose
+  })
 
   const fit = useCallback(() => {
     const v = view.current, c = content.current
@@ -48,7 +54,7 @@ export function GraphOverlay({ title, onClose, children }: { title: string; onCl
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault()
-        onClose()
+        onCloseRef.current()
         return
       }
       if (e.key !== "Tab" || !dialog.current) return
@@ -74,7 +80,7 @@ export function GraphOverlay({ title, onClose, children }: { title: string; onCl
       document.body.style.overflow = prev
       opener?.focus?.()
     }
-  }, [onClose])
+  }, [])
 
   // A native, non-passive wheel listener so ctrl/⌘ + wheel and pinch zoom the graph, not the page.
   useEffect(() => {
@@ -118,7 +124,7 @@ export function GraphOverlay({ title, onClose, children }: { title: string; onCl
             <Plus className="size-3.5" />
           </button>
         </div>
-        <button ref={close} type="button" aria-label="Close full screen" onClick={onClose} className="grid size-8 place-items-center rounded-md border text-muted-foreground hover:bg-accent hover:text-foreground">
+        <button ref={close} type="button" aria-label="Close full screen" onClick={() => onCloseRef.current()} className="grid size-8 place-items-center rounded-md border text-muted-foreground hover:bg-accent hover:text-foreground">
           <X className="size-4" />
         </button>
       </div>
@@ -127,13 +133,12 @@ export function GraphOverlay({ title, onClose, children }: { title: string; onCl
         className="relative min-h-0 flex-1 cursor-grab touch-none overflow-hidden active:cursor-grabbing"
         onPointerDown={(e) => {
           if ((e.target as Element).closest("[role=button],button,a")) return
-          drag.current = { x: e.clientX, y: e.clientY, tx: t.x, ty: t.y, moved: false }
+          drag.current = { x: e.clientX, y: e.clientY, tx: t.x, ty: t.y }
           ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
         }}
         onPointerMove={(e) => {
           const d = drag.current
           if (!d) return
-          d.moved = true
           setT((s) => ({ ...s, x: d.tx + e.clientX - d.x, y: d.ty + e.clientY - d.y }))
         }}
         onPointerUp={() => (drag.current = null)}
