@@ -19,7 +19,9 @@ type Payload = { title: string; subtitle?: string; message?: string; url?: strin
 
 function show(m: Payload) {
   if (!granted()) return
-  const n = new Notification(m.subtitle ? `${m.title}: ${m.subtitle}` : m.title, { body: m.message ?? "", tag: m.group })
+  // The tag keeps one notification per session; renotify alerts again when it replaces one, which a
+  // tag alone does silently (a second Done or test would never show).
+  const n = new Notification(m.subtitle ? `${m.title}: ${m.subtitle}` : m.title, { body: m.message ?? "", tag: m.group, renotify: !!m.group } as NotificationOptions)
   n.onclick = () => {
     window.focus()
     if (m.url) location.hash = m.url
