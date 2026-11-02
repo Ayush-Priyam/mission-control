@@ -11,8 +11,8 @@ const MAX_MESSAGE = 500
 export const defaultHooksDir = (home = homedir()) => join(home, ".mission-control", "hooks")
 
 /**
- * Append one hook event to <hooksDir>/<session_id>.jsonl. Synchronous, local, never throws:
- * it runs inside the user's Claude Code session. Returns true when a line was written.
+ * Append one hook event to <hooksDir>/<session_id>.jsonl (dir 0700, file 0600). Synchronous and local,
+ * and never throws: it runs inside the user's Claude Code session. True when a line was written.
  */
 export function recordHook({ raw, event, hooksDir = defaultHooksDir(), now = () => new Date() }) {
   try {
@@ -24,8 +24,8 @@ export function recordHook({ raw, event, hooksDir = defaultHooksDir(), now = () 
     const line = { event: name, sessionId, ts: now().toISOString() }
     if (typeof input.message === "string") line.message = input.message.slice(0, MAX_MESSAGE)
     if (typeof input.tool_name === "string") line.tool = input.tool_name
-    mkdirSync(hooksDir, { recursive: true })
-    appendFileSync(join(hooksDir, `${sessionId}.jsonl`), JSON.stringify(line) + "\n")
+    mkdirSync(hooksDir, { recursive: true, mode: 0o700 })
+    appendFileSync(join(hooksDir, `${sessionId}.jsonl`), JSON.stringify(line) + "\n", { mode: 0o600 })
     return true
   } catch { return false }
 }
@@ -41,9 +41,13 @@ export function parseHookLines(lines) {
   return out
 }
 
+/** Claude Code's idle reminder, fired about a minute after a turn ends: the session is ready, not blocked. */
+export const IDLE_MESSAGE = /waiting for your input/i
+
 /**
  * Waiting = the last Notification has no PreToolUse / UserPromptSubmit / Stop after it (log order).
- * Takes parsed events or raw lines. { waiting, message?, since? }.
+ * An idle reminder is `ready: true` with `waiting: false`. Takes parsed events or raw lines.
+ * { waiting, ready?, message?, since? }.
  */
 export function waitingFromHooks(lines) {
   const events = parseHookLines(lines)
@@ -52,7 +56,8 @@ export function waitingFromHooks(lines) {
   if (note < 0) return { waiting: false }
   for (let i = note + 1; i < events.length; i++) if (CLEARS.has(events[i].event)) return { waiting: false }
   const n = events[note]
-  const out = { waiting: true }
+  const ready = typeof n.message === "string" && IDLE_MESSAGE.test(n.message)
+  const out = ready ? { waiting: false, ready: true } : { waiting: true }
   if (typeof n.message === "string") out.message = n.message
   if (typeof n.ts === "string") out.since = n.ts
   return out

@@ -1,7 +1,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
-import { appendFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, utimesSync, writeFileSync } from "node:fs"
+import { appendFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, statSync, utimesSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -115,4 +115,56 @@ test("source: no hook log or no hooksDir leaves status unchanged", async () => {
   const { root } = fixture(null, { logMtime: T - 5000 })
   assert.equal((await create({ root, hooksDir: tmp(), now: () => T }).listItems())[0].waiting, false)
   assert.equal((await create({ root, now: () => T }).listItems())[0].waiting, false)
+})
+
+const turn = (type, ms) => JSON.stringify({ type, timestamp: new Date(ms).toISOString(), message: { role: type, content: [{ type: "text", text: "x" }] } }) + "\n"
+const withNote = (message, ts = T) => [{ event: "Notification", sessionId: "sess1", ts: new Date(ts).toISOString(), message }]
+
+test("source: idle reminder is ready, not waiting: status idle, reason, not in needs-you", async () => {
+  const { root, hooksDir } = fixture(withNote("Claude is waiting for your input"), { logMtime: T - 5000 })
+  const src = create({ root, hooksDir, now: () => T + 10_000 })
+  const [item] = await src.listItems()
+  assert.deepEqual([item.status, item.waiting], ["idle", false])
+  const got = await src.getItem("sess1")
+  assert.deepEqual([got.summary.status, got.summary.waiting, got.lanes[0].status, got.lanes[0].reason], ["idle", false, "idle", "ready for input"])
+  const ov = await createRegistry([src]).overview()
+  assert.deepEqual([ov.counts.waiting, ov.needsYou.length], [0, 0])
+})
+
+test("source: permission Notification is waiting; the same one 13 h old with no activity is not", async () => {
+  const msg = "Claude needs your permission to use Bash"
+  const { root, hooksDir } = fixture(withNote(msg), { logMtime: T - 5000 })
+  assert.equal((await create({ root, hooksDir, now: () => T + 11 * 3600_000 }).listItems())[0].waiting, true)
+  const old = await create({ root, hooksDir, now: () => T + 13 * 3600_000 }).listItems()
+  assert.deepEqual([old[0].waiting, old[0].status], [false, "idle"])
+})
+
+test("source: a subagent log write after the Notification does not clear waiting", async () => {
+  const { root, hooksDir } = fixture(notified, { logMtime: T - 5000 })
+  const sub = join(root, "-work-shop", "sess1", "subagents")
+  mkdirSync(sub, { recursive: true })
+  writeFileSync(join(sub, "agent-a1.jsonl"), turn("assistant", T + 30_000))
+  utimesSync(join(sub, "agent-a1.jsonl"), (T + 30_000) / 1000, (T + 30_000) / 1000)
+  const src = create({ root, hooksDir, now: () => T + 40_000 })
+  assert.equal((await src.listItems())[0].waiting, true)
+  assert.equal((await src.getItem("sess1")).summary.waiting, true)
+})
+
+test("source: summary and system lines in the main log do not clear; an assistant record 3 s later does; 1 s later does not", async () => {
+  const { root, hooksDir, log } = fixture(notified, { logMtime: T - 5000 })
+  const src = create({ root, hooksDir, now: () => T + 60_000 })
+  const add = (line, ms) => { appendFileSync(log, line); utimesSync(log, ms / 1000, ms / 1000) }
+  add(JSON.stringify({ type: "summary", summary: "s", timestamp: new Date(T + 10_000).toISOString() }) + "\n" + turn("system", T + 11_000), T + 12_000)
+  assert.equal((await src.listItems())[0].waiting, true)
+  add(turn("assistant", T + 1000), T + 13_000)
+  assert.equal((await src.listItems())[0].waiting, true)
+  add(turn("assistant", T + 3000), T + 14_000)
+  assert.equal((await src.listItems())[0].waiting, false)
+})
+
+test("hook: dir is created 0700 and the log 0600", () => {
+  const dir = join(tmp(), "hooks")
+  run(["hook", "Stop"], JSON.stringify({ session_id: "p", hook_event_name: "Stop" }), dir)
+  assert.equal(statSync(dir).mode & 0o777, 0o700)
+  assert.equal(statSync(join(dir, "p.jsonl")).mode & 0o777, 0o600)
 })

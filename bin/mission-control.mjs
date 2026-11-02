@@ -9,7 +9,12 @@ if (argv[0] === "hook") {
   try {
     const { recordHook, defaultHooksDir } = await import("../src/hooks.mjs")
     let raw = ""
-    try { raw = readFileSync(0, "utf8") } catch { /* no stdin */ }
+    for (let i = 0; i < 5; i++) {
+      try { raw = readFileSync(0, "utf8"); break } catch (e) {
+        if (e?.code !== "EAGAIN") break // EAGAIN: stdin pipe not ready yet, try again shortly
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10)
+      }
+    }
     recordHook({ raw, event: argv[1], hooksDir: process.env.MISSION_CONTROL_HOOKS_DIR || defaultHooksDir() })
   } catch { /* never disturb the session */ }
   process.exit(0)

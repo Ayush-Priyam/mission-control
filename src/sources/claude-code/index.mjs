@@ -8,6 +8,9 @@ import { costOf } from "./prices.mjs"
 import { createUsageScanner } from "./usage.mjs"
 
 const LIVE_MS = 2 * 60 * 1000
+const TAIL_BYTES = 64 * 1024
+const WAIT_EXPIRY_MS = 12 * 3600 * 1000
+const CLEAR_GAP_MS = 2000
 const HEAD_BYTES = 64 * 1024
 const HEAD_MAX = 1024 * 1024 // read forward this far for the first line carrying a cwd
 const SAFE = /^[\w-][\w.-]*$/ // one path segment: no separators, never starts with a dot
@@ -18,7 +21,7 @@ const iso = (ms) => new Date(ms).toISOString()
 /**
  * Claude Code sessions as a v2 source. `root` is the projects dir (default ~/.claude/projects),
  * `now` an injectable clock. `hooksDir` holds the level-1 hook logs: a session whose last Notification is
- * unanswered (no later hook event, no later log activity) is "waiting". Read-only; every file read is confined to the real path of `root`. `cachePath` is where the
+ * unanswered is "waiting" (an idle reminder is "ready", i.e. idle). Read-only; every file read is confined to the real path of `root`. `cachePath` is where the
  * usage scan persists its per-file results (omitted: memory only); `parse` is injectable for tests.
  */
 export function create({ root, now = () => Date.now(), hooksDir, cachePath, parse = parseTranscript } = {}) {
@@ -140,13 +143,39 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
   }
   const scanner = createUsageScanner({ files: usageFiles, parse, costOf, cachePath, now })
 
-  /** Hook-derived waiting state, or null: a Notification is open only while the session log is no newer than it. */
-  function waitingOf(id, lastMs, logged) {
+  /** Newest user/assistant record timestamp (ms) in the tail of a main log; summary/system lines are ignored. */
+  function lastTurnMs(file, size) {
+    let fd
+    try {
+      fd = openSync(file, "r")
+      const n = Math.min(size, TAIL_BYTES)
+      const buf = Buffer.alloc(n)
+      readSync(fd, buf, 0, n, size - n)
+      let best = 0
+      for (const line of buf.toString("utf8").split("\n")) {
+        if (!line.includes('"timestamp"')) continue
+        try {
+          const j = JSON.parse(line)
+          if (j && (j.type === "user" || j.type === "assistant")) best = Math.max(best, Date.parse(j.timestamp) || 0)
+        } catch { /* half-written or cut first line */ }
+      }
+      return best
+    } catch { return 0 } finally { if (fd !== undefined) closeSync(fd) }
+  }
+
+  /**
+   * Hook-derived state: { waiting, message } or { ready } or null. A Notification stays open until a clearing
+   * hook arrives or the MAIN log gains a user/assistant record more than 2 s after it; it expires after 12 h.
+   */
+  function waitingOf(id, main, logged) {
     if (!hooksDir || (logged && !logged.has(`${id}.jsonl`))) return null
     const w = readWaiting(hooksDir, id)
-    if (!w.waiting) return null
+    if (!w.waiting && !w.ready) return null
     const since = Date.parse(w.since)
-    if (Number.isFinite(since) && lastMs > since) return null // answered in the terminal: the log moved on
+    if (Number.isFinite(since)) {
+      if (now() - since > WAIT_EXPIRY_MS) return null
+      if (lastTurnMs(main.real, main.st.size) > since + CLEAR_GAP_MS) return null
+    }
     return w
   }
 
@@ -194,16 +223,19 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
     let cost = 0, errors = 0
     for (const l of lanes) { add(tokens, l.tokens); cost += l.cost; errors += l.errors }
     const running = lanes.some((l) => l.status === "working")
-    const w = waitingOf(s.id, lastMs)
-    if (w) {
+    const w = waitingOf(s.id, main)
+    if (w?.waiting) {
       lanes[0].status = "waiting"
       lanes[0].reason = w.message ?? "Waiting for you"
+    } else if (w?.ready) {
+      lanes[0].status = "idle"
+      lanes[0].reason = "ready for input"
     }
     const summary = {
       source: "claude-code", id: s.id, kind: "session",
       title: mp.meta.title ?? s.id, harness: "claude-code",
       cwd: mp.meta.cwd, branch: mp.meta.branch,
-      live: running, status: w ? "waiting" : running ? "working" : "idle", waiting: !!w,
+      live: running, status: w?.waiting ? "waiting" : w?.ready ? "idle" : running ? "working" : "idle", waiting: !!w?.waiting,
       startedAt: mp.firstTs, updatedAt: iso(lastMs),
       counts: { lanes: lanes.length, calls: calls.length, errors },
       tokens, cost,
@@ -233,12 +265,12 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
           const o = opened.get(s.id)
           const done = o && o.lastMs === lastMs ? o.summary : null
           const live = liveAt(lastMs)
-          const w = waitingOf(s.id, lastMs, logged)
+          const w = waitingOf(s.id, c, logged)
           items.push({
             source: "claude-code", id: s.id, kind: "session",
             title: h.title ?? s.id, harness: "claude-code",
             cwd: h.cwd, branch: h.branch,
-            live, status: w ? "waiting" : live ? "working" : "idle", waiting: !!w,
+            live, status: w?.waiting ? "waiting" : w?.ready ? "idle" : live ? "working" : "idle", waiting: !!w?.waiting,
             startedAt: h.startedAt, updatedAt: iso(lastMs),
             counts: { lanes: 1 + subs.length, calls: done?.counts.calls ?? 0, errors: done?.counts.errors ?? 0 },
             tokens: done?.tokens ?? zero(), cost: done?.cost ?? 0,
