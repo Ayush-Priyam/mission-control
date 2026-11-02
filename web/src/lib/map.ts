@@ -82,6 +82,8 @@ export function treeModel(lanes: Lane[], cols = TREE.cols): ItemMapModel {
 export const NODE_H = 54
 export type Box = { x: number; y: number; w: number; h: number }
 type Pt = { x: number; y: number }
+/** A hop chip; `leader` (the arc's midpoint) is set when no clear spot was near it and it moved outside the graph. */
+export type Chip = Box & { leader?: Pt }
 
 /** Width that keeps neighbours on the same row apart. */
 export function nodeWidth(nodes: MapNode[], max: number, h = NODE_H) {
@@ -114,28 +116,40 @@ export const labelText = (arc: MapArc) =>
 const LABEL_H = 20
 const labelW = (text: string) => Math.ceil(text.length * 7.4 + 14)
 
-/** A chip per arc at its midpoint, nudged to the nearest spot that clears every node box and every earlier chip. */
-export function labelBoxes(m: ItemMapModel, w: number): Box[] {
-  const blocked = [...m.nodes, ...(m.you ? [m.you] : [])].map((n) => nodeBox(n, w))
-  // a band's "parallel · N" caption sits above its first box
+/**
+ * A chip per arc at its midpoint, nudged to the nearest spot that clears every node box, band caption and
+ * earlier chip. When nothing near is clear, the chip goes outside the graph (above it for a send-back, below
+ * for a question) with a leader line back to its arc, so it never covers a node.
+ */
+export function labelBoxes(m: ItemMapModel, w: number): Chip[] {
+  const nodes = [...m.nodes, ...(m.you ? [m.you] : [])].map((n) => nodeBox(n, w))
+  const blocked: Box[] = [...nodes]
+  // a band's "parallel · N" caption sits above it
   for (const b of bandBoxes(m, w)) if (b.first) blocked.push(bandCaption(b))
-  const out: Box[] = []
+  const out: Chip[] = []
   const steps: Pt[] = []
-  for (let dy = 0; dy <= 6; dy++) for (let dx = 0; dx <= 4; dx++) for (const sy of dy ? [-1, 1] : [1]) for (const sx of dx ? [-1, 1] : [1]) steps.push({ x: sx * dx * 34, y: sy * dy * 14 })
+  for (let dy = 0; dy <= 12; dy++) for (let dx = 0; dx <= 8; dx++) for (const sy of dy ? [-1, 1] : [1]) for (const sx of dx ? [-1, 1] : [1]) steps.push({ x: sx * dx * 34, y: sy * dy * 14 })
   steps.sort((p, q) => Math.hypot(p.x, p.y * 1.6) - Math.hypot(q.x, q.y * 1.6))
+  const top = Math.min(...nodes.map((b) => b.y)), bottom = Math.max(...nodes.map((b) => b.y + b.h))
+  const free = (box: Box) => ![...blocked, ...out].some((b) => hits(box, b))
   for (const arc of m.arcs) {
     const { mid, up } = hopGeom(arc, w)
     const bw = labelW(labelText(arc))
-    let pick: Box | null = null
+    let pick: Chip | null = null
     for (const s of steps) {
       // prefer moving away from the nodes (outward, along the arc's bow) when equally near
       const box = { x: mid.x - bw / 2 + s.x, y: mid.y - LABEL_H / 2 + s.y * (up < 0 ? 1 : -1), w: bw, h: LABEL_H }
-      if (![...blocked, ...out].some((b) => hits(box, b))) {
-        pick = box
-        break
+      if (free(box)) { pick = box; break }
+    }
+    if (!pick) {
+      // outside the graph's node bounds, one lane of chips further out each time that lane is taken
+      for (let k = 0; !pick; k++) {
+        const y = up < 0 ? top - 14 - LABEL_H - k * (LABEL_H + 6) : bottom + 14 + k * (LABEL_H + 6)
+        const box = { x: mid.x - bw / 2, y, w: bw, h: LABEL_H }
+        if (free(box)) pick = { ...box, leader: { x: mid.x, y: mid.y } }
       }
     }
-    out.push(pick ?? { x: mid.x - bw / 2, y: mid.y - LABEL_H / 2, w: bw, h: LABEL_H })
+    out.push(pick)
   }
   return out
 }
@@ -165,10 +179,12 @@ export function boundsOf(m: ItemMapModel, w: number, o: { pad?: number; minW?: n
 export const bandCaption = (b: Box & { band: Band }): Box => ({ x: b.x + 8, y: b.y - 19, w: 20 + `parallel · ${b.band.nodes.length}`.length * 6.8, h: 17 })
 
 /**
- * A band's rectangles: one around all its nodes when that box holds no other node, else one pad per
- * node (so a band never claims a node that was not part of it). `first` marks where its label goes.
+ * One mark per band, with one caption: a box around all its nodes when that box holds no other node, else a
+ * bracket over them (a line above the band's nodes with a tick down to each member), so a band never
+ * claims a node that was not part of it. The returned box is the box, or the bracket's line strip.
  */
-export function bandBoxes(m: ItemMapModel, w: number, h = NODE_H): (Box & { band: Band; first: boolean })[] {
+export type BandMark = Box & { band: Band; first: boolean; bracket?: { y: number; ticks: Pt[] } }
+export function bandBoxes(m: ItemMapModel, w: number, h = NODE_H): BandMark[] {
   const at = new Map(m.nodes.map((n) => [n.id, n]))
   const p = h / 4
   const around = (ns: MapNode[]): Box => {
@@ -182,8 +198,9 @@ export function bandBoxes(m: ItemMapModel, w: number, h = NODE_H): (Box & { band
     const all = around(ns)
     const others = m.nodes.filter((n) => !ns.includes(n)).map((n) => nodeBox(n, w, h))
     if (!others.some((o) => hits(all, o, -2))) return [{ ...all, band, first: true }]
-    const top = [...ns].sort((a, b) => a.y - b.y || a.x - b.x)
-    return top.map((n, i) => ({ ...around([n]), band, first: i === 0 }))
+    const y = all.y + p / 2 // just above the highest member
+    const ticks = ns.map((n) => ({ x: n.x, y: n.y - h / 2 - 2 }))
+    return [{ x: all.x + p, y: y - 4, w: all.w - 2 * p, h: 8, band, first: true, bracket: { y, ticks } }]
   })
 }
 

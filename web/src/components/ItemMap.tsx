@@ -2,7 +2,7 @@ import { useMemo } from "react"
 import type { ItemDetail, Status } from "@/lib/api"
 import { STATUS_LABEL } from "@/components/StatusDot"
 import type { LaneExtra } from "@/lib/item"
-import { bandBoxes, boundsOf, hopGeom, labelBoxes, labelText, mapModel, NODE_H, nodeWidth, type Box, type ItemMapModel, type MapArc, type MapNode, type YouNode } from "@/lib/map"
+import { bandBoxes, boundsOf, hopGeom, labelBoxes, labelText, mapModel, NODE_H, nodeWidth, type Box, type Chip, type ItemMapModel, type MapArc, type MapNode, type YouNode } from "@/lib/map"
 import { cn } from "@/lib/utils"
 
 export { mapModel }
@@ -43,12 +43,15 @@ const WORD_FILL: Record<Status, string> = {
   idle: "fill-faint",
 }
 
-function HopArc({ arc, w, chip }: { arc: MapArc; w: number; chip: Box }) {
+function HopArc({ arc, w, chip }: { arc: MapArc; w: number; chip: Chip }) {
   const { d } = hopGeom(arc, w)
   const bad = arc.kind === "sendback"
   return (
     <g data-arc={arc.kind}>
       <path d={d} fill="none" strokeWidth={1.6} className={bad ? "stroke-failed" : "stroke-consult"} markerEnd={`url(#map-arrow-${bad ? "failed" : "consult"})`} />
+      {chip.leader && (
+        <path data-leader d={`M${chip.leader.x},${chip.leader.y} L${chip.x + chip.w / 2},${chip.leader.y < chip.y ? chip.y : chip.y + chip.h}`} fill="none" strokeWidth={1} strokeDasharray="2 3" className={bad ? "stroke-failed/50" : "stroke-consult/50"} />
+      )}
       <g data-chip>
         <rect x={chip.x} y={chip.y} width={chip.w} height={chip.h} rx={6} className={cn("fill-background", bad ? "stroke-failed/45" : "stroke-consult/45")} strokeWidth={1} />
         <text x={chip.x + chip.w / 2} y={chip.y + chip.h / 2 + 4} textAnchor="middle" className={cn("font-mono text-[12px]", bad ? "fill-failed" : "fill-consult")}>
@@ -237,7 +240,18 @@ export function ItemMap({ detail, extras, selected, onOpen, onYou }: { detail: I
           </defs>
           {bands.map((b, i) => (
             <g key={`b${i}`} aria-hidden>
-              <rect x={b.x} y={b.y} width={b.w} height={b.h} rx={16} strokeDasharray="3 5" className={b.band.live ? "fill-running/[0.05] stroke-running/35" : "fill-foreground/[0.03] stroke-foreground/20"} />
+              {b.bracket ? (
+                <path
+                  data-band-bracket
+                  d={`M${b.x},${b.bracket.y + 8} V${b.bracket.y} H${b.x + b.w} V${b.bracket.y + 8} ${b.bracket.ticks.map((t) => `M${t.x},${b.bracket!.y} V${t.y}`).join(" ")}`}
+                  fill="none"
+                  strokeWidth={1.25}
+                  strokeDasharray="3 4"
+                  className={b.band.live ? "stroke-running/50" : "stroke-foreground/25"}
+                />
+              ) : (
+                <rect x={b.x} y={b.y} width={b.w} height={b.h} rx={16} strokeDasharray="3 5" className={b.band.live ? "fill-running/[0.05] stroke-running/35" : "fill-foreground/[0.03] stroke-foreground/20"} />
+              )}
               {b.first && (
                 <text data-band x={b.x + 12} y={b.y - 6} className={cn("font-mono text-[11px] tracking-wide", b.band.live ? "fill-running" : "fill-muted-foreground")}>
                   parallel · {b.band.nodes.length}

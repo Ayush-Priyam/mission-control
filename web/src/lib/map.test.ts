@@ -165,15 +165,37 @@ describe("the you node", () => {
 })
 
 describe("bands", () => {
-  it("one box when it holds only its own nodes, else a pad per node", async () => {
+  it("one box when it holds only its own nodes, else one bracket over them: one mark, one caption, never pads", async () => {
     const { bandBoxes } = await import("./map")
     const n = (id: string, x: number, y: number) => ({ id, label: id, x, y, status: "working" as Status, lanes: [id] })
     const base = { mode: "tree" as const, w: 820, h: 400, flow: [], consult: [], arcs: [] }
     const tight = bandBoxes({ ...base, nodes: [n("a", 100, 50), n("b", 300, 50), n("c", 100, 300)], bands: [{ nodes: ["a", "b"], live: true }] }, 150)
     expect(tight.length).toBe(1)
     const loose = bandBoxes({ ...base, nodes: [n("a", 100, 50), n("x", 300, 50), n("b", 500, 50)], bands: [{ nodes: ["a", "b"], live: true }] }, 150)
-    expect(loose.length).toBe(2)
-    expect(loose.filter((b) => b.first).length).toBe(1)
+    expect(loose.length).toBe(1)
+    expect(loose[0].first).toBe(true)
+    expect(loose[0].bracket?.ticks.map((t) => t.x)).toEqual([100, 500]) // ticks to members only, none to x
+    expect(tight[0].bracket).toBeUndefined()
+  })
+})
+
+describe("hop label fallback", () => {
+  it("with no clear spot near the arc, the chip goes outside the graph with a leader line and covers no node", async () => {
+    const { labelBoxes } = await import("./map")
+    const n = (id: string, x: number, y: number) => ({ id, label: id, x, y, status: "idle" as Status, lanes: [id] })
+    // a dense 13 x 9 grid of nodes: every spot near the arc's midpoint is covered
+    const nodes = Array.from({ length: 13 * 9 }, (_, i) => n(`n${i}`, (i % 13) * 60, Math.floor(i / 13) * 60))
+    const from = nodes[4 * 13 + 2], to = nodes[4 * 13 + 10]
+    const m = { mode: "graph" as const, w: 800, h: 600, flow: [], consult: [], bands: [], nodes, arcs: [{ from, to, kind: "sendback" as const, labels: ["X1"], n: 1 }, { from, to, kind: "question" as const, labels: ["Q1"], n: 1 }] }
+    const w = 56
+    const chips = labelBoxes(m as any, w)
+    const boxes = nodes.map((x) => nodeBox(x, w))
+    for (const c of chips) {
+      for (const b of boxes) expect(hits(c, b)).toBe(false)
+      expect(c.leader).toBeTruthy()
+    }
+    expect(chips[0].y + chips[0].h).toBeLessThan(Math.min(...boxes.map((b) => b.y))) // send-back: above
+    expect(chips[1].y).toBeGreaterThan(Math.max(...boxes.map((b) => b.y + b.h))) // question: below
   })
 })
 
