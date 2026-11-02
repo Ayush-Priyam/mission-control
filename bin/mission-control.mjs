@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process"
 import { createServer } from "../src/server.mjs"
-import { loadAdapter, parseArgs } from "../src/adapters/load.mjs"
+import { loadSources, parseArgs } from "../src/adapters/load.mjs"
 
 const argv = process.argv.slice(2)
 let args
@@ -17,14 +17,14 @@ if (!(port >= 0 && port <= 65535)) {
   process.exit(2)
 }
 
-let adapter
-try { adapter = await loadAdapter(argv, process.cwd()) } catch (e) {
+let adapters
+try { adapters = await loadSources(argv, process.cwd()) } catch (e) {
   console.error(`mission control: ${e.message}`)
   process.exit(1)
 }
 
 let srv
-try { srv = await createServer(adapter, { port }) } catch { process.exit(1) }
+try { srv = await createServer(adapters, { port }) } catch { process.exit(1) }
 
 if (!args.noOpen && process.platform === "darwin") {
   spawn("open", [`http://localhost:${srv.port}`], { stdio: "ignore", detached: true }).on("error", () => {}).unref()

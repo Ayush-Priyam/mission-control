@@ -5,6 +5,8 @@ import { dirname, extname, join, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import { isRunId, isSessionName } from "./names.mjs"
 import { crewStats } from "./crew.mjs"
+import { fromAdapter } from "./sources/from-adapter.mjs"
+import { createRegistry } from "./sources/registry.mjs"
 
 const DEFAULT_DIST = join(dirname(fileURLToPath(import.meta.url)), "..", "dist")
 
@@ -70,10 +72,71 @@ const isExtrasId = (s) => typeof s === "string" && /^[\w.-]+$/.test(s) && s !== 
 
 const decode = (s) => { try { return decodeURIComponent(s) } catch { return null } }
 
-async function api(adapter, req, res, url) {
+// Source names and item ids: path-safe words only (no separators, no "." or "..").
+const isKey = isExtrasId
+
+async function sendExtra(res, r) {
+  const status = r.status ?? 200
+  if (r.type && !/json/i.test(r.type)) {
+    res.writeHead(status, { "content-type": r.type, "cache-control": "no-store", "x-content-type-options": "nosniff" })
+    return res.end(r.body)
+  }
+  return json(res, r.body, status)
+}
+
+// v2 routes, one set for every source: /api/overview, /api/items, /api/item/:source/:id[/...]
+async function apiV2(registry, req, res, url, parts) {
+  const get = req.method === "GET" || req.method === "HEAD"
+  if (get && parts[0] === "sources" && parts.length === 1) {
+    return json(res, registry.sources().map((s) => ({
+      name: s.name, harness: s.harness, extras: Object.keys(s.extras ?? {}), actions: Object.keys(s.actions ?? {}), source: s.describe?.().source ?? null,
+    })))
+  }
+  if (get && parts[0] === "overview" && parts.length === 1) return json(res, await registry.overview())
+  if (get && parts[0] === "items" && parts.length === 1) return json(res, await registry.list())
+  if (parts[0] !== "item" || parts.length < 3) return false
+  const source = decode(parts[1]), id = decode(parts[2])
+  if (!isKey(source) || !isKey(id)) return json(res, { error: "not allowed" }, 400)
+  const src = registry.source(source)
+  if (!src) return json(res, { error: "no such source" }, 404)
+  if (get && parts.length === 3) {
+    const item = await registry.get(source, id)
+    return item ? json(res, item) : json(res, { error: "no such item" }, 404)
+  }
+  if (get && parts[3] === "calls" && parts.length === 4) {
+    const q = url.searchParams
+    return json(res, await registry.calls(source, id, { lane: q.get("lane") ?? undefined, kind: q.get("kind") ?? undefined, q: q.get("q") ?? undefined }))
+  }
+  if (get && parts[3] === "session" && parts.length === 5) {
+    const name = decode(parts[4])
+    if (!isSessionName(name)) return json(res, { error: "not allowed" }, 400)
+    const s = await registry.session(source, id, name)
+    return s ? json(res, s) : json(res, { error: "not found" }, 404)
+  }
+  if (get && parts[3] === "x" && parts.length === 5) {
+    const key = decode(parts[4])
+    const fn = Object.hasOwn(src.extras ?? {}, key) ? src.extras[key] : null
+    if (!fn) return notFound(res)
+    return sendExtra(res, await fn(id, url.searchParams))
+  }
+  if (req.method === "POST" && parts[3] === "action" && parts.length === 5) {
+    const name = decode(parts[4])
+    const fn = Object.hasOwn(src.actions ?? {}, name) ? src.actions[name] : null
+    if (!fn) return notFound(res)
+    const raw = await readBody(req)
+    const body = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}
+    return json(res, (await fn(id, body)) ?? {})
+  }
+  return false
+}
+
+async function api({ adapter, registry }, req, res, url) {
   const parts = url.pathname.split("/").slice(2) // after "/api"
   const get = req.method === "GET" || req.method === "HEAD"
   try {
+    if ((await apiV2(registry, req, res, url, parts)) !== false) return
+    // v1 routes below: aliases for the first adapter-backed source.
+    if (!adapter) return notFound(res)
     if (get && parts[0] === "runs" && parts.length === 1) return json(res, await adapter.listRuns())
     if (get && parts[0] === "run" && parts.length === 2) {
       const id = decode(parts[1])
@@ -98,13 +161,7 @@ async function api(adapter, req, res, url) {
       const id = parts[2] === undefined ? null : decode(parts[2])
       const fn = Object.hasOwn(adapter.extras ?? {}, key) ? adapter.extras[key] : null
       if (!fn || (parts.length === 3 && !isExtrasId(id))) return notFound(res)
-      const r = await fn(id, url.searchParams)
-      const status = r.status ?? 200
-      if (r.type && !/json/i.test(r.type)) {
-        res.writeHead(status, { "content-type": r.type, "cache-control": "no-store", "x-content-type-options": "nosniff" })
-        return res.end(r.body)
-      }
-      return json(res, r.body, status)
+      return sendExtra(res, await fn(id, url.searchParams))
     }
     if (req.method === "POST" && parts[0] === "run" && parts[2] === "action" && parts.length === 4) {
       const id = decode(parts[1]), name = decode(parts[3])
@@ -123,7 +180,16 @@ async function api(adapter, req, res, url) {
 
 const LOOPBACK = ["localhost", "127.0.0.1", "[::1]"]
 
-export function createServer(adapter, { port = 4319, distDir = DEFAULT_DIST } = {}) {
+/**
+ * `input` is one v1 adapter, one source, or an array of either. Every entry becomes a source;
+ * the v1 routes (/api/runs, /api/run/..., /api/crew, /api/x/...) stay as aliases for the first adapter.
+ */
+export function createServer(input, { port = 4319, distDir = DEFAULT_DIST } = {}) {
+  const entries = Array.isArray(input) ? input : [input]
+  const sources = entries.map((e) => (typeof e.listItems === "function" ? e : fromAdapter(e)))
+  const registry = createRegistry(sources)
+  const adapter = entries.find((e) => typeof e.listRuns === "function") ?? null
+  const ctx = { adapter, registry }
   if (!existsSync(join(distDir, "index.html"))) {
     console.error(`mission control: no built page at ${join(distDir, "index.html")} — run npm run build`)
   }
@@ -141,18 +207,18 @@ export function createServer(adapter, { port = 4319, distDir = DEFAULT_DIST } = 
         if (type !== "application/json") return json(res, { error: "content-type must be application/json" }, 415)
         const origin = req.headers.origin
         if (origin !== undefined && !origins.has(origin)) return json(res, { error: "cross-origin request refused" }, 403)
-        return await api(adapter, req, res, url)
+        return await api(ctx, req, res, url)
       }
       if (req.method !== "GET" && req.method !== "HEAD") return json(res, { error: "not found" }, 404)
       if (url.pathname === "/api/capabilities") {
         return json(res, {
-          adapter: adapter.name,
-          extras: Object.keys(adapter.extras ?? {}),
-          actions: Object.keys(adapter.actions ?? {}),
-          source: adapter.describe?.().source ?? null,
+          adapter: adapter?.name ?? null,
+          extras: Object.keys(adapter?.extras ?? {}),
+          actions: Object.keys(adapter?.actions ?? {}),
+          source: adapter?.describe?.().source ?? null,
         })
       }
-      if (url.pathname.startsWith("/api/")) return await api(adapter, req, res, url)
+      if (url.pathname.startsWith("/api/")) return await api(ctx, req, res, url)
       return await serveStatic(res, distDir, url.pathname)
     } catch (e) {
       json(res, { error: String(e?.message ?? e) }, 500)

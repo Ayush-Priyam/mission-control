@@ -52,3 +52,19 @@ export async function loadAdapter(argv, cwd = process.cwd()) {
   }
   return native(resolve(cwd, "runs"))
 }
+
+/**
+ * Every adapter the CLI args ask for, as a list: --runs (native), --speckit and --adapter may each be
+ * given and all become sources together. With --adapter, --runs is the runs dir handed to that
+ * adapter (as loadAdapter does) rather than a separate native source. With none of them, a bare
+ * path (spec-kit repo or runs dir) or ./runs.
+ */
+export async function loadSources(argv, cwd = process.cwd()) {
+  const a = parseArgs(argv)
+  if (!a.adapter && !a.runs && !a.speckit) return [await loadAdapter(argv, cwd)]
+  const out = []
+  if (a.adapter) out.push(await loadAdapter(argv, cwd))
+  else if (a.runs) out.push(native(resolve(cwd, a.runs)))
+  if (a.speckit) out.push(await speckit(resolve(cwd, a.speckit)))
+  return out
+}
