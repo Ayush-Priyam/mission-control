@@ -1,3 +1,54 @@
+# Sources and levels
+
+Mission Control reads work from sources. Each level asks more of the harness and shows more.
+
+| level | source | what you provide | what shows |
+|---|---|---|---|
+| 0 | Claude Code transcripts | nothing | sessions, subagent lanes, calls, tokens, estimated cost, usage |
+| 1 | hook event files | Claude Code hooks pointing at `mission-control hook <Event>` | live status and the Needs you queue |
+| 2 | native runs | `state.json` and `runs.jsonl` in the [run format](#run-format) below | stages as lanes, timeline, crew map, waiting-on-you |
+| 3 | an adapter | a JS module (see the README) | extra tabs and actions on top of level 2 |
+
+Every item, whatever its source, is shown as a session or run made of lanes, so the pages do not care where it came from.
+
+## Claude Code fields read (level 0)
+
+Sessions are read from `<root>/<project-slug>/<session-id>.jsonl`, where the root is `~/.claude/projects` unless `--claude-dir` says otherwise. Subagents are read from `<root>/<project-slug>/<session-id>/subagents/agent-<id>.jsonl`, with an optional `agent-<id>.meta.json` beside each (its fields label the lane). Each line is a JSON object; a line that does not parse (for example one still being written) is skipped. Nothing is ever written back.
+
+| field | used for |
+|---|---|
+| `cwd` | the project and worktree the session belongs to |
+| `gitBranch` | the branch shown on the worktree |
+| `sessionId`, `version` | identity |
+| `timestamp` | start, update and call times, durations |
+| `type: "summary"` and `summary` | the title (else the first user text) |
+| `type: "user"`, `message.content` text (skipping `isMeta` and system reminders) | the title and chat turns |
+| `type: "assistant"`, `message.id`, `message.model` | one LLM message per id; the model |
+| `message.usage` (`input_tokens`, `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`) | tokens and estimated cost |
+| `message.content[]` blocks of `type: "tool_use"` (`id`, `name`, `input`) | calls, classed as tool, MCP (`mcp__<server>__<tool>`), skill or subagent |
+| `message.content[]` blocks of `type: "tool_result"` (`tool_use_id`, `is_error`, `content`) | each call's result, error flag and duration |
+
+Costs are API list-price estimates from token counts, not a bill.
+
+## Hook event files
+
+With the hooks installed (`mission-control hooks install` prints the block to merge into Claude Code's `settings.json`), each of the events `Notification`, `Stop`, `SubagentStop`, `UserPromptSubmit` and `PreToolUse` runs `mission-control hook <Event>`. The command reads Claude Code's JSON from stdin and appends one line to `<hooks dir>/<session_id>.jsonl`. The hooks dir is `~/.mission-control/hooks`, or `MISSION_CONTROL_HOOKS_DIR` when set. The directory is mode 0700 and the files 0600. A session id that is not `^[\w-][\w.-]*$` is ignored.
+
+```jsonl
+{"event":"PreToolUse","sessionId":"sess-1","ts":"2026-11-02T10:00:00.000Z","tool":"Bash"}
+{"event":"Notification","sessionId":"sess-1","ts":"2026-11-02T10:01:00.000Z","message":"Claude needs your permission to use Bash"}
+```
+
+| field | meaning |
+|---|---|
+| `event` | the hook event name |
+| `sessionId` | the Claude Code session id; also the file name |
+| `ts` | ISO time the line was written |
+| `message` | `Notification` only: the text, cut to 500 characters |
+| `tool` | `PreToolUse` only: the tool name |
+
+A session is **waiting** when its last `Notification` is not followed by a `PreToolUse`, `UserPromptSubmit` or `Stop`. The idle reminder Claude Code sends about a minute after a turn ("waiting for your input") is not a block: it marks the session ready, not waiting. A half-written last line is skipped.
+
 # Run format
 
 A harness is anything that writes runs in this format. Mission Control reads it and never writes to it.
