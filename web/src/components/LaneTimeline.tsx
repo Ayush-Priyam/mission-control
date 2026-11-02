@@ -20,6 +20,17 @@ export const TICK: Record<TickKind, { label: string; bg: string }> = {
 const KINDS: TickKind[] = ["tool", "mcp", "skill", "agent", "error"]
 const HATCH = "bg-[repeating-linear-gradient(135deg,color-mix(in_srgb,var(--muted-foreground)_26%,transparent)_0_2px,transparent_2px_5px)]"
 
+/**
+ * How an axis label sits on its x (0..1): labels near the start hang right of it and labels near the end
+ * hang left, so the first one never slides under the sticky lane column and the last never past the edge.
+ */
+export function markAnchor(x: number): string {
+  if (x <= EDGE) return ""
+  if (x >= 1 - EDGE) return "-translate-x-full"
+  return "-translate-x-1/2"
+}
+const EDGE = 0.08
+
 type Props = {
   lanes: Lane[]
   calls: Call[]
@@ -142,7 +153,7 @@ export function LaneTimeline({ lanes, calls, live, now, onPick, onOpenLane }: Pr
                   </span>
                 ))}
                 {tl.marks.map((m, i) => (
-                  <span key={i} className={cn("absolute top-2 font-mono text-[10.5px] whitespace-nowrap text-muted-foreground/80", m.x > 0 && (m.x >= 1 ? "-translate-x-full" : "-translate-x-1/2"))} style={{ left: pct(m.x) }}>
+                  <span key={i} data-mark className={cn("absolute top-2 font-mono text-[10.5px] whitespace-nowrap text-muted-foreground/80", markAnchor(m.x))} style={{ left: pct(m.x) }}>
                     {m.label}
                   </span>
                 ))}

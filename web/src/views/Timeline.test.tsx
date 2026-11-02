@@ -138,6 +138,16 @@ describe("chat blocks", () => {
     expect(systemNote("<system-reminder>be brief</system-reminder>")).toEqual({ kind: "system-reminder", text: "be brief" })
     expect(systemNote("hello <system-reminder>x</system-reminder>")).toBeNull()
   })
+  it("slash-command turns stay user turns, shown as the command typed", async () => {
+    const { blocks, slashCommand, systemNote } = await import("./Chat")
+    const cmd = "<command-message>review</command-message>\n<command-name>/review</command-name>\n<command-args>src/app</command-args>"
+    const t = (i: number, role: "user" | "assistant", text = ""): Turn => ({ i, role, ts: null, text, tools: [] })
+    expect(blocks([t(0, "user", cmd), t(1, "assistant")]).map((b) => b.role)).toEqual(["user", "assistant"])
+    expect(systemNote(cmd)).toBeNull()
+    expect(slashCommand(cmd)).toBe("/review src/app")
+    expect(slashCommand("<command-name>/clear</command-name>")).toBe("/clear")
+    expect(slashCommand("fix it")).toBeNull()
+  })
 })
 
 describe("Chat system notes", () => {
@@ -177,3 +187,14 @@ describe("Timeline zoom", () => {
   })
 })
 
+
+describe("timeline axis labels", () => {
+  it("the first label hangs right of its mark (never under the sticky lane column), the last hangs left", async () => {
+    const { markAnchor } = await import("@/components/LaneTimeline")
+    expect(markAnchor(0)).toBe("")
+    expect(markAnchor(0.03)).toBe("")
+    expect(markAnchor(0.5)).toBe("-translate-x-1/2")
+    expect(markAnchor(0.97)).toBe("-translate-x-full")
+    expect(markAnchor(1)).toBe("-translate-x-full")
+  })
+})

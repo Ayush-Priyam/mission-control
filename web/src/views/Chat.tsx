@@ -71,8 +71,20 @@ function ChipDetail({ c, href, onOpenLane, subLane }: { c: ToolChip; href: strin
   )
 }
 
-/** Tags the harness wraps around text it injects as a "user" turn: not something the owner typed. */
-const SYSTEM_TAGS = ["task-notification", "system-reminder", "local-command-stdout", "local-command-stderr", "bash-stdout", "bash-stderr", "local-command-caveat", "command-name", "command-message", "command-args", "user-prompt-submit-hook"]
+/**
+ * Tags the harness wraps around text it injects as a "user" turn: not something the owner typed. Slash
+ * commands (command-name / command-message / command-args) are typed by the owner, so they stay user turns.
+ */
+const SYSTEM_TAGS = ["task-notification", "system-reminder", "local-command-stdout", "local-command-stderr", "bash-stdout", "bash-stderr", "local-command-caveat", "user-prompt-submit-hook"]
+
+/** A slash command the owner typed, as they typed it ("/review src"), from its command tags; null otherwise. */
+export function slashCommand(text: string): string | null {
+  if (!/^\s*<command-(name|message|args)>/.test(text)) return null
+  const tag = (k: string) => new RegExp(`<command-${k}>([\\s\\S]*?)</command-${k}>`).exec(text)?.[1]?.trim() ?? ""
+  const name = tag("name") || (tag("message") ? `/${tag("message")}` : "")
+  if (!name) return null
+  return [name.startsWith("/") ? name : `/${name}`, tag("args")].filter(Boolean).join(" ")
+}
 const SYSTEM_RE = new RegExp(`^\\s*<(${SYSTEM_TAGS.join("|")})>`)
 
 /** A user turn the harness injected: its tag and a one-line gist (a task notification's summary, else the text without tags). */
@@ -179,7 +191,7 @@ function BlockView({ b, who, ...rest }: BlockProps) {
       {pieces(b).map((p) =>
         p.k === "text" ? (
           user ? (
-            <p key={`t${p.t.i}`} className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">{p.t.text}</p>
+            <p key={`t${p.t.i}`} className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">{slashCommand(p.t.text) ?? p.t.text}</p>
           ) : (
             <Markdown key={`t${p.t.i}`} text={p.t.text} className="break-words" />
           )
