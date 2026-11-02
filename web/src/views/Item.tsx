@@ -78,6 +78,7 @@ export default function Item({ source, id, tab, call }: { source: string; id: st
   const now = useNow(5000)
   const [sheet, setSheet] = useState<string[] | null>(null)
   const [focus, setFocus] = useState<{ ids: string[]; n: number } | null>(null)
+  const [youFlash, setYouFlash] = useState(0)
 
   const src = sources.data?.find((s) => s.name === source)
   const actions = src?.actions ?? []
@@ -108,16 +109,8 @@ export default function Item({ source, id, tab, call }: { source: string; id: st
   const lanesFor = (ids: string[] | null) => (ids ? d.lanes.filter((l) => ids.includes(l.id)) : [])
   const wide = current === "calls"
   const idea = String(d.state?.idea ?? d.summary.title ?? "")
-  // "you" on the map: bring up the needs-you card in the rail (or, with nothing waiting, the conversation).
-  const toYou = () => {
-    const card = document.querySelector<HTMLElement>("[data-needs-you]")
-    if (!card) return go("chat")
-    card.scrollIntoView({ behavior: "smooth", block: "center" })
-    card.classList.remove("mc-flash")
-    void card.offsetWidth
-    card.classList.add("mc-flash")
-    card.focus({ preventScroll: true })
-  }
+  // "you" on the map: the rail scrolls to and flashes its needs-you card (or itself when nothing waits).
+  const toYou = () => setYouFlash((n) => n + 1)
 
   return (
     <div className="mx-auto flex max-w-[1500px] flex-col gap-4">
@@ -192,7 +185,7 @@ export default function Item({ source, id, tab, call }: { source: string; id: st
         </Tabs>
         {!wide && (
           <div className="flex flex-col gap-4 lg:sticky lg:top-0 lg:self-start">
-            <RightRail detail={d} calls={isSession ? calls.data : null} actions={actions} now={now} onActed={item.reload} onOpen={(lane) => setSheet([lane])} />
+            <RightRail detail={d} calls={isSession ? calls.data : null} actions={actions} now={now} onActed={item.reload} onOpen={(lane) => setSheet([lane])} flash={youFlash} />
             {v1Run && (src?.extras ?? []).includes("tokens") && !tabs.includes("docs") && <TokenPanel runId={id} optional />}
           </div>
         )}

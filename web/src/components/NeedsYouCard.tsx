@@ -21,7 +21,7 @@ export type Ask = {
  * The right rail's top card. Waiting: what for, and the source's declared actions (sign / send back / say).
  * Stopped by any other rule: a grey "stopped" card, never "failed".
  */
-export function NeedsYouCard({ source, id, ask, actions, now, onActed }: { source: string; id: string; ask: Ask; actions: string[]; now: number; onActed?: () => void }) {
+export function NeedsYouCard({ source, id, ask, actions, now, onActed, flash = false }: { source: string; id: string; ask: Ask; actions: string[]; now: number; onActed?: () => void; flash?: boolean }) {
   const canSign = ask.waiting && actions.includes("sign")
   const canSay = ask.waiting && actions.includes("say")
   const [mode, setMode] = useState<"idle" | "back">("idle")
@@ -58,7 +58,7 @@ export function NeedsYouCard({ source, id, ask, actions, now, onActed }: { sourc
       data-needs-you
       tabIndex={-1}
       aria-label={ask.waiting ? "Needs you" : "Stopped"}
-      className={cn("flex flex-col gap-3 rounded-xl border p-4", ask.waiting ? "border-needs-you/70 bg-needs-you/5" : "border-stopped/40 border-dashed bg-card")}
+      className={cn("flex flex-col gap-3 rounded-xl border p-4", ask.waiting ? "border-needs-you/70 bg-needs-you/5" : "border-stopped/40 border-dashed bg-card", flash && "mc-flash")}
     >
       <div className={cn("font-mono text-[11px] font-bold tracking-wider uppercase", ask.waiting ? "text-needs-you" : "text-stopped")}>
         {ask.waiting ? "Needs you" : `Stopped${ask.rule ? ` · ${ask.rule}` : ""}`}
