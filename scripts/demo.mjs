@@ -17,7 +17,7 @@ gen.stdout.on("data", (d) => {
   process.stdout.write(d)
   if (started) return
   started = true
-  const server = spawn(process.execPath, [join(root, "bin", "mission-control.mjs"), "--claude-dir", "examples/claude", "--runs", "examples/runs", "--port", port, ...(noOpen ? ["--no-open"] : [])], {
+  const server = spawn(process.execPath, [join(root, "bin", "mission-control.mjs"), "--claude-dir", "examples/claude", "--runs", "examples/runs", "--no-codex", "--port", port, ...(noOpen ? ["--no-open"] : [])], {
     cwd: root,
     stdio: "inherit",
     env: { ...process.env, MISSION_CONTROL_HOOKS_DIR: join(root, "examples", "hooks") },

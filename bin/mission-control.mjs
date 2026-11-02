@@ -7,7 +7,7 @@ const argv = process.argv.slice(2)
 // Hook entry points load only src/hooks.mjs: they run inside Claude Code and must stay fast and silent.
 if (argv[0] === "hook") {
   try {
-    const { recordHook, defaultHooksDir } = await import("../src/hooks.mjs")
+    const { recordHook, recordCodexHook, defaultHooksDir } = await import("../src/hooks.mjs")
     let raw = ""
     for (let i = 0; i < 5; i++) {
       try { raw = readFileSync(0, "utf8"); break } catch (e) {
@@ -15,20 +15,23 @@ if (argv[0] === "hook") {
         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10)
       }
     }
-    recordHook({ raw, event: argv[1], hooksDir: process.env.MISSION_CONTROL_HOOKS_DIR || defaultHooksDir() })
+    const hooksDir = process.env.MISSION_CONTROL_HOOKS_DIR || defaultHooksDir()
+    if (argv[1] === "codex") recordCodexHook({ raw, hooksDir }) // Codex names the event in its JSON
+    else recordHook({ raw, event: argv[1], hooksDir })
   } catch { /* never disturb the session */ }
   process.exit(0)
 }
 if (argv[0] === "hooks" && argv[1] === "install") {
-  const { settingsBlock } = await import("../src/hooks.mjs")
-  console.log(JSON.stringify(settingsBlock({ script: fileURLToPath(import.meta.url) }), null, 2))
+  const { settingsBlock, codexHooksBlock } = await import("../src/hooks.mjs")
+  const block = argv[2] === "codex" ? codexHooksBlock : settingsBlock // `hooks install codex`: the ~/.codex/hooks.json block
+  console.log(JSON.stringify(block({ script: fileURLToPath(import.meta.url) }), null, 2))
   process.exit(0)
 }
 
 const { spawn } = await import("node:child_process")
 const { createServer } = await import("../src/server.mjs")
 const { defaultConfigPath } = await import("../src/hidden.mjs")
-const { loadClaude, loadSources, parseArgs } = await import("../src/adapters/load.mjs")
+const { loadClaude, loadCodex, loadSources, parseArgs } = await import("../src/adapters/load.mjs")
 let args
 try { args = parseArgs(argv) } catch (e) {
   console.error(`mission control: ${e.message}`)
@@ -47,6 +50,8 @@ try {
   adapters = await loadSources(argv, process.cwd())
   const claude = await loadClaude(argv, process.cwd())
   if (claude) adapters = [...adapters, claude]
+  const codex = await loadCodex(argv, process.cwd())
+  if (codex) adapters = [...adapters, codex]
 } catch (e) {
   console.error(`mission control: ${e.message}`)
   process.exit(1)

@@ -115,3 +115,52 @@ export function settingsBlock({ node = process.execPath, script }) {
   for (const e of EVENTS) hooks[e] = [{ hooks: [{ type: "command", command: `${q(node)} ${q(script)} hook ${e}` }] }]
   return { hooks }
 }
+
+/**
+ * Codex CLI hook events (hooks.json / [hooks] in ~/.codex/config.toml) and the dashboard event each is
+ * recorded as, so one waiting rule serves both harnesses: PermissionRequest (Codex is about to ask for
+ * approval) opens a wait like a Claude Notification; a tool starting or finishing, a new prompt, the turn
+ * ending or an interrupt clears it.
+ */
+export const CODEX_EVENTS = {
+  PermissionRequest: "Notification",
+  PreToolUse: "PreToolUse",
+  PostToolUse: "PreToolUse",
+  UserPromptSubmit: "UserPromptSubmit",
+  Stop: "Stop",
+  Interrupt: "Stop",
+  SubagentStop: "SubagentStop",
+}
+
+/**
+ * Append one Codex hook event to <hooksDir>/codex/<session_id>.jsonl in the same line format as Claude's
+ * (`event` is the mapped name, `codexEvent` the original). Never throws; true when a line was written.
+ */
+export function recordCodexHook({ raw, hooksDir = defaultHooksDir(), now = () => new Date() }) {
+  try {
+    const input = JSON.parse(raw)
+    if (!input || typeof input !== "object") return false
+    const sessionId = input.session_id
+    const name = input.hook_event_name
+    if (typeof sessionId !== "string" || !SAFE_ID.test(sessionId) || typeof name !== "string" || !Object.hasOwn(CODEX_EVENTS, name)) return false
+    const line = { event: CODEX_EVENTS[name], codexEvent: name, sessionId, ts: now().toISOString() }
+    if (typeof input.tool_name === "string") line.tool = input.tool_name
+    if (name === "PermissionRequest") {
+      const what = typeof input.tool_input?.description === "string" ? input.tool_input.description : ""
+      const tool = typeof input.tool_name === "string" ? input.tool_name : "a tool"
+      line.message = `Codex needs your approval to use ${tool}${what ? `: ${what}` : ""}`.slice(0, MAX_MESSAGE)
+    }
+    const dir = join(hooksDir, "codex")
+    mkdirSync(dir, { recursive: true, mode: 0o700 })
+    appendFileSync(join(dir, `${sessionId}.jsonl`), JSON.stringify(line) + "\n", { mode: 0o600 })
+    return true
+  } catch { return false }
+}
+
+/** The hooks.json block for Codex (merge into ~/.codex/hooks.json by hand); `node` and the script are absolute. */
+export function codexHooksBlock({ node = process.execPath, script }) {
+  const q = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`
+  const hooks = {}
+  for (const e of Object.keys(CODEX_EVENTS)) hooks[e] = [{ hooks: [{ type: "command", command: `${q(node)} ${q(script)} hook codex`, timeout: 10 }] }]
+  return { hooks }
+}

@@ -5,15 +5,16 @@ import { resolve, join } from "node:path"
 import { pathToFileURL } from "node:url"
 import createNative from "./native.mjs"
 
-const VALUE_FLAGS = new Set(["--runs", "--speckit", "--adapter", "--adapter-opt", "--port", "--claude-dir"])
+const VALUE_FLAGS = new Set(["--runs", "--speckit", "--adapter", "--adapter-opt", "--port", "--claude-dir", "--codex-dir"])
 
-/** Parse CLI args: value flags, repeatable --adapter-opt k=v, --no-open, --no-claude, one bare path. */
+/** Parse CLI args: value flags, repeatable --adapter-opt k=v, --no-open, --no-claude, --no-codex, one bare path. */
 export function parseArgs(argv) {
-  const out = { opts: {}, noOpen: false, noClaude: false }
+  const out = { opts: {}, noOpen: false, noClaude: false, noCodex: false }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === "--no-open") out.noOpen = true
     else if (a === "--no-claude") out.noClaude = true
+    else if (a === "--no-codex") out.noCodex = true
     else if (VALUE_FLAGS.has(a)) {
       const v = argv[++i]
       if (v === undefined) throw new Error(`${a} needs a value`)
@@ -90,5 +91,18 @@ export async function loadClaude(argv, cwd = process.cwd(), home = homedir()) {
   if (a.noClaude) return null
   const root = a["claude-dir"] ? resolve(cwd, a["claude-dir"]) : join(home, ".claude", "projects")
   const { create } = await import("../sources/claude-code/index.mjs")
+  return create({ root, hooksDir: process.env.MISSION_CONTROL_HOOKS_DIR || join(home, ".mission-control", "hooks"), cachePath: usageCachePath(home, root) })
+}
+
+/**
+ * The Codex CLI source: rollouts under ~/.codex/sessions, or --codex-dir <sessions dir>. On by default only
+ * when that directory exists (most people have no Codex); --codex-dir always turns it on; null with --no-codex.
+ */
+export async function loadCodex(argv, cwd = process.cwd(), home = homedir()) {
+  const a = parseArgs(argv)
+  if (a.noCodex) return null
+  const root = a["codex-dir"] ? resolve(cwd, a["codex-dir"]) : join(home, ".codex", "sessions")
+  if (!a["codex-dir"] && !isDir(root)) return null
+  const { create } = await import("../sources/codex/index.mjs")
   return create({ root, hooksDir: process.env.MISSION_CONTROL_HOOKS_DIR || join(home, ".mission-control", "hooks"), cachePath: usageCachePath(home, root) })
 }
