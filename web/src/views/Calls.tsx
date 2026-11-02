@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { CallBreakdown } from "@/components/CallBreakdown"
 import { CallDetail } from "@/components/CallDetail"
 import { CallList, KIND, chipCounts, filterCalls, type Chip } from "@/components/CallList"
-import { useCalls, useItem, type Call, type Lane } from "@/lib/api"
+import { useCalls, useItem, type Call, type ItemDetail, type Lane } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { Plug, X, Zap } from "lucide-react"
 
@@ -44,16 +44,21 @@ type Props = {
   timelineHref?: (call: Call) => string
   /** A call to open (from a link such as a timeline tick). */
   call?: string
+  /** The item and its calls when the page already polls them (the item page): no second poller. */
+  detail?: ItemDetail | null
+  calls?: Call[] | null
 }
 
 /** Calls tab: lanes on the left, filtered calls in the middle, the picked call on the right. */
-export default function Calls({ source, id, sessionHref, timelineHref, call }: Props) {
+export default function Calls({ source, id, sessionHref, timelineHref, call, detail: given, calls: givenCalls }: Props) {
+  const shared = given !== undefined
   const [poll, setPoll] = useState(0) // poll only while the item is live
-  const item = useItem(source, id, poll)
-  const calls = useCalls(source, id, {}, poll)
+  const item = useItem(source, shared ? null : id, poll)
+  const fetched = useCalls(source, shared ? null : id, {}, poll)
   const live = item.data?.summary.live === true
   useEffect(() => setPoll(live ? LIVE_POLL : 0), [live])
-  const detail = item.data
+  const detail = shared ? given : item.data
+  const calls = shared ? { data: givenCalls ?? null, loading: givenCalls == null, error: null } : fetched
 
   const [lane, setLane] = useState<string | null>(null)
   const [chip, setChip] = useState<Chip>("all")
