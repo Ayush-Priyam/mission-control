@@ -89,7 +89,7 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
   return (
     <div className="mx-auto grid w-full max-w-[1400px] grid-cols-1 gap-5 p-4 sm:p-5 lg:grid-cols-[minmax(300px,380px)_1fr]">
       {errors.length > 0 && (
-        <p role="alert" className="rounded-lg border border-[#ef4444]/40 bg-[#ef4444]/10 px-4 py-2 font-mono text-xs text-[#ef4444] lg:col-span-2">
+        <p role="alert" className="rounded-lg border border-failed/40 bg-failed/10 px-4 py-2 font-mono text-xs text-failed lg:col-span-2">
           Usage request failed: {[...new Set(errors)].join(" · ")}
           {main.stale || harness.stale || half.stale ? " (showing the last answer)" : ""}
         </p>
@@ -141,13 +141,13 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
               {RANGES.map((r) => (
                 <button key={r.id} role="tab" aria-selected={range === r.id} onClick={() => setRange(r.id)}
                   className={cn("rounded-md border border-transparent px-3 py-1 font-mono text-xs tracking-wider text-muted-foreground uppercase hover:text-foreground",
-                    range === r.id && "border-[#60a5fa] text-foreground")}>
+                    range === r.id && "border-brand text-foreground")}>
                   {r.label}
                 </button>
               ))}
             </div>
             <div className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground">
-              {scanning && <span className="text-[#f59e0b]">scanning logs · partial</span>}
+              {scanning && <span className="text-muted-foreground">scanning logs · partial</span>}
               {main.stale && <span>loading…</span>}
               <span>{spanOf(u)}</span>
             </div>

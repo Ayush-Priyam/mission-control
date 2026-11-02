@@ -31,9 +31,9 @@ export function chipCounts(calls: Call[]): ChipCounts {
 
 export const KIND: Record<CallKind, { label: string; type: string; icon: ComponentType<{ className?: string }>; text: string }> = {
   tool: { label: "Tools", type: "Tool", icon: Wrench, text: "text-foreground" },
-  mcp: { label: "MCP", type: "MCP tool", icon: Plug, text: "text-violet-600 dark:text-violet-300" },
-  skill: { label: "Skills", type: "Skill", icon: Zap, text: "text-amber-600 dark:text-amber-300" },
-  agent: { label: "Agents", type: "Sub-agent", icon: Bot, text: "text-sky-600 dark:text-sky-300" },
+  mcp: { label: "MCP", type: "MCP tool", icon: Plug, text: "text-llm" },
+  skill: { label: "Skills", type: "Skill", icon: Zap, text: "text-tool" },
+  agent: { label: "Agents", type: "Sub-agent", icon: Bot, text: "text-foreground" },
 }
 
 const TOOL_ICON: Record<string, ComponentType<{ className?: string }>> = {
@@ -85,7 +85,7 @@ export function outcome(c: Call): { text: string; tone: "ok" | "error" | "pendin
   }
   return { text: "…", tone: "pending" }
 }
-export const TONE = { ok: "text-green-600 dark:text-green-400", error: "text-red-600 dark:text-red-400", pending: "text-muted-foreground" }
+export const TONE = { ok: "text-running", error: "text-failed", pending: "text-muted-foreground" }
 
 /** Rows [start, end) to render for a fixed-height list scrolled to `scrollTop`. */
 export function windowRange({ count, rowHeight, scrollTop, height, overscan }: { count: number; rowHeight: number; scrollTop: number; height: number; overscan: number }) {
@@ -159,7 +159,7 @@ export function CallList({ calls, selectedId, onSelect, laneLabel, empty = "No c
               style={{ top: (start + i) * ROW }}
               className={cn(
                 "absolute inset-x-0 flex h-8 cursor-pointer items-center gap-3 rounded-md border px-3 font-mono text-xs",
-                sel ? "border-zinc-300 bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800/70" : "border-transparent hover:bg-muted/60",
+                sel ? "border-ring/40 bg-accent" : "border-transparent hover:bg-muted/60",
               )}
             >
               <span className="w-16 shrink-0 text-muted-foreground">{fmtTime(c.ts)}</span>

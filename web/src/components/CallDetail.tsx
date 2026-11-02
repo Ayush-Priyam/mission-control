@@ -11,7 +11,7 @@ const Block = ({ children, tone }: { children: string; tone?: "error" }) => (
   <pre
     className={cn(
       "max-h-72 overflow-auto rounded-md border bg-muted/40 p-3 font-mono text-xs break-words whitespace-pre-wrap",
-      tone === "error" ? "border-red-500/40 text-red-700 dark:text-red-300" : "text-foreground/85",
+      tone === "error" ? "border-failed/40 text-failed" : "text-foreground/85",
     )}
   >
     {children}
@@ -78,7 +78,7 @@ export function CallDetail({ call, laneLabel, sessionHref, timelineHref, onClose
         {call.subLane && (
           <>
             {" · ran as "}
-            <button className="text-sky-600 underline dark:text-sky-300" onClick={() => onOpenLane?.(call.subLane!)}>
+            <button className="text-consult underline" onClick={() => onOpenLane?.(call.subLane!)}>
               {laneLabel(call.subLane)}
             </button>
           </>

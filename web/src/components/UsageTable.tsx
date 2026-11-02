@@ -51,7 +51,7 @@ export function UsageTable({ rows, nameLabel, defaultSort = "name", empty = "No 
                 {r.sub && <div className="truncate font-mono text-[11px] text-muted-foreground">{r.sub}</div>}
               </td>
               {COLS.map((c) => (
-                <td key={c.id} className={cn("px-3 py-2.5 text-right font-mono tabular-nums", c.id === "total" ? "text-foreground" : "text-muted-foreground", c.id === "cost" && "text-[#22c55e]")}>
+                <td key={c.id} className={cn("px-3 py-2.5 text-right font-mono tabular-nums", c.id === "total" ? "text-foreground" : "text-muted-foreground", c.id === "cost" && "text-foreground")}>
                   {c.fmt(c.v(r))}
                 </td>
               ))}

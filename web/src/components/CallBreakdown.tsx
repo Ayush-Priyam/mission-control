@@ -68,7 +68,7 @@ export function CallBreakdown({ calls }: { calls: Call[] }) {
                 <span className="w-48 truncate" title={t.label}>{t.label}</span>
               )}
               <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                <i className={cn("block h-full rounded-full", t.mcp ? "bg-violet-500" : "bg-zinc-400 dark:bg-zinc-300")} style={{ width: `${(t.count / max) * 100}%` }} />
+                <i className={cn("block h-full rounded-full", t.mcp ? "bg-llm" : "bg-muted-foreground")} style={{ width: `${(t.count / max) * 100}%` }} />
               </div>
               <span className="w-8 text-right">{t.count}</span>
             </div>
@@ -82,10 +82,10 @@ export function CallBreakdown({ calls }: { calls: Call[] }) {
           {skills.map((s) => (
             <div key={s.name} className="flex justify-between gap-2">
               <span className="flex min-w-0 items-center gap-1.5">
-                <Zap className="size-3.5 shrink-0 text-amber-500" />
+                <Zap className="size-3.5 shrink-0 text-tool" />
                 <span className="truncate">{s.name}</span>
               </span>
-              <span className={cn("shrink-0", s.errors ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400")}>
+              <span className={cn("shrink-0", s.errors ? "text-failed" : "text-running")}>
                 used · {s.count}×{s.errors ? ` · ${s.errors} failed` : ""}
               </span>
             </div>
@@ -96,7 +96,7 @@ export function CallBreakdown({ calls }: { calls: Call[] }) {
           {servers.length === 0 && <span className="text-muted-foreground">None called.</span>}
           {servers.map((s) => (
             <span key={s.server} className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1">
-              <Plug className="size-3.5 text-violet-500" />
+              <Plug className="size-3.5 text-llm" />
               {s.server} <span className="font-mono">{s.count}</span>
             </span>
           ))}

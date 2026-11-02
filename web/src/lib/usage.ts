@@ -130,5 +130,5 @@ export const estMoney = (n: number) => `${money(n)} est.`
 export const pct = (part: number, whole: number) => (whole > 0 ? `${((part / whole) * 100).toFixed(1)}%` : "0.0%")
 
 /** Series colours for models / harnesses, in rank order; the last is "other". */
-export const PALETTE = ["#a78bfa", "#2dd4bf", "#60a5fa", "#f472b6", "#fbbf24", "#a3e635"]
-export const OTHER = "#52525b"
+export const PALETTE = [1, 2, 3, 4, 5, 6].map((i) => `var(--chart-${i})`)
+export const OTHER = "var(--chart-other)"

@@ -2,20 +2,13 @@ import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { CallBreakdown } from "@/components/CallBreakdown"
 import { CallDetail } from "@/components/CallDetail"
 import { CallList, KIND, chipCounts, filterCalls, type Chip } from "@/components/CallList"
-import { useCalls, useItem, type Call, type ItemDetail, type Lane } from "@/lib/api"
+import { useCalls, useItem, type Call, type ItemDetail, type Lane, type Status } from "@/lib/api"
+import { StatusDot } from "@/components/StatusDot"
 import { cn } from "@/lib/utils"
 import { Plug, X, Zap } from "lucide-react"
 
 const LIVE_POLL = 5000
 
-const DOT: Record<string, string> = {
-  working: "bg-green-500 animate-pulse",
-  waiting: "bg-amber-500",
-  failed: "bg-red-500",
-  stopped: "bg-zinc-400",
-  done: "bg-zinc-500",
-  idle: "bg-zinc-600",
-}
 const quiet = (s: string) => s === "done" || s === "idle" || s === "stopped"
 const rank = (s: string) => (s === "waiting" ? 0 : s === "working" ? 1 : s === "failed" ? 2 : 3)
 
@@ -115,7 +108,7 @@ export default function Calls({ source, id, sessionHref, timelineHref, call, det
               key={l.id}
               label={l.label}
               count={perLane.get(l.id) ?? 0}
-              dot={DOT[l.status] ?? DOT.idle}
+              status={l.status}
               dim={quiet(l.status)}
               title={l.reason ?? l.status}
               on={lane === l.id}
@@ -126,8 +119,8 @@ export default function Calls({ source, id, sessionHref, timelineHref, call, det
         <div className="mt-3 border-t pt-3">
           <div className="truncate px-2 pb-1 text-[11px] tracking-wide text-muted-foreground uppercase">{current ? current.label : "All lanes"} · used</div>
           <div className="space-y-1.5 px-2 text-xs text-foreground/85">
-            <Stat icon={<Zap className="size-3.5 text-amber-500" />} label="skills" value={used.skills} />
-            <Stat icon={<Plug className="size-3.5 text-violet-500" />} label="MCP servers" value={used.servers} />
+            <Stat icon={<Zap className="size-3.5 text-tool" />} label="skills" value={used.skills} />
+            <Stat icon={<Plug className="size-3.5 text-llm" />} label="MCP servers" value={used.servers} />
             {tokens > 0 && <Stat label="tokens" value={kfmt(tokens)} />}
             {cost > 0 && <Stat label="cost (est.)" value={`$${cost.toFixed(2)}`} />}
             {models.length > 0 && <div className="truncate text-[11px] text-muted-foreground" title={models.join(", ")}>{models.join(", ")}</div>}
@@ -171,8 +164,8 @@ export default function Calls({ source, id, sessionHref, timelineHref, call, det
                   "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs",
                   chip === c
                     ? "border-foreground bg-foreground text-background"
-                    : c === "errors"
-                      ? "border-red-500/40 text-red-600 hover:bg-red-500/10 dark:text-red-300"
+                    : c === "errors" && counts.errors > 0
+                      ? "border-failed/40 text-failed hover:bg-failed/10"
                       : "hover:bg-muted",
                 )}
               >
@@ -216,7 +209,7 @@ export default function Calls({ source, id, sessionHref, timelineHref, call, det
   )
 }
 
-function LaneRow(p: { label: string; count: number; on: boolean; onClick: () => void; dot?: string; dim?: boolean; title?: string }) {
+function LaneRow(p: { label: string; count: number; on: boolean; onClick: () => void; status?: Status; dim?: boolean; title?: string }) {
   return (
     <button
       role="listitem"
@@ -230,7 +223,7 @@ function LaneRow(p: { label: string; count: number; on: boolean; onClick: () => 
       )}
     >
       <span className="flex min-w-0 items-center gap-2">
-        {p.dot && <i className={cn("size-2 shrink-0 rounded-full", p.dot)} />}
+        {p.status && <StatusDot status={p.status} />}
         <span className="truncate">{p.label}</span>
       </span>
       <span className={cn("shrink-0 font-mono", !p.on && "text-muted-foreground")}>{p.count}</span>

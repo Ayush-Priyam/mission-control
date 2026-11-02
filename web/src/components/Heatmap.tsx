@@ -1,6 +1,6 @@
 import { compact, estMoney, heatmapGrid, type SeriesDay } from "@/lib/usage"
 
-export const HEAT = ["#1c1c1f", "#14532d", "#15803d", "#16a34a", "#22c55e"]
+export const HEAT = [0, 1, 2, 3, 4].map((i) => `var(--heat-${i})`)
 const ROWS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
 /**

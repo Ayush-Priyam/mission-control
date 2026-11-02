@@ -11,10 +11,10 @@ import { cn } from "@/lib/utils"
 // its session bar, and a tick per call coloured by kind. A tick opens that call on the Calls tab.
 
 export const TICK: Record<TickKind, { label: string; bg: string }> = {
-  tool: { label: "tool", bg: "bg-zinc-300" },
-  mcp: { label: "mcp", bg: "bg-violet-400" },
-  skill: { label: "skill", bg: "bg-amber-400" },
-  agent: { label: "agent", bg: "bg-sky-400" },
+  tool: { label: "tool", bg: "bg-muted-foreground/70" },
+  mcp: { label: "mcp", bg: "bg-llm" },
+  skill: { label: "skill", bg: "bg-tool" },
+  agent: { label: "agent", bg: "bg-chart-3" },
   error: { label: "error", bg: "bg-failed" },
 }
 const KINDS: TickKind[] = ["tool", "mcp", "skill", "agent", "error"]
@@ -186,7 +186,7 @@ export function LaneTimeline({ lanes, calls, live, now, onPick, onOpenLane }: Pr
                         data-bar
                         className={cn(
                           "absolute top-[9px] h-3 min-w-[3px] rounded-[3px] border",
-                          r.running ? "border-running/60 bg-running/15" : r.lane.status === "failed" ? "border-failed/60 bg-failed/15" : "border-zinc-600 bg-zinc-700/40",
+                          r.running ? "border-running/60 bg-running/15" : r.lane.status === "failed" ? "border-failed/60 bg-failed/15" : "border-input bg-muted",
                         )}
                         style={{ left: pct(r.a), width: pct(Math.max(0, r.b - r.a)) }}
                       />

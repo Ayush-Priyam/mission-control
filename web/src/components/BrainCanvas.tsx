@@ -8,13 +8,15 @@ export type BrainNode = {
 }
 export type BrainData = { nodes: Omit<BrainNode, "x" | "y" | "vx" | "vy">[]; links: [string, string][] }
 
-// Memory kind -> [legend group, colour]. Red keeps meaning "you"; hubs use the foreground colour.
+// Memory kind -> [legend group, colour token]. Hubs use the foreground colour. Tokens come from the theme.
 const KIND: Record<string, [string, string]> = {
-  human: ["you said", "#f85149"], answer: ["you said", "#f85149"], stop: ["stops", "#f85149"],
-  decision: ["decisions", "#58a6ff"], "decision.final": ["decisions", "#58a6ff"],
-  lesson: ["lessons", "#d29922"], "learning.approved": ["lessons", "#d29922"],
-  constraint: ["constraints", "#8b949e"], architecture: ["architecture", "#a371f7"], context: ["context", "#6e7681"],
+  human: ["you said", "var(--failed)"], answer: ["you said", "var(--failed)"], stop: ["stops", "var(--failed)"],
+  decision: ["decisions", "var(--consult)"], "decision.final": ["decisions", "var(--consult)"],
+  lesson: ["lessons", "var(--tool)"], "learning.approved": ["lessons", "var(--tool)"],
+  constraint: ["constraints", "var(--muted-foreground)"], architecture: ["architecture", "var(--llm)"], context: ["context", "var(--done)"],
 }
+/** A `var(--x)` token's current value (canvas cannot read CSS variables itself). */
+const tokenValue = (v: string, css: CSSStyleDeclaration) => (v.startsWith("var(") ? css.getPropertyValue(v.slice(4, -1)).trim() || "#888" : v)
 const GROUPS = [...new Map(Object.values(KIND)).entries()]
 const groupOf = (n: BrainNode) => (n.type === "memory" ? (KIND[n.kind ?? ""]?.[0] ?? n.kind ?? "context") : n.type)
 const radiusOf = (n: BrainNode) => (n.type === "project" ? 9 : n.type === "area" ? 6 : 2.4)
@@ -121,7 +123,8 @@ export function BrainCanvas({ data }: { data: BrainData }) {
     }
     const frame = () => {
       const dark = document.documentElement.classList.contains("dark")
-      const fg = dark ? "#ececea" : "#1f2328", edge = dark ? "255,255,255" : "0,0,0", muted = dark ? "#a3a29e" : "#59636e"
+      const css = getComputedStyle(document.documentElement)
+      const fg = tokenValue("var(--foreground)", css), edge = dark ? "255,255,255" : "0,0,0", muted = tokenValue("var(--muted-foreground)", css)
       if (st.alpha > 0.03) { step(model, st.alpha); st.alpha = Math.max(0.02, st.alpha * 0.985) }
       if (st.autofit && model.nodes.length) {
         let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9
@@ -149,7 +152,7 @@ export function BrainCanvas({ data }: { data: BrainData }) {
         const dim = (near && !near.has(n.id)) || (ql && n.type === "memory" && !matches(n))
         const x = st.x + n.x * st.k, y = st.y + n.y * st.k, r = Math.max(1.2, radiusOf(n) * Math.sqrt(st.k))
         ctx.globalAlpha = dim ? 0.15 : 1
-        ctx.fillStyle = n.type === "memory" ? (KIND[n.kind ?? ""]?.[1] ?? "#6e7681") : fg
+        ctx.fillStyle = n.type === "memory" ? tokenValue(KIND[n.kind ?? ""]?.[1] ?? "var(--done)", css) : fg
         ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill()
         if (n === sel) { ctx.strokeStyle = fg; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r + 4, 0, Math.PI * 2); ctx.stroke(); ctx.lineWidth = 1 }
         if (n.type !== "memory") {

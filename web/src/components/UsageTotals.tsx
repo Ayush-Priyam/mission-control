@@ -15,7 +15,7 @@ export function UsageTotals({ totals, label }: { totals: Usage["totals"]; label:
       <p data-testid="usage-total" className="text-[clamp(2.25rem,6vw,4.25rem)] font-extrabold leading-none tracking-tight tabular-nums">
         {fmtInt(total)}
       </p>
-      <p className="mt-2 font-mono text-xl font-bold text-[#22c55e]" title={EST_TIP}>
+      <p className="mt-2 font-mono text-xl font-bold text-foreground" title={EST_TIP}>
         {money(totals.cost)} <span className="text-xs font-normal text-muted-foreground">est. · API prices</span>
       </p>
       <dl className="mt-3 flex flex-wrap justify-center gap-x-5 gap-y-1 font-mono text-xs text-muted-foreground">

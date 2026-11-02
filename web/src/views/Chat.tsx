@@ -28,7 +28,7 @@ function Chip({ c, open, onToggle }: { c: ToolChip; open: boolean; onToggle: () 
       title={c.summary}
       className={cn(
         "inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[11px]",
-        open ? "border-zinc-500 bg-zinc-800/70" : "border-border bg-muted/30 hover:bg-muted/60",
+        open ? "border-ring bg-accent" : "border-border bg-muted/30 hover:bg-muted/60",
         c.ok === false && "border-failed/50",
       )}
     >
@@ -42,7 +42,7 @@ function Chip({ c, open, onToggle }: { c: ToolChip; open: boolean; onToggle: () 
 }
 
 const Pre = ({ children, bad }: { children: string; bad?: boolean }) => (
-  <pre className={cn("max-h-64 overflow-auto rounded-md border bg-background/60 p-2.5 font-mono text-[11.5px] break-words whitespace-pre-wrap", bad ? "border-failed/40 text-red-300" : "text-foreground/85")}>{children}</pre>
+  <pre className={cn("max-h-64 overflow-auto rounded-md border bg-background/60 p-2.5 font-mono text-[11.5px] break-words whitespace-pre-wrap", bad ? "border-failed/40 text-failed" : "text-foreground/85")}>{children}</pre>
 )
 
 function ChipDetail({ c, href, onOpenLane, subLane }: { c: ToolChip; href: string; subLane?: { id: string; label: string }; onOpenLane: (lane: string) => void }) {
@@ -55,7 +55,7 @@ function ChipDetail({ c, href, onOpenLane, subLane }: { c: ToolChip; href: strin
         <span>{fmtDuration(c.durationMs)}</span>
         <span className="flex-1" />
         {subLane && (
-          <button type="button" className="text-sky-300 hover:underline" onClick={() => onOpenLane(subLane.id)}>
+          <button type="button" className="text-consult hover:underline" onClick={() => onOpenLane(subLane.id)}>
             open {subLane.label} →
           </button>
         )}
