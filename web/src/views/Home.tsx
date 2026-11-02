@@ -1,6 +1,6 @@
 import { workingLine } from "@/lib/status-ui"
 import { Retry } from "@/components/Retry"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Panel } from "@/components/Panel"
 import { ItemTable } from "@/components/ItemTable"
@@ -34,9 +34,10 @@ export function recentlyStopped(items: ItemSummary[], now: number, max = 4): Ite
 }
 
 export default function Home() {
-  const { overview, filter, showHidden } = useShared()
+  const { overview, filter, showHidden, resets } = useShared()
   const sources = useSources()
   const [show, setShow] = useState<Show>("all")
+  useEffect(() => setShow("all"), [resets]) // the logo resets the view
   const recent = useItems({ all: showHidden, archived: show === "archived", limit: RECENT })
   const now = useNow()
   const actions = useMemo(() => Object.fromEntries((sources.data ?? []).map((s) => [s.name, s.actions])), [sources.data])
