@@ -20,7 +20,7 @@ const wellFormed = (e) =>
   !!e && typeof e === "object" && Array.isArray(e.days) &&
   e.days.every((d) => d && typeof d.b === "string" && typeof d.model === "string" && ["in", "out", "cacheRead", "cacheWrite"].every((k) => nonNeg(d[k])))
 
-export function createUsageScanner({ files, parse, parseFile = (file) => parse(readFileSync(file, "utf8")), costOf, cachePath = null, now = () => Date.now() }) {
+export function createUsageScanner({ source = "claude-code", harness = source, files, parse, parseFile = (file) => parse(readFileSync(file, "utf8")), costOf, cachePath = null, now = () => Date.now() }) {
   const cache = new Map() // key -> entry
   if (cachePath) {
     try {
@@ -118,7 +118,7 @@ export function createUsageScanner({ files, parse, parseFile = (file) => parse(r
           if ((from && day < from) || (to && day > to)) continue
           const k = `${day}|${e.session}|${d.model}`
           const r = merged.get(k) ?? {
-            day, source: "claude-code", harness: "claude-code", project: cwd, worktree: cwd, branch: m.branch ?? e.branch ?? "",
+            day, source, harness, project: cwd, worktree: cwd, branch: m.branch ?? e.branch ?? "",
             model: d.model, in: 0, out: 0, cacheRead: 0, cacheWrite: 0, cost: 0, sessions: 1, session: e.session,
           }
           merged.set(k, r)

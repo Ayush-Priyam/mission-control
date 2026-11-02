@@ -47,9 +47,38 @@ export function family(model) {
   return v.family
 }
 
+// OpenAI models (Codex CLI), USD per million tokens. LIST-PRICE ESTIMATE as of 2026-11-02, shown as "est.":
+// pay-as-you-go API prices; a ChatGPT plan is billed differently. OpenAI bills no cache-write premium, so cache
+// write is priced as input. Only exact ids (after dropping a -YYYY-MM-DD suffix) are priced: a model not listed
+// here, including any newer version, costs 0 and shows as unpriced rather than borrowing an older price.
+const oa = (input, output, cacheRead) => ({ input, output, cacheWrite: input, cacheRead })
+export const OPENAI_PRICES = {
+  "gpt-5": oa(1.25, 10, 0.125),
+  "gpt-5-codex": oa(1.25, 10, 0.125),
+  "gpt-5-mini": oa(0.25, 2, 0.025),
+  "gpt-5-nano": oa(0.05, 0.4, 0.005),
+  "gpt-5.1": oa(1.25, 10, 0.125),
+  "gpt-5.1-codex": oa(1.25, 10, 0.125),
+  "gpt-5.1-codex-max": oa(1.25, 10, 0.125),
+  "gpt-5.1-codex-mini": oa(0.25, 2, 0.025),
+  "gpt-4.1": oa(2, 8, 0.5),
+  "gpt-4.1-mini": oa(0.4, 1.6, 0.1),
+  "gpt-4o": oa(2.5, 10, 1.25),
+  "gpt-4o-mini": oa(0.15, 0.6, 0.075),
+  o3: oa(2, 8, 0.5),
+  "o4-mini": oa(1.1, 4.4, 0.275),
+  "codex-mini-latest": oa(1.5, 6, 0.375),
+}
+
+/** The OPENAI_PRICES row for a model id ("gpt-5-2025-08-07" -> gpt-5); null when not listed. */
+export function openaiPrice(model) {
+  const m = String(model ?? "").toLowerCase().trim().replace(/-\d{4}-\d{2}-\d{2}$/, "")
+  return Object.hasOwn(OPENAI_PRICES, m) ? OPENAI_PRICES[m] : null
+}
+
 /** Estimated dollars for one usage record: { in, out, cacheRead, cacheWrite } token counts. */
 export function costOf(model, t) {
-  const p = PRICES[family(model)]
+  const p = PRICES[family(model)] ?? openaiPrice(model)
   if (!p) return 0
   return (t.in * p.input + t.out * p.output + t.cacheWrite * p.cacheWrite + t.cacheRead * p.cacheRead) / 1e6
 }
