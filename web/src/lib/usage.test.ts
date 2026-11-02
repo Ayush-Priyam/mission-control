@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { daysBetween, fillSeries, heatmapGrid, levelOf, rangeDates, shiftDay, todayIn, totalTokens, trendWindow, usageUrl } from "./usage-api"
+import { daysBetween, fillSeries, heatmapGrid, levelOf, rangeDates, shiftDay, todayIn, totalTokens, trendWindow } from "./usage"
+import { usageUrl } from "./api"
 
 const day = (d: string, tokens: number, cost = 0) => ({ day: d, in: tokens, out: 0, cacheRead: 0, cacheWrite: 0, cost, sessions: 1, byKey: {} })
 
@@ -50,10 +51,10 @@ describe("range math", () => {
   })
 
   it("usageUrl sends the browser zone and omits an unbounded from", () => {
-    expect(usageUrl({ by: "model", tz: "Asia/Kolkata", from: "2026-10-01", to: "2026-11-02" })).toBe(
-      "/api/usage?by=model&tz=Asia%2FKolkata&from=2026-10-01&to=2026-11-02",
+    expect(usageUrl({ by: "model", from: "2026-10-01", to: "2026-11-02" }, "Asia/Kolkata")).toBe(
+      "/api/usage?from=2026-10-01&to=2026-11-02&by=model&tz=Asia%2FKolkata",
     )
-    expect(usageUrl({ by: "worktree", tz: "UTC", to: "2026-11-02" })).toBe("/api/usage?by=worktree&tz=UTC&to=2026-11-02")
+    expect(usageUrl({ by: "worktree", to: "2026-11-02" }, "UTC")).toBe("/api/usage?to=2026-11-02&by=worktree&tz=UTC")
   })
 })
 

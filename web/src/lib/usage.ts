@@ -1,9 +1,7 @@
-// /api/usage client for the Usage page: types, range and heatmap math, and a fetch hook.
-// Local to Task 11 (parallel worktree); folded into api.ts when the views are wired up.
-import { useCallback, useEffect, useReducer, useState } from "react"
-import { fetchReducer, initialFetch, type Remote } from "@/lib/api"
+// Usage page math: ranges, series fill, heatmap grid and number formats. Fetching lives in api.ts.
+import { useEffect, useState } from "react"
+import type { Tokens as ApiTokens, UsageBy, UsageDay, UsageGroup, UsageResult } from "@/lib/api"
 
-export type By = "model" | "project" | "harness" | "day" | "worktree" | "branch"
 export type Range = "day" | "week" | "month" | "all"
 export const RANGES: { id: Range; label: string }[] = [
   { id: "day", label: "Day" },
@@ -12,25 +10,13 @@ export const RANGES: { id: Range; label: string }[] = [
   { id: "all", label: "All" },
 ]
 
-export type Tokens = { in: number; out: number; cacheRead: number; cacheWrite: number }
-export type SeriesDay = Tokens & { day: string; cost: number; sessions: number; byKey: Record<string, number> }
-export type Group = Tokens & { key: string; name?: string; cost: number; sessions: number }
-export type Usage = {
-  totals: Tokens & { cost: number; sessions: number }
-  series: SeriesDay[]
-  groups: Group[]
-  by: By
-  tz: string
-  from: string | null
-  to: string | null
-  /** false while the server's first usage scan is still running (numbers are partial) */
-  complete: boolean
-}
+export type Tokens = ApiTokens
+export type SeriesDay = UsageDay
+export type Group = UsageGroup
+export type Usage = UsageResult
+export type By = UsageBy
 
 export const totalTokens = (t: Tokens) => t.in + t.out + t.cacheRead + t.cacheWrite
-
-/** The browser's IANA zone; the server buckets days in it. */
-export const browserTz = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
 
 /** Calendar day (YYYY-MM-DD) of `now` in `tz`. */
 export function todayIn(tz: string, now = new Date()): string {
@@ -72,13 +58,6 @@ export function fillSeries(series: SeriesDay[], from: string, to: string): Serie
   return daysBetween(from, to).map((d) => have.get(d) ?? emptyDay(d))
 }
 
-export function usageUrl(q: { by: By; tz: string; from?: string; to?: string }): string {
-  const p = new URLSearchParams({ by: q.by, tz: q.tz })
-  if (q.from) p.set("from", q.from)
-  if (q.to) p.set("to", q.to)
-  return `/api/usage?${p}`
-}
-
 const quantile = (sorted: number[], p: number) => sorted[Math.floor((sorted.length - 1) * p)]
 
 /** Heat level 0..4: 0 is no use; active days split by quartile of `active` (all non-zero values); the max is 4. */
@@ -113,56 +92,6 @@ export function heatmapGrid(series: SeriesDay[], today: string, weeks = 26): Hea
     if (i === 0 || m !== cols[i - 1][0].day.slice(5, 7)) months.push({ col: i, label: MONTHS[+m - 1] })
   })
   return { weeks: cols, months, total: active.reduce((a, b) => a + b, 0), activeDays: active.length }
-}
-
-export type UsageRemote = Remote<Usage> & {
-  /** true when `data` is the last answer for a different url, kept on screen while `url` loads or after it failed */
-  stale: boolean
-}
-
-async function getUsage(url: string): Promise<Usage> {
-  const r = await fetch(url)
-  if (r.ok) return r.json()
-  const j: { error?: string } = await r.json().catch(() => ({}))
-  throw new Error(j.error ?? `usage: ${r.status}`)
-}
-
-/** The `by` of a usage url: answers are only ever kept across urls of the same kind. */
-export const kindOf = (url: string | null) => (url === null ? null : new URL(url, "http://local").searchParams.get("by"))
-
-/**
- * GET /api/usage for `url`; `null` loads nothing. Polls every `pollMs` while set (the page polls while the scan
- * is partial). While a new url of the same `by` loads (or fails), the last answer stays as `data` with `stale`;
- * an answer for a different `by` is never reused.
- */
-export function useUsage(url: string | null, pollMs = 0): UsageRemote {
-  const [raw, dispatch] = useReducer(fetchReducer<Usage>, url, initialFetch<Usage>)
-  const [tick, setTick] = useState(0)
-  const [kept, setKept] = useState<{ kind: string | null; data: Usage } | null>(null)
-  const reload = useCallback(() => setTick((n) => n + 1), [])
-  const state = raw.url === url ? raw : initialFetch<Usage>(url)
-  const kind = kindOf(url)
-  useEffect(() => {
-    if (raw.data && raw.url !== null) setKept({ kind: kindOf(raw.url), data: raw.data })
-  }, [raw.data, raw.url])
-  useEffect(() => {
-    dispatch({ type: "reset", url })
-    if (url === null) return
-    let cancelled = false
-    const load = () =>
-      getUsage(url).then(
-        (data) => !cancelled && dispatch({ type: "ok", url, data }),
-        (e: unknown) => !cancelled && dispatch({ type: "fail", url, error: e instanceof Error ? e.message : String(e) }),
-      )
-    load()
-    const timer = pollMs ? setInterval(load, pollMs) : undefined
-    return () => {
-      cancelled = true
-      if (timer) clearInterval(timer)
-    }
-  }, [url, pollMs, tick])
-  const stale = !state.data && url !== null && kept !== null && kept.kind === kind
-  return { data: state.data ?? (stale ? kept!.data : null), stale, error: state.error, loading: state.loading, reload }
 }
 
 /** Today in `tz`, refreshed when the window regains focus and just after local midnight. */

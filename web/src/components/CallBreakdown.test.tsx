@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it } from "vitest"
-import type { Call } from "@/lib/calls-api"
+import type { Call } from "@/lib/api"
 import { CallBreakdown, serverCounts, skillBreakdown, toolBreakdown } from "./CallBreakdown"
 
 afterEach(cleanup)

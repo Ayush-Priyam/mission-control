@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { EST_TIP, fmtInt, money, totalTokens, type Tokens } from "@/lib/usage-api"
+import { EST_TIP, fmtInt, money, totalTokens, type Tokens } from "@/lib/usage"
 import { cn } from "@/lib/utils"
 
 export type UsageRowView = Tokens & { key: string; label: string; sub?: string; cost: number; sessions: number }

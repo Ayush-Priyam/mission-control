@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { CallBreakdown } from "@/components/CallBreakdown"
 import { CallDetail } from "@/components/CallDetail"
 import { CallList, KIND, chipCounts, filterCalls, type Chip } from "@/components/CallList"
-import { useItemCalls, useItemDetail, type Call, type Lane } from "@/lib/calls-api"
+import { useCalls, useItem, type Call, type Lane } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { Plug, X, Zap } from "lucide-react"
 
@@ -47,8 +47,8 @@ type Props = {
 /** Calls tab: lanes on the left, filtered calls in the middle, the picked call on the right. */
 export default function Calls({ source, id, sessionHref, timelineHref }: Props) {
   const [poll, setPoll] = useState(0) // poll only while the item is live
-  const item = useItemDetail(source, id, poll)
-  const calls = useItemCalls(source, id, poll)
+  const item = useItem(source, id, poll)
+  const calls = useCalls(source, id, {}, poll)
   const live = item.data?.summary.live === true
   useEffect(() => setPoll(live ? LIVE_POLL : 0), [live])
   const detail = item.data

@@ -1,4 +1,4 @@
-import { compact, estMoney, heatmapGrid, type SeriesDay } from "@/lib/usage-api"
+import { compact, estMoney, heatmapGrid, type SeriesDay } from "@/lib/usage"
 
 export const HEAT = ["#1c1c1f", "#14532d", "#15803d", "#16a34a", "#22c55e"]
 const ROWS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]

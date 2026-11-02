@@ -1,5 +1,5 @@
 import { X } from "lucide-react"
-import type { Call } from "@/lib/calls-api"
+import type { Call } from "@/lib/api"
 import { KIND, TONE, displayName, fmtDuration, fmtTime, outcome } from "@/components/CallList"
 import { cn } from "@/lib/utils"
 

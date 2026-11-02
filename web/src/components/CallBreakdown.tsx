@@ -1,5 +1,5 @@
 import { Plug, Zap } from "lucide-react"
-import type { Call } from "@/lib/calls-api"
+import type { Call } from "@/lib/api"
 import { isError } from "@/components/CallList"
 import { cn } from "@/lib/utils"
 

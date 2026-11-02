@@ -66,7 +66,7 @@ describe("v2 hooks", () => {
 
   it("useUsage sends the browser time zone", async () => {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
-    const { result } = renderHook(() => useUsage({ from: "2026-11-01", by: "day" }))
+    const { result } = renderHook(() => useUsage(usageUrl({ from: "2026-11-01", by: "day" }, tz)))
     await waitFor(() => expect(result.current.data).not.toBeNull())
     expect(urls[0]).toBe(`/api/usage?from=2026-11-01&by=day&tz=${encodeURIComponent(tz)}`)
   })

@@ -5,10 +5,11 @@ import { TrendBars } from "@/components/TrendBars"
 import { UsageTable, type UsageRowView } from "@/components/UsageTable"
 import { UsageTotals } from "@/components/UsageTotals"
 import { Skeleton } from "@/components/ui/skeleton"
+import { browserTz, usageUrl, useUsage } from "@/lib/api"
 import {
-  browserTz, compact, EST_TIP, estMoney, fillSeries, pct, rangeDates, RANGES, shiftDay, totalTokens, trendWindow, usageUrl, useToday, useUsage,
+  compact, EST_TIP, estMoney, fillSeries, pct, rangeDates, RANGES, shiftDay, totalTokens, trendWindow, useToday,
   type By, type Group, type Range, type SeriesDay, type Usage as UsageData,
-} from "@/lib/usage-api"
+} from "@/lib/usage"
 import { cn } from "@/lib/utils"
 
 export type TableTab = "day" | "project" | "worktree" | "branch"
@@ -49,7 +50,7 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
   const poll = scanning ? POLL_WHILE_SCANNING : 0
 
   const dates = rangeDates(range, today)
-  const url = (by: By, d: { from?: string; to?: string } = dates) => usageUrl({ by, tz, ...d })
+  const url = (by: By, d: { from?: string; to?: string } = dates) => usageUrl({ by, ...d }, tz)
   const main = useUsage(url("model"), poll)
   const harness = useUsage(url("harness"), poll)
   const half = useUsage(url("harness", { from: shiftDay(today, -(HEAT_DAYS - 1)), to: today }), poll)

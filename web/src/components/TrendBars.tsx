@@ -1,4 +1,4 @@
-import { compact, estMoney, totalTokens, type SeriesDay } from "@/lib/usage-api"
+import { compact, estMoney, totalTokens, type SeriesDay } from "@/lib/usage"
 
 /** One bar per day (already zero-filled), height by total tokens; today is the last bar. */
 export function TrendBars({ days }: { days: SeriesDay[] }) {

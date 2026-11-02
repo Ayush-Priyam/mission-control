@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { sameCalls, useItemCalls, type Call } from "./calls-api"
+import { useCalls, useUsage, usageUrl, type Call } from "./api"
 
 afterEach(() => {
   vi.useRealTimers()
@@ -9,17 +9,15 @@ afterEach(() => {
 })
 
 const call = (id: string, ok?: boolean): Call => ({ id, lane: "main", ts: "", name: "Read", kind: "tool", summary: "", ok })
-
-describe("sameCalls", () => {
-  it("same count, last id and last outcome", () => {
-    expect(sameCalls([call("a"), call("b", true)], [call("a"), call("b", true)])).toBe(true)
-    expect(sameCalls([call("a")], [call("a"), call("b")])).toBe(false)
-    expect(sameCalls([call("a"), call("b")], [call("a"), call("c")])).toBe(false)
-    expect(sameCalls([call("b")], [call("b", true)])).toBe(false) // a pending call got its result
-  })
+const reply = (body: unknown, status = 200) => ({
+  ok: status < 400,
+  status,
+  headers: new Headers(),
+  json: async () => body,
+  text: async () => JSON.stringify(body),
 })
 
-describe("useItemCalls polling", () => {
+describe("useCalls polling (shared useFetch)", () => {
   it("skips unchanged polls, never overlaps requests, refreshes when the tab is visible again", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     let answer: Call[] = [call("a", true)]
@@ -27,11 +25,10 @@ describe("useItemCalls polling", () => {
     let hold = false
     const fetch = vi.fn(async () => {
       if (hold) await new Promise<void>((r) => (release = r))
-      const body = answer
-      return { ok: true, status: 200, json: async () => body }
+      return reply(answer)
     })
     vi.stubGlobal("fetch", fetch)
-    const { result } = renderHook(() => useItemCalls("s", "i", 1000))
+    const { result } = renderHook(() => useCalls("s", "i", {}, 1000))
     await waitFor(() => expect(result.current.data).toHaveLength(1))
     const first = result.current.data
 
@@ -52,15 +49,13 @@ describe("useItemCalls polling", () => {
     await act(async () => document.dispatchEvent(new Event("visibilitychange")))
     expect(fetch.mock.calls.length).toBe(n + 1)
   })
-})
 
-describe("useItemCalls errors", () => {
   it("ok → failed poll → the same calls again clears the error", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const same = [call("a", true)]
     let fail = false
-    vi.stubGlobal("fetch", vi.fn(async () => (fail ? { ok: false, status: 500, json: async () => ({}) } : { ok: true, status: 200, json: async () => [...same] })))
-    const { result } = renderHook(() => useItemCalls("s", "i", 1000))
+    vi.stubGlobal("fetch", vi.fn(async () => (fail ? reply({}, 500) : reply([...same]))))
+    const { result } = renderHook(() => useCalls("s", "i", {}, 1000))
     await waitFor(() => expect(result.current.data).toHaveLength(1))
     fail = true
     await act(() => vi.advanceTimersByTimeAsync(1000))
@@ -69,5 +64,35 @@ describe("useItemCalls errors", () => {
     await act(() => vi.advanceTimersByTimeAsync(1000))
     await waitFor(() => expect(result.current.error).toBeNull())
     expect(result.current.data).toHaveLength(1)
+  })
+
+  it("a failed answer's error message reaches the caller", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => reply({ error: "scan exploded" }, 500)))
+    const { result } = renderHook(() => useCalls("s", "i", {}, 0))
+    await waitFor(() => expect(result.current.error).toBe("scan exploded"))
+  })
+})
+
+describe("useUsage keeps the last answer of the same kind", () => {
+  it("stale while a new range loads; never across a different by", async () => {
+    let hold = false
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (hold) await new Promise(() => {})
+        return reply({ url, totals: {}, series: [], groups: [], complete: true })
+      }),
+    )
+    const a = usageUrl({ by: "model", from: "2026-10-01" }, "UTC")
+    const { result, rerender } = renderHook(({ url }) => useUsage(url), { initialProps: { url: a as string | null } })
+    await waitFor(() => expect(result.current.data).not.toBeNull())
+    expect(result.current.stale).toBe(false)
+    hold = true
+    rerender({ url: usageUrl({ by: "model", from: "2026-10-25" }, "UTC") })
+    expect(result.current.stale).toBe(true)
+    expect((result.current.data as any).url).toBe(a)
+    rerender({ url: usageUrl({ by: "project", from: "2026-10-25" }, "UTC") })
+    expect(result.current.stale).toBe(false)
+    expect(result.current.data).toBeNull()
   })
 })

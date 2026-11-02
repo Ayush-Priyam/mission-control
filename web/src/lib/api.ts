@@ -53,7 +53,10 @@ export function createLoader<T>(url: string, onData: (d: T) => void, onError: (e
     try {
       const r = etag ? await fetchImpl(url, { headers: { "if-none-match": etag } }) : await fetchImpl(url)
       if (r.status === 304) return
-      if (!r.ok) throw new Error(`${url}: ${r.status}`)
+      if (!r.ok) {
+        const j: { error?: string } | null = await Promise.resolve(r.json?.()).catch(() => null)
+        throw new Error(j?.error ?? `${url}: ${r.status}`)
+      }
       const tag = r.headers?.get("etag") ?? null
       if (typeof r.text === "function") {
         const text = await r.text()
@@ -73,8 +76,12 @@ export function createLoader<T>(url: string, onData: (d: T) => void, onError: (e
   }
 }
 
-/** `refresh`: any value; when it changes the url is fetched again (data kept until the answer). */
-function useFetch<T>(url: string | null, pollMs = 0, refresh: unknown = 0): Remote<T> {
+/**
+ * GET `url` (null: nothing), every `pollMs` while the page is visible (0: once), and once more when it
+ * becomes visible again. `refresh`: any value; when it changes the url is fetched again (data kept until
+ * the answer). One request at a time; a 304 or an identical body is dropped; any good answer clears an error.
+ */
+export function useFetch<T>(url: string | null, pollMs = 0, refresh: unknown = 0): Remote<T> {
   const [raw, dispatch] = useReducer(fetchReducer<T>, url, initialFetch<T>)
   const [tick, setTick] = useState(0)
   const reload = useCallback(() => setTick((n) => n + 1), [])
@@ -202,8 +209,12 @@ export type Call = {
   ok?: boolean
   error?: string
   durationMs?: number
-  result?: unknown
+  /** A short result text. */
+  result?: string
+  /** Agent calls: the lane the sub-agent ran in, when known. */
+  subLane?: string
 }
+export type CallKind = Call["kind"]
 export type ItemDetail = { summary: ItemSummary; lanes: Lane[]; events: Record<string, any>[]; state?: Record<string, any> }
 type Where = { source: string; id: string; title: string; cwd: string | null; branch: string | null; harness: string; updatedAt: string | null; project?: Placed }
 export type NeedsYou = Where & { lane: string; detail: string }
@@ -254,6 +265,8 @@ export type UsageResult = {
   to: string | null
   complete: boolean
 }
+export type UsageDay = UsageResult["series"][number]
+export type UsageGroup = UsageResult["groups"][number]
 export type CallFilter = { lane?: string; kind?: string; q?: string }
 
 const qs = (q: Record<string, string | undefined>) => {
@@ -288,10 +301,34 @@ export const useProject = (key: string | null) => useFetch<ProjectNode>(key ? pr
 /** Items with their project; `poll` false loads once (the palette, a crumb lookup). */
 export const useItems = (q: Parameters<typeof itemsUrl>[0] = {}, enabled = true, poll = true) =>
   useFetch<ItemSummary[]>(enabled ? itemsUrl(q) : null, poll ? POLL : 0)
-export const useItem = (source: string, id: string | null) => useFetch<ItemDetail>(id ? itemUrl(source, id) : null, POLL)
-export const useCalls = (source: string, id: string | null, f: CallFilter = {}) =>
-  useFetch<Call[]>(id ? callsUrl(source, id, f) : null, POLL)
-export const useUsage = (q: UsageQuery = {}) => useFetch<UsageResult>(usageUrl(q, browserTz()))
+/** One item: summary, lanes, events (and a run's state). `pollMs` 0 loads once. */
+export const useItem = (source: string, id: string | null, pollMs = POLL) => useFetch<ItemDetail>(id ? itemUrl(source, id) : null, pollMs)
+/** An item's calls (all of them unless filtered; the Calls tab filters client-side so chip counts stay exact). */
+export const useCalls = (source: string, id: string | null, f: CallFilter = {}, pollMs = POLL) =>
+  useFetch<Call[]>(id ? callsUrl(source, id, f) : null, pollMs)
+
+export type UsageRemote = Remote<UsageResult> & {
+  /** true when `data` is the last answer for a different url, kept on screen while `url` loads or after it failed */
+  stale: boolean
+}
+
+/** The `by` of a usage url: answers are only ever kept across urls of the same kind. */
+export const usageKind = (url: string | null) => (url === null ? null : new URL(url, "http://local").searchParams.get("by"))
+
+/**
+ * GET /api/usage at `url` (build it with `usageUrl`; null loads nothing), every `pollMs` while set. While a new
+ * url of the same `by` loads (or fails), the last answer stays as `data` with `stale`; an answer for a
+ * different `by` is never reused.
+ */
+export function useUsage(url: string | null, pollMs = 0): UsageRemote {
+  const r = useFetch<UsageResult>(url, pollMs)
+  const [kept, setKept] = useState<{ kind: string | null; data: UsageResult } | null>(null)
+  useEffect(() => {
+    if (r.data && url !== null) setKept({ kind: usageKind(url), data: r.data })
+  }, [r.data, url])
+  const stale = !r.data && url !== null && kept !== null && kept.kind === usageKind(url)
+  return { ...r, data: r.data ?? (stale ? kept!.data : null), stale }
+}
 
 export async function postItemAction(source: string, id: string, name: string, body: object = {}) {
   const r = await fetch(`${itemUrl(source, id)}/action/${encodeURIComponent(name)}`, {

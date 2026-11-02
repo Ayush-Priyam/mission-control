@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ComponentType } from "react"
 import { Bot, FilePen, FileText, Plug, Search, Terminal, Wrench, Zap } from "lucide-react"
-import type { Call, CallKind } from "@/lib/calls-api"
+import type { Call, CallKind } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 export type Chip = "all" | CallKind | "errors"

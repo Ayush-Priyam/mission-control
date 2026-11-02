@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import type { Call } from "@/lib/calls-api"
+import type { Call } from "@/lib/api"
 import { CallList, chipCounts, filterCalls, fmtDuration, windowRange } from "./CallList"
 
 afterEach(cleanup)

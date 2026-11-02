@@ -1,4 +1,4 @@
-import { compact, estMoney, OTHER, PALETTE, pct, totalTokens, type Group } from "@/lib/usage-api"
+import { compact, estMoney, OTHER, PALETTE, pct, totalTokens, type Group } from "@/lib/usage"
 
 export type Slice = { key: string; label: string; tokens: number; cost: number; sessions: number; color: string }
 

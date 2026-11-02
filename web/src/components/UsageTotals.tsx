@@ -1,4 +1,4 @@
-import { compact, EST_TIP, fmtInt, money, totalTokens, type Usage } from "@/lib/usage-api"
+import { compact, EST_TIP, fmtInt, money, totalTokens, type Usage } from "@/lib/usage"
 
 /** The headline: total tokens for the range, estimated cost under it, and the four token kinds. */
 export function UsageTotals({ totals, label }: { totals: Usage["totals"]; label: string }) {
