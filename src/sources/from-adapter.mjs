@@ -1,4 +1,5 @@
 import { isWaiting, openStop } from "../status.mjs"
+import { defaultTz, localDay } from "../usage.mjs"
 
 const zeroTokens = () => ({ in: 0, out: 0, cacheRead: 0, cacheWrite: 0 })
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : 0)
@@ -194,7 +195,7 @@ export function fromAdapter(adapter) {
     },
     getSession: (id, name) => adapter.getSession(id, name),
     /** Per day per run per model, from the runs' `session` events (tokens, cost, model, ts). */
-    async usage({ from, to } = {}) {
+    async usage({ from, to, tz = defaultTz() } = {}) {
       const rows = new Map()
       const runs = await adapter.listRuns()
       for (const r of runs) {
@@ -204,7 +205,8 @@ export function fromAdapter(adapter) {
         for (const e of i.events) {
           const ts = str(e.ts)
           if (e.type !== "session" || !ts) continue
-          const day = ts.slice(0, 10)
+          if (!Number.isFinite(Date.parse(ts))) continue
+          const day = localDay(ts, tz)
           if ((from && day < from) || (to && day > to)) continue
           const model = str(e.model) ?? "unknown"
           const k = `${day}|${r.id}|${model}`

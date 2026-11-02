@@ -77,7 +77,7 @@
  * @property {(id: string) => Promise<{ summary: ItemSummary, lanes: Lane[], events: object[], state?: object }|null>} getItem
  * @property {(id: string, filter?: { lane?: string, kind?: string, q?: string }) => Promise<Call[]>} getCalls
  * @property {(id: string, name: string) => Promise<unknown>} getSession
- * @property {(range: { from?: string, to?: string }) => Promise<UsageRow[]>} [usage]
+ * @property {(range: { from?: string, to?: string, tz?: string }) => Promise<UsageRow[]>} [usage]
  * @property {() => { complete: boolean }} [usageStatus]  whether the usage scan has covered everything once
  * @property {() => Promise<void>} [warm]  called once at server start, in the background
  * @property {Record<string, Function>} [extras]  keyed handlers: (id, searchParams) => { body, status?, type? }

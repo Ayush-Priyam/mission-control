@@ -7,7 +7,7 @@ import { isRunId, isSessionName } from "./names.mjs"
 import { crewStats } from "./crew.mjs"
 import { fromAdapter } from "./sources/from-adapter.mjs"
 import { buildTree, projectsOf } from "./projects.mjs"
-import { aggregate, isBy } from "./usage.mjs"
+import { aggregate, defaultTz, isBy, isTz } from "./usage.mjs"
 import { createRegistry } from "./sources/registry.mjs"
 
 const DEFAULT_DIST = join(dirname(fileURLToPath(import.meta.url)), "..", "dist")
@@ -108,15 +108,16 @@ async function apiV2(registry, git, req, res, url, parts) {
   if (get && parts[0] === "usage" && parts.length === 1) {
     const q = url.searchParams
     const from = q.get("from") ?? undefined, to = q.get("to") ?? undefined, by = q.get("by") ?? "model"
-    const day = /^\d{4}-\d{2}-\d{2}$/
-    if ((from !== undefined && !day.test(from)) || (to !== undefined && !day.test(to)) || !isBy(by)) return json(res, { error: "bad from, to or by" }, 400)
-    const rows = await registry.usage({ from, to })
+    const tz = q.get("tz") ?? defaultTz()
+    const day = { test: (v) => /^\d{4}-\d{2}-\d{2}$/.test(v) && Number.isFinite(Date.parse(`${v}T00:00:00Z`)) && new Date(`${v}T00:00:00Z`).toISOString().startsWith(v) }
+    if ((from !== undefined && !day.test(from)) || (to !== undefined && !day.test(to)) || !isBy(by) || !isTz(tz)) return json(res, { error: "bad from, to, by or tz" }, 400)
+    const rows = await registry.usage({ from, to, tz })
     const where = await projectsOf(rows.map((r) => r.project), { git })
     const named = rows.map((r) => {
       const p = where.get(r.project)
       return p ? { ...r, project: p.key, projectName: p.name } : { ...r, project: "no-project", projectName: "(no project)" }
     })
-    return json(res, { ...aggregate(named, { by }), by, from: from ?? null, to: to ?? null, complete: registry.usageComplete() })
+    return json(res, { ...aggregate(named, { by }), by, tz, from: from ?? null, to: to ?? null, complete: registry.usageComplete() })
   }
   if (parts[0] !== "item" || parts.length < 3) return false
   const source = decode(parts[1]), id = decode(parts[2])

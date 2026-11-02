@@ -40,3 +40,45 @@ export function aggregate(rows, { by = "model" } = {}) {
   const out = [...groups.values()].map((g) => ({ ...g, sessions: g.sessions.size })).sort((a, b) => b.cost - a.cost || a.key.localeCompare(b.key))
   return { totals, series, groups: out }
 }
+
+/** The server's local IANA zone. */
+export const defaultTz = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
+
+/** True for an IANA zone name Intl accepts. */
+export function isTz(tz) {
+  if (typeof tz !== "string" || !tz) return false
+  try { new Intl.DateTimeFormat("en-CA", { timeZone: tz }); return true } catch { return false }
+}
+
+const formatters = new Map()
+const dayCaches = new Map()
+/** Local calendar day (YYYY-MM-DD) in `tz` of a UTC instant (ISO string, or a 15-minute bucket "YYYY-MM-DDTHH:mm"). */
+export function localDay(ts, tz) {
+  let f = formatters.get(tz)
+  if (!f) { f = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }); formatters.set(tz, f) }
+  let cache = dayCaches.get(tz)
+  if (!cache) { cache = new Map(); dayCaches.set(tz, cache) }
+  let d = cache.get(ts)
+  if (d === undefined) {
+    const t = /Z$|[+-]\d\d:?\d\d$/.test(ts) ? Date.parse(ts) : Date.parse(`${ts}${ts.length === 16 ? ":00" : ""}Z`)
+    d = f.format(new Date(t))
+    if (cache.size > 50_000) cache.clear()
+    cache.set(ts, d)
+  }
+  return d
+}
+
+/** Shift a YYYY-MM-DD by whole days. */
+export function shiftDay(day, n) {
+  return new Date(Date.parse(`${day}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10)
+}
+
+const TS = /^\d{4}-\d{2}-\d{2}T/
+/** 15-minute UTC bucket "YYYY-MM-DDTHH:mm" of a timestamp, or null when it is not a valid ISO time. */
+export function bucketOf(ts) {
+  if (typeof ts !== "string" || !TS.test(ts)) return null
+  const t = Date.parse(ts)
+  if (!Number.isFinite(t)) return null
+  const iso = new Date(t).toISOString()
+  return `${iso.slice(0, 14)}${String(Math.floor(+iso.slice(14, 16) / 15) * 15).padStart(2, "0")}`
+}
