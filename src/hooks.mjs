@@ -1,0 +1,72 @@
+import { appendFileSync, mkdirSync, readFileSync } from "node:fs"
+import { homedir } from "node:os"
+import { join } from "node:path"
+
+/** Claude Code hook events the dashboard listens to. */
+export const EVENTS = ["Notification", "Stop", "SubagentStop", "UserPromptSubmit", "PreToolUse"]
+const SAFE_ID = /^[\w-][\w.-]*$/
+const CLEARS = new Set(["PreToolUse", "UserPromptSubmit", "Stop"])
+const MAX_MESSAGE = 500
+
+export const defaultHooksDir = (home = homedir()) => join(home, ".mission-control", "hooks")
+
+/**
+ * Append one hook event to <hooksDir>/<session_id>.jsonl. Synchronous, local, never throws:
+ * it runs inside the user's Claude Code session. Returns true when a line was written.
+ */
+export function recordHook({ raw, event, hooksDir = defaultHooksDir(), now = () => new Date() }) {
+  try {
+    const input = JSON.parse(raw)
+    if (!input || typeof input !== "object") return false
+    const sessionId = input.session_id
+    const name = typeof input.hook_event_name === "string" ? input.hook_event_name : event
+    if (typeof sessionId !== "string" || !SAFE_ID.test(sessionId) || !EVENTS.includes(name)) return false
+    const line = { event: name, sessionId, ts: now().toISOString() }
+    if (typeof input.message === "string") line.message = input.message.slice(0, MAX_MESSAGE)
+    if (typeof input.tool_name === "string") line.tool = input.tool_name
+    mkdirSync(hooksDir, { recursive: true })
+    appendFileSync(join(hooksDir, `${sessionId}.jsonl`), JSON.stringify(line) + "\n")
+    return true
+  } catch { return false }
+}
+
+/** Parse hook log text (or an array of lines) into events, skipping blank or half-written lines. */
+export function parseHookLines(lines) {
+  const list = typeof lines === "string" ? lines.split("\n") : lines
+  const out = []
+  for (const l of list) {
+    if (typeof l === "object" && l) { out.push(l); continue }
+    try { const j = JSON.parse(l); if (j && typeof j === "object") out.push(j) } catch { /* skip */ }
+  }
+  return out
+}
+
+/**
+ * Waiting = the last Notification has no PreToolUse / UserPromptSubmit / Stop after it (log order).
+ * Takes parsed events or raw lines. { waiting, message?, since? }.
+ */
+export function waitingFromHooks(lines) {
+  const events = parseHookLines(lines)
+  let note = -1
+  for (let i = events.length - 1; i >= 0; i--) if (events[i].event === "Notification") { note = i; break }
+  if (note < 0) return { waiting: false }
+  for (let i = note + 1; i < events.length; i++) if (CLEARS.has(events[i].event)) return { waiting: false }
+  const n = events[note]
+  const out = { waiting: true }
+  if (typeof n.message === "string") out.message = n.message
+  if (typeof n.ts === "string") out.since = n.ts
+  return out
+}
+
+/** Read a session's hook state from disk; { waiting: false } when there is no log. */
+export function readWaiting(hooksDir, sessionId) {
+  try { return waitingFromHooks(readFileSync(join(hooksDir, `${sessionId}.jsonl`), "utf8")) } catch { return { waiting: false } }
+}
+
+/** The settings.json block to merge by hand; `node` and the script are absolute. */
+export function settingsBlock({ node = process.execPath, script }) {
+  const q = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`
+  const hooks = {}
+  for (const e of EVENTS) hooks[e] = [{ hooks: [{ type: "command", command: `${q(node)} ${q(script)} hook ${e}` }] }]
+  return { hooks }
+}

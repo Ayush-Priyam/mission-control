@@ -1,5 +1,6 @@
 import { closeSync, openSync, readSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs"
 import { join, sep } from "node:path"
+import { readWaiting } from "../../hooks.mjs"
 import { capText, isSessionName } from "../../names.mjs"
 import { createCache } from "./cache.mjs"
 import { parseTranscript, peek } from "./parse.mjs"
@@ -16,12 +17,11 @@ const iso = (ms) => new Date(ms).toISOString()
 
 /**
  * Claude Code sessions as a v2 source. `root` is the projects dir (default ~/.claude/projects),
- * `now` an injectable clock. `hooksDir` is accepted for the level-1 hook logs (waiting status) and not
- * used yet. Read-only; every file read is confined to the real path of `root`. `cachePath` is where the
+ * `now` an injectable clock. `hooksDir` holds the level-1 hook logs: a session whose last Notification is
+ * unanswered (no later hook event, no later log activity) is "waiting". Read-only; every file read is confined to the real path of `root`. `cachePath` is where the
  * usage scan persists its per-file results (omitted: memory only); `parse` is injectable for tests.
  */
 export function create({ root, now = () => Date.now(), hooksDir, cachePath, parse = parseTranscript } = {}) {
-  void hooksDir
   const cache = createCache()
   const peeked = createCache(8192) // path|size|mtime -> peek of the head, so warm lists skip file reads
   const opened = new Map() // id -> { lastMs, summary } of sessions already fully parsed, for list totals
@@ -140,6 +140,16 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
   }
   const scanner = createUsageScanner({ files: usageFiles, parse, costOf, cachePath, now })
 
+  /** Hook-derived waiting state, or null: a Notification is open only while the session log is no newer than it. */
+  function waitingOf(id, lastMs, logged) {
+    if (!hooksDir || (logged && !logged.has(`${id}.jsonl`))) return null
+    const w = readWaiting(hooksDir, id)
+    if (!w.waiting) return null
+    const since = Date.parse(w.since)
+    if (Number.isFinite(since) && lastMs > since) return null // answered in the terminal: the log moved on
+    return w
+  }
+
   const liveAt = (ms) => now() - ms <= LIVE_MS
 
   function laneOf(p, { id, label, kind, parent, model, live, finished }) {
@@ -184,11 +194,16 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
     let cost = 0, errors = 0
     for (const l of lanes) { add(tokens, l.tokens); cost += l.cost; errors += l.errors }
     const running = lanes.some((l) => l.status === "working")
+    const w = waitingOf(s.id, lastMs)
+    if (w) {
+      lanes[0].status = "waiting"
+      lanes[0].reason = w.message ?? "Waiting for you"
+    }
     const summary = {
       source: "claude-code", id: s.id, kind: "session",
       title: mp.meta.title ?? s.id, harness: "claude-code",
       cwd: mp.meta.cwd, branch: mp.meta.branch,
-      live: running, status: running ? "working" : "idle", waiting: false,
+      live: running, status: w ? "waiting" : running ? "working" : "idle", waiting: !!w,
       startedAt: mp.firstTs, updatedAt: iso(lastMs),
       counts: { lanes: lanes.length, calls: calls.length, errors },
       tokens, cost,
@@ -205,6 +220,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
     /** stat + the first 64 KB of each file only; totals appear once a session has been opened. */
     async listItems() {
       const items = []
+      const logged = new Set(hooksDir ? dirs(hooksDir).map((d) => d.name) : []) // one readdir instead of a miss per session
       for (const s of sessionFiles()) {
         try {
           const c = confined(s.file)
@@ -217,11 +233,12 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
           const o = opened.get(s.id)
           const done = o && o.lastMs === lastMs ? o.summary : null
           const live = liveAt(lastMs)
+          const w = waitingOf(s.id, lastMs, logged)
           items.push({
             source: "claude-code", id: s.id, kind: "session",
             title: h.title ?? s.id, harness: "claude-code",
             cwd: h.cwd, branch: h.branch,
-            live, status: live ? "working" : "idle", waiting: false,
+            live, status: w ? "waiting" : live ? "working" : "idle", waiting: !!w,
             startedAt: h.startedAt, updatedAt: iso(lastMs),
             counts: { lanes: 1 + subs.length, calls: done?.counts.calls ?? 0, errors: done?.counts.errors ?? 0 },
             tokens: done?.tokens ?? zero(), cost: done?.cost ?? 0,
