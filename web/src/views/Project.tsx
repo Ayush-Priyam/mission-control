@@ -3,9 +3,37 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { BrainCanvas, type BrainData } from "@/components/BrainCanvas"
-import { RunCard } from "@/views/Home"
-import { useCapabilities, useCrew, useExtra } from "@/lib/api"
-import { repoName, useSharedRuns } from "@/lib/runs-context"
+import { Badge } from "@/components/ui/badge"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { StageBar } from "@/components/StageBar"
+import { useCapabilities, useCrew, useExtra, useRuns, type RunSummary } from "@/lib/api"
+import { isWaiting, repoName } from "@/lib/runs-context"
+import { toHash } from "@/lib/route"
+
+export function RunStatusBadge({ run }: { run: RunSummary }) {
+  if (isWaiting(run)) return <Badge className="bg-needs-you/15 text-needs-you">Waiting on you</Badge>
+  if (run.live) return <Badge className="bg-running/15 text-running">Live</Badge>
+  return <Badge variant="outline">Ended</Badge>
+}
+
+export function RunCard({ run }: { run: RunSummary }) {
+  return (
+    <a href={toHash({ view: "run", id: run.id, tab: "map" })} className="block rounded-xl focus-visible:outline-2">
+      <Card className="h-full transition-colors hover:bg-muted/40">
+        <CardHeader>
+          <CardTitle className="line-clamp-2 text-sm font-semibold">{run.idea || run.id}</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <StageBar stages={run.stages} />
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate font-mono text-[11px] text-muted-foreground">{run.id}</span>
+            <RunStatusBadge run={run} />
+          </div>
+        </CardContent>
+      </Card>
+    </a>
+  )
+}
 
 type CrewRow = { stage: string; sessions: number; tokens: number; cost: number; rounds: number; stops: number; raised: number; models: string[] }
 
@@ -76,7 +104,7 @@ function Brain({ repo }: { repo: string }) {
 }
 
 export default function Project({ repo }: { repo: string }) {
-  const runs = useSharedRuns()
+  const runs = useRuns() // the /api/runs poll runs only while this legacy view is open
   const caps = useCapabilities()
   const mine = (runs.data ?? []).filter((r) => repoName(r.repo) === repo)
   const hasBrain = !!caps.data && caps.data.extras.includes("project")

@@ -1,41 +1,12 @@
 import { useMemo } from "react"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { StageBar } from "@/components/StageBar"
 import { ItemTable } from "@/components/ItemTable"
 import { LiveActivity } from "@/components/LiveActivity"
 import { NeedsYouQueue } from "@/components/NeedsYouQueue"
-import { useItems, useSources, type ItemSummary, type RunSummary } from "@/lib/api"
+import { useItems, useSources, type ItemSummary } from "@/lib/api"
 import { useNow } from "@/lib/format"
 import { useShared } from "@/lib/projects-context"
-import { isWaiting } from "@/lib/runs-context"
 import { toHash } from "@/lib/route"
 import { matchesFilter } from "@/lib/tree"
-
-export function RunStatusBadge({ run }: { run: RunSummary }) {
-  if (isWaiting(run)) return <Badge className="bg-needs-you/15 text-needs-you">Waiting on you</Badge>
-  if (run.live) return <Badge className="bg-running/15 text-running">Live</Badge>
-  return <Badge variant="outline">Ended</Badge>
-}
-
-export function RunCard({ run }: { run: RunSummary }) {
-  return (
-    <a href={toHash({ view: "run", id: run.id, tab: "map" })} className="block rounded-xl focus-visible:outline-2">
-      <Card className="h-full transition-colors hover:bg-muted/40">
-        <CardHeader>
-          <CardTitle className="line-clamp-2 text-sm font-semibold">{run.idea || run.id}</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          <StageBar stages={run.stages} />
-          <div className="flex items-center justify-between gap-2">
-            <span className="truncate font-mono text-[11px] text-muted-foreground">{run.id}</span>
-            <RunStatusBadge run={run} />
-          </div>
-        </CardContent>
-      </Card>
-    </a>
-  )
-}
 
 const RECENT = 100
 const DAY_MS = 24 * 3600 * 1000

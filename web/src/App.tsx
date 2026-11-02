@@ -6,7 +6,6 @@ import ProjectPage from "@/views/ProjectPage"
 import Item from "@/views/Item"
 import { Usage } from "@/views/Usage"
 import Agent from "@/views/Agent"
-import { RunsProvider } from "@/lib/runs-context"
 import { useCapabilities } from "@/lib/api"
 import { ProjectsProvider } from "@/lib/projects-context"
 import { parseRoute, toHash, type Route } from "@/lib/route"
@@ -55,12 +54,10 @@ function Page({ route }: { route: Route }) {
 export default function App() {
   const route = useRoute()
   return (
-    <RunsProvider>
-      <ProjectsProvider>
-        <Shell route={route}>
-          <Page route={route} />
-        </Shell>
-      </ProjectsProvider>
-    </RunsProvider>
+    <ProjectsProvider>
+      <Shell route={route}>
+        <Page route={route} />
+      </Shell>
+    </ProjectsProvider>
   )
 }
