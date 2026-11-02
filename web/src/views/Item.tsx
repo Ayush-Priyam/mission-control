@@ -23,7 +23,8 @@ import Docs from "@/views/Docs"
 import Qa from "@/views/Qa"
 import Trace from "@/views/Trace"
 import { useCalls, useCapabilities, useExtra, useItem, useSources, type ItemDetail } from "@/lib/api"
-import { useItemConfig } from "@/lib/api-v22"
+import { useItemConfig, useItemConflicts } from "@/lib/api-v22"
+import { SameFileWarnings } from "@/components/SameFileWarnings"
 import { extraTabs, normaliseDiff, normaliseTasks, qaRows, runChanges } from "@/lib/extras"
 import { useNow } from "@/lib/format"
 import { crewCards, crewGraph, currentStop } from "@/lib/graph"
@@ -88,6 +89,7 @@ export default function Item({ source, id, tab, call }: { source: string; id: st
   // draws them, and the Calls tab lists them: one poller for all three.
   const calls = useCalls(source, isSession || tab === "timeline" || tab === "calls" ? id : null, {}, poll)
   const now = useNow(5000)
+  const conflicts = useItemConflicts(source, id)
   const config = useItemConfig(source, isSession && tab === "calls" ? id : null, d?.summary.counts?.calls ?? 0)
   const [sheet, setSheet] = useState<string[] | null>(null)
   const [focus, setFocus] = useState<{ ids: string[]; n: number } | null>(null)
@@ -226,6 +228,7 @@ export default function Item({ source, id, tab, call }: { source: string; id: st
         </Tabs>
         {!wide && (
           <div className="flex flex-col gap-4 lg:sticky lg:top-0 lg:self-start">
+            <SameFileWarnings warnings={conflicts.data?.warnings ?? []} self={{ source, id }} />
             <RightRail part={desktop ? "all" : "rest"} detail={d} calls={isSession ? calls.data : null} actions={actions} now={now} onActed={item.reload} onOpen={(lane) => setSheet([lane])} flash={desktop ? youFlash : 0} />
             {v1Run && (src?.extras ?? []).includes("tokens") && !tabs.includes("docs") && <TokenPanel runId={id} optional />}
           </div>

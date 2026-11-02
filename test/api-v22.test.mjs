@@ -45,3 +45,35 @@ test("config route: an item's configured MCP servers and skills joined to its ca
     assert.ok(r.servers.every((s) => s.configured === false))
   })
 })
+
+test("conflicts routes: two sessions of one project editing the same file show on the project and on both items", async () => {
+  const root = mkdtempSync(join(tmpdir(), "mc-conf-"))
+  const NOW = Date.now() // listItems dates items by file mtime, so the clock is the real one
+  const ts = (min) => new Date(NOW - min * 60000).toISOString()
+  const sess = (dir, id, cwd, branch, file, min) => {
+    mkdirSync(join(root, dir), { recursive: true })
+    writeFileSync(join(root, dir, `${id}.jsonl`), [
+      JSON.stringify({ type: "user", cwd, gitBranch: branch, timestamp: ts(min + 1), message: { content: "go" } }),
+      JSON.stringify({ type: "assistant", cwd, timestamp: ts(min), message: { id: `m-${id}`, model: "claude-sonnet-4-5", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "tool_use", id: `t-${id}`, name: "Edit", input: { file_path: `${cwd}/${file}` } }] } }),
+    ].join("\n") + "\n")
+  }
+  sess("-repo", "a1", "/repo", "main", "src/api.ts", 6)
+  sess("-wt-search", "b1", "/wt/search", "feat/search", "src/api.ts", 2)
+  sess("-other", "c1", "/other", "main", "src/api.ts", 3)
+  // /repo and /wt/search are worktrees of one repo; /other is a project of its own
+  const git = {
+    resolve: async (cwd) => (cwd === "/other" ? null : { commonDir: "/repo/.git", toplevel: cwd }),
+    worktrees: async () => [{ path: "/repo", branch: "main" }, { path: "/wt/search", branch: "feat/search" }],
+    status: async () => null,
+  }
+  await withServer([create({ root, now: () => NOW })], { git, now: () => NOW }, async (base) => {
+    const items = await (await fetch(`${base}/api/items?all=1`)).json()
+    const key = items.find((i) => i.id === "a1").project.key
+    const p = await (await fetch(`${base}/api/project/${key}/conflicts`)).json()
+    assert.equal(p.warnings.length, 1)
+    assert.equal(p.warnings[0].text, "repo in feat/search and main both edited src/api.ts 4m apart")
+    for (const id of ["a1", "b1"]) assert.equal((await (await fetch(`${base}/api/item/claude-code/${id}/conflicts`)).json()).warnings.length, 1, id)
+    assert.deepEqual((await (await fetch(`${base}/api/item/claude-code/c1/conflicts`)).json()).warnings, [])
+    assert.equal((await fetch(`${base}/api/project/nope-1/conflicts`)).status, 404)
+  })
+})

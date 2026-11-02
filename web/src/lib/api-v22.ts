@@ -10,3 +10,10 @@ const enc = encodeURIComponent
 export const useItemConfig = (source: string, id: string | null, refresh: unknown = 0) =>
   useFetch<ItemConfig>(id ? `/api/item/${enc(source)}/${enc(id)}/config` : null, 0, refresh)
 export const useProjectConfig = (key: string | null) => useFetch<ProjectConfig>(key ? `/api/project/${enc(key)}/config` : null, 60_000)
+
+export type EditSide = { source: string; id: string; title: string; branch: string | null; worktree: string | null; ts: string }
+export type SameFile = { path: string; gapMs: number; a: EditSide; b: EditSide; text: string }
+export const useItemConflicts = (source: string, id: string | null, pollMs = 30_000) =>
+  useFetch<{ warnings: SameFile[] }>(id ? `/api/item/${enc(source)}/${enc(id)}/conflicts` : null, pollMs)
+export const useProjectConflicts = (key: string | null, pollMs = 30_000) =>
+  useFetch<{ warnings: SameFile[] }>(key ? `/api/project/${enc(key)}/conflicts` : null, pollMs)
