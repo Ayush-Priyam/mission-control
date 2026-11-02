@@ -9,14 +9,14 @@ export type CallFilter = { lane: string | null; chip: Chip; q: string }
 
 export const isError = (c: Call) => c.ok === false
 
-/** Calls in `lane` (null: every lane) whose name or summary contains `q`, narrowed to `chip`. */
+/** Calls in `lane` (null: every lane) whose name, summary or MCP server contains `q`, narrowed to `chip`. */
 export function filterCalls(calls: Call[], { lane, chip, q }: CallFilter): Call[] {
   const needle = q.trim().toLowerCase()
   return calls.filter(
     (c) =>
       (lane === null || c.lane === lane) &&
       (chip === "all" || (chip === "errors" ? isError(c) : c.kind === chip)) &&
-      (!needle || c.name.toLowerCase().includes(needle) || c.summary.toLowerCase().includes(needle)),
+      (!needle || [c.name, c.summary, c.server ?? ""].some((t) => t.toLowerCase().includes(needle))),
   )
 }
 
@@ -43,6 +43,25 @@ export const iconOf = (c: Call) => (c.kind === "tool" ? TOOL_ICON[c.name] : unde
 
 /** "server.tool" for MCP, "skill name" for skills, the tool name otherwise. */
 export const displayName = (c: Call) => (c.kind === "mcp" && c.server ? `${c.server}.${c.name}` : c.kind === "skill" ? `skill ${c.name}` : c.name)
+
+/**
+ * "server · tool" where only the server truncates, so a long MCP server never hides the tool.
+ * Skills read "skill <name>"; other calls are just the name.
+ */
+export function CallName({ call: c, className }: { call: Call; className?: string }) {
+  if (c.kind === "mcp" && c.server)
+    return (
+      <span className={cn("flex min-w-0 items-baseline gap-1", className)} title={displayName(c)}>
+        <span className="min-w-0 truncate">{c.server}</span>
+        <span className="shrink-0">· {c.name}</span>
+      </span>
+    )
+  return (
+    <span className={cn("min-w-0 truncate", className)} title={displayName(c)}>
+      {c.kind === "skill" ? `skill ${c.name}` : c.name}
+    </span>
+  )
+}
 
 export function fmtTime(ts: string) {
   const d = new Date(ts)
@@ -134,9 +153,9 @@ export function CallList({ calls, selectedId, onSelect, laneLabel, empty = "No c
               )}
             >
               <span className="w-16 shrink-0 text-muted-foreground">{fmtTime(c.ts)}</span>
-              <span className={cn("flex w-56 shrink-0 items-center gap-1.5 truncate", KIND[c.kind].text)}>
+              <span className={cn("flex w-64 shrink-0 items-center gap-1.5 overflow-hidden", KIND[c.kind].text)}>
                 <Icon className="size-3.5 shrink-0" />
-                <span className="truncate" title={displayName(c)}>{displayName(c)}</span>
+                <CallName call={c} />
               </span>
               {laneLabel && <span className="w-24 shrink-0 truncate text-muted-foreground" title={laneLabel(c.lane)}>{laneLabel(c.lane)}</span>}
               <span className="min-w-0 flex-1 truncate text-foreground/80">{c.summary}</span>

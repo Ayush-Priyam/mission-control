@@ -28,7 +28,7 @@ describe("chip counts", () => {
     const lane = filterCalls(calls, { lane: "agent-a", chip: "all", q: "" })
     expect(chipCounts(lane)).toEqual({ all: 3, tool: 1, mcp: 1, skill: 1, agent: 0, errors: 1 })
     const searched = filterCalls(calls, { lane: null, chip: "all", q: "BROWSER" })
-    expect(searched.map((c) => c.id)).toEqual([]) // the server name is not part of name/summary search
+    expect(searched.map((c) => c.id)).toEqual(["c3", "c4"]) // the MCP server name is searched too
     expect(chipCounts(filterCalls(calls, { lane: null, chip: "all", q: "continue" }))).toMatchObject({ all: 1, mcp: 1, errors: 1 })
   })
 })
@@ -81,6 +81,15 @@ describe("CallList", () => {
     expect(onSelect).toHaveBeenCalledWith("c2")
     rerender(<CallList calls={calls} selectedId="c2" onSelect={onSelect} />)
     expect(screen.getByText("npm test").closest("[role=option]")?.getAttribute("aria-selected")).toBe("true")
+  })
+  it("a long MCP server name truncates, the tool name stays whole outside the truncating part", () => {
+    const long = mk(9, { kind: "mcp", server: "plugin_some-very-long_mcp-server-name", name: "work_state_write" })
+    render(<CallList calls={[long]} selectedId={null} onSelect={() => {}} />)
+    const tool = screen.getByText("· work_state_write")
+    expect(tool.closest(".truncate")).toBeNull()
+    expect(tool.className).toContain("shrink-0")
+    const server = screen.getByText("plugin_some-very-long_mcp-server-name")
+    expect(server.className).toContain("truncate")
   })
   it("shows an empty state", () => {
     render(<CallList calls={[]} selectedId={null} onSelect={() => {}} empty="No calls match." />)

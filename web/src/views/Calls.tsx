@@ -136,7 +136,7 @@ export default function Calls({ source, id, sessionHref, timelineHref }: Props) 
               aria-label="Search calls"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search calls by name or summary…"
+              placeholder="Search name, summary or server…"
               className="h-8 w-64 rounded-md border bg-muted/40 px-3 pr-7 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring"
             />
             {q && (

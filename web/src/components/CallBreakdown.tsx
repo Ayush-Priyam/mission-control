@@ -3,7 +3,7 @@ import type { Call } from "@/lib/calls-api"
 import { isError } from "@/components/CallList"
 import { cn } from "@/lib/utils"
 
-export type ToolRow = { key: string; label: string; count: number; mcp: boolean }
+export type ToolRow = { key: string; label: string; count: number; mcp: boolean; server?: string; name: string }
 
 /** Tool, MCP and agent calls by name; MCP tools sit together under their server. Groups by total, then rows by count. */
 export function toolBreakdown(calls: Call[], limit = 8): ToolRow[] {
@@ -15,7 +15,7 @@ export function toolBreakdown(calls: Call[], limit = 8): ToolRow[] {
     const key = mcp ? `${c.server ?? ""}.${c.name}` : c.name
     const grp = groups.get(g) ?? groups.set(g, { total: 0, rows: new Map() }).get(g)!
     grp.total++
-    const row = grp.rows.get(key) ?? grp.rows.set(key, { key, label: mcp && c.server ? `${c.server} · ${c.name}` : c.name, count: 0, mcp }).get(key)!
+    const row = grp.rows.get(key) ?? grp.rows.set(key, { key, label: mcp && c.server ? `${c.server} · ${c.name}` : c.name, count: 0, mcp, server: mcp ? c.server : undefined, name: c.name }).get(key)!
     row.count++
   }
   return [...groups.values()]
@@ -59,7 +59,14 @@ export function CallBreakdown({ calls }: { calls: Call[] }) {
           {tools.length === 0 && <div className="font-sans text-muted-foreground">No tool calls.</div>}
           {tools.map((t) => (
             <div key={t.key} className="flex items-center gap-2">
-              <span className="w-40 truncate" title={t.label}>{t.label}</span>
+              {t.server ? (
+                <span className="flex w-48 min-w-0 items-baseline gap-1" title={t.label}>
+                  <span className="min-w-0 truncate">{t.server}</span>
+                  <span className="shrink-0">· {t.name}</span>
+                </span>
+              ) : (
+                <span className="w-48 truncate" title={t.label}>{t.label}</span>
+              )}
               <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
                 <i className={cn("block h-full rounded-full", t.mcp ? "bg-violet-500" : "bg-zinc-400 dark:bg-zinc-300")} style={{ width: `${(t.count / max) * 100}%` }} />
               </div>
