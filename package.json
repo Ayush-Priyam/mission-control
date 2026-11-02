@@ -1,7 +1,17 @@
 {
   "name": "@aldefy/mission-control",
   "version": "0.1.0",
-  "description": "Local dashboard for agent harness runs",
+  "description": "One local dashboard for all your AI coding work: projects, worktrees, sessions, runs and lanes, with a Needs-you queue, calls, timeline and usage",
+  "keywords": [
+    "ai",
+    "coding-agents",
+    "dashboard",
+    "claude-code",
+    "observability",
+    "agents",
+    "developer-tools",
+    "local-first"
+  ],
   "license": "MIT",
   "author": "Adit Lal",
   "type": "module",
