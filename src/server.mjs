@@ -88,8 +88,10 @@ async function sendExtra(res, r) {
 async function apiV2(registry, req, res, url, parts) {
   const get = req.method === "GET" || req.method === "HEAD"
   if (get && parts[0] === "sources" && parts.length === 1) {
+    await registry.list() // refresh per-source errors
     return json(res, registry.sources().map((s) => ({
       name: s.name, harness: s.harness, extras: Object.keys(s.extras ?? {}), actions: Object.keys(s.actions ?? {}), source: s.describe?.().source ?? null,
+      ...(registry.error(s.name) ? { error: registry.error(s.name) } : {}),
     })))
   }
   if (get && parts[0] === "overview" && parts.length === 1) return json(res, await registry.overview())

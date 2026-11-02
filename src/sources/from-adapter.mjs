@@ -57,18 +57,41 @@ function buildCalls(id, events) {
   return calls
 }
 
-function buildLanes(state, events, calls) {
+/** Status of a stage that only appears in events: the open stop, else its last start/end. */
+function eventStageStatus(id, events, stop, live) {
+  if (stop && stop.stage === id) return stop.rule === "human" ? "waiting" : "stopped"
+  let last = null
+  for (const e of events) {
+    if (e.stage !== id) continue
+    if (e.type === "stage.start" || e.type === "stage.end") last = e
+  }
+  if (!last) return "idle"
+  if (last.type === "stage.start") return live ? "working" : "idle"
+  return last.ok === false ? "failed" : "done"
+}
+
+function buildLanes(state, events, calls, live) {
   const stop = openStop(events)
   const labels = graphLabels(state.graph)
   const lanes = Object.entries(state.stages && typeof state.stages === "object" ? state.stages : {}).map(([id, st]) => {
-    let status = STAGE_STATUS[st?.status] ?? "idle"
+    const status = STAGE_STATUS[st?.status] ?? "idle"
     const lane = { id, label: labels.get(id) ?? id, kind: "stage", status, calls: 0, errors: 0, tokens: zeroTokens(), cost: 0 }
     if (stop && stop.stage === id && status !== "done" && status !== "failed") {
       lane.status = stop.rule === "human" ? "waiting" : "stopped"
-      if (typeof stop.detail === "string") lane.reason = stop.detail
     }
     return lane
   })
+  // Stages seen only in events (real runs have some) get a lane of their own, in first-seen order.
+  const known = new Set(lanes.map((l) => l.id))
+  for (const e of events) {
+    const id = str(e.stage)
+    if (!id || known.has(id)) continue
+    known.add(id)
+    lanes.push({ id, label: labels.get(id) ?? id, kind: "stage", status: eventStageStatus(id, events, stop, live), calls: 0, errors: 0, tokens: zeroTokens(), cost: 0 })
+  }
+  for (const lane of lanes) {
+    if (stop && stop.stage === lane.id && (lane.status === "waiting" || lane.status === "stopped") && typeof stop.detail === "string") lane.reason = stop.detail
+  }
   const byId = new Map(lanes.map((l) => [l.id, l]))
   for (const e of events) {
     const lane = byId.get(e.stage)
@@ -105,12 +128,12 @@ export function fromAdapter(adapter) {
     const events = Array.isArray(run.events) ? run.events : []
     const state = run.state && typeof run.state === "object" ? run.state : {}
     const calls = buildCalls(id, events)
-    const lanes = buildLanes(state, events, calls)
+    const lanes = buildLanes(state, events, calls, Boolean(run.live))
     const waiting = isWaiting(events)
     const tokens = zeroTokens()
     let cost = 0
     for (const l of lanes) { add(tokens, l.tokens); cost += l.cost }
-    // Session events for stages outside state.stages still count toward the item.
+    // Session events with no stage at all still count toward the item.
     const known = new Set(lanes.map((l) => l.id))
     for (const e of events) {
       if (e.type === "session" && !known.has(e.stage)) { add(tokens, sessionTokens(e.tokens)); cost += num(e.cost) }

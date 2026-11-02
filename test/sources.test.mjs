@@ -19,7 +19,9 @@ test("fromAdapter: one item per run, lanes mapped to the v2 vocabulary", async (
   assert.deepEqual(items.map((i) => i.id), ["20261101-1000-bare", "20261101-0930-stopped", "20261101-0900-done"])
   assert.ok(items.every((i) => i.source === "native" && i.kind === "run"))
   const stopped = await src.getItem("20261101-0930-stopped")
-  assert.deepEqual(stopped.lanes.map((l) => [l.id, l.status]), [["setup", "done"], ["build", "done"], ["qa", "waiting"]])
+  assert.deepEqual(stopped.lanes.map((l) => [l.id, l.status]), [["setup", "done"], ["build", "done"], ["qa", "waiting"], ["spec", "done"], ["backend", "done"]])
+  const backend = stopped.lanes[4]
+  assert.deepEqual([backend.calls, backend.cost, backend.tokens.in, backend.tokens.out], [1, 0.11, 400, 150])
   assert.equal(stopped.lanes[2].reason, "needs a human decision on the farewell copy")
   assert.equal(stopped.summary.status, "waiting")
   assert.equal(stopped.summary.waiting, true)
@@ -119,7 +121,7 @@ test("server: v2 routes over two sources, v1 routes still answer", async () => {
     assert.equal(ov.needsYou[0].lane, "qa")
     const item = await j("/api/item/other/20261101-0930-stopped")
     assert.equal(item.summary.source, "other")
-    assert.equal(item.lanes.length, 3)
+    assert.equal(item.lanes.length, 5)
     assert.equal((await j("/api/item/native/20261101-0900-done/calls?kind=tool")).length, 2)
     assert.equal((await j("/api/item/native/20261101-0900-done/session/backend-1.md")).text.includes("backend-1"), true)
     assert.deepEqual(await j("/api/item/native/abc/x/ping"), { id: "abc" })
@@ -162,4 +164,32 @@ test("loadSources: --runs, --speckit and --adapter become sources together", asy
   const both = await loadSources(["--adapter", "ext.mjs", "--speckit", spec], dir)
   assert.deepEqual(both.map((a) => a.name).length, 2)
   assert.equal(both[0].name, "ext")
+})
+
+test("event-only stage holding the open stop is the waiting lane; broken source reported", async () => {
+  const adapter = {
+    name: "ronin",
+    listRuns: async () => [{ id: "r1" }],
+    getRun: async () => ({
+      live: false,
+      state: { idea: "x", stages: { build: { status: "done" } } },
+      events: [
+        { ts: "2026-11-01T09:00:00Z", type: "stage.start", stage: "memory" },
+        { ts: "2026-11-01T09:01:00Z", type: "stage.end", stage: "memory", ok: false },
+        { ts: "2026-11-01T09:02:00Z", type: "stage.start", stage: "learn" },
+        { ts: "2026-11-01T09:03:00Z", type: "stop", stage: "learn", rule: "human", detail: "approve the lesson" },
+      ],
+    }),
+    getSession: async () => null,
+  }
+  const item = await fromAdapter(adapter).getItem("r1")
+  assert.deepEqual(item.lanes.map((l) => [l.id, l.status]), [["build", "done"], ["memory", "failed"], ["learn", "waiting"]])
+  const broken = { name: "bad", harness: "bad", listItems: async () => { throw new Error("boom") }, getItem: async () => null, getCalls: async () => [], getSession: async () => null }
+  const reg = createRegistry([fromAdapter(adapter), broken])
+  assert.deepEqual((await reg.overview()).needsYou, [{ source: "ronin", id: "r1", title: "x", lane: "learn", detail: "approve the lesson" }])
+  await withServer([adapter, broken], async (base) => {
+    const list = await (await fetch(base + "/api/sources")).json()
+    assert.equal(list[0].error, undefined)
+    assert.equal(list[1].error, "boom")
+  })
 })

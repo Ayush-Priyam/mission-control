@@ -9,12 +9,16 @@ export function createRegistry(sources) {
   }
   const all = () => [...byName.values()]
 
+  const errors = new Map() // source name -> last listItems failure
   async function list() {
     const lists = await Promise.all(
       all().map(async (s) => {
         try {
-          return (await s.listItems()).map((i) => ({ ...i, source: s.name }))
-        } catch {
+          const items = (await s.listItems()).map((i) => ({ ...i, source: s.name }))
+          errors.delete(s.name)
+          return items
+        } catch (e) {
+          errors.set(s.name, String(e?.message ?? e))
           return [] // one broken source must not hide the others
         }
       }),
@@ -39,8 +43,8 @@ export function createRegistry(sources) {
     }
     const needsYou = []
     for (const i of items.filter((x) => x.status === "waiting")) {
-      const full = await get(i.source, i.id)
-      const lane = full?.lanes.find((l) => l.status === "waiting")
+      let lane
+      try { lane = (await get(i.source, i.id))?.lanes.find((l) => l.status === "waiting") } catch { /* keep empty lane/detail */ }
       needsYou.push({ source: i.source, id: i.id, title: i.title, lane: lane?.id ?? "", detail: lane?.reason ?? "" })
     }
     return { counts, needsYou }
@@ -51,6 +55,7 @@ export function createRegistry(sources) {
     get,
     overview,
     sources: all,
+    error: (name) => errors.get(name) ?? null,
     source: (name) => byName.get(name) ?? null,
     async calls(source, id, filter) {
       const s = byName.get(source)
