@@ -100,6 +100,18 @@ function Header({ d, onRenamed }: { d: ItemDetail; onRenamed: () => void }) {
       {s.live && s.status !== "idle" && (
         <span data-live-tag className="mc-live rounded-full border border-border px-2 py-0.5 font-mono text-xs text-faint">live</span>
       )}
+      {s.parkedInto && (
+        <p className="basis-full text-xs text-muted-foreground">
+          The chat continues under a new session id; this is its earlier part. Lists show it once, under the new id.{" "}
+          <a className="underline hover:text-foreground" href={toHash({ view: "item", source: s.source, id: s.parkedInto, tab: "chat" })}>Open the latest part</a>
+        </p>
+      )}
+      {s.continuedFrom && (
+        <p className="basis-full text-xs text-muted-foreground">
+          Same chat, new session id: Claude Code switched ids partway through. The earlier messages are under the old id.{" "}
+          <a className="underline hover:text-foreground" href={toHash({ view: "item", source: s.source, id: s.continuedFrom, tab: "chat" })}>Open the earlier part</a>
+        </p>
+      )}
       {s.resume && <CopyResume full command={s.resume} open={s.open} className="basis-full" />}
     </header>
   )

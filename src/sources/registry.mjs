@@ -5,7 +5,8 @@ export function createRegistry(sources, { titles = null, marks = null } = {}) {
   // A title the owner set on the page wins; the source's own stays as originalTitle. Pinned and archived
   // come from marks; an archived session that is open again counts as not archived while it is open.
   const withOwnerEdits = (source, id, x) => {
-    const t = titles?.get(source, id)
+    // A chat that changed session id keeps the rename given under its earlier id.
+    const t = titles?.get(source, id) ?? (x.continuedFrom ? titles?.get(source, x.continuedFrom) : null)
     const m = marks?.get(source, id)
     return {
       ...x,

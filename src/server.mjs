@@ -147,8 +147,8 @@ async function apiV2(ctx, req, res, url, parts) {
   const isHidden = (p) => isNoise(p, hidden())
   const v22 = await apiV22(ctx, { get, parts: parts.map(decode), isKey, q })
   if (v22) return json(res, v22.body, v22.status ?? 200)
-  // Archived items stay out of counts, the tree and lists unless asked for (?archived=1).
-  const unarchived = () => ctx.listed({ archived: q.get("archived") === "1" })
+  // What lists, counts and the tree show (ctx.listed): archived items only when asked for (?archived=1).
+  const listed = () => ctx.listed({ archived: q.get("archived") === "1" })
   if (get && parts[0] === "sources" && parts.length === 1) {
     await registry.list() // refresh per-source errors
     return json(res, registry.sources().map((s) => ({
@@ -157,7 +157,7 @@ async function apiV2(ctx, req, res, url, parts) {
     })))
   }
   if (get && parts[0] === "overview" && parts.length === 1) {
-    const items = await place(await unarchived(), git, hidden())
+    const items = await place(await listed(), git, hidden())
     const shown = all ? items : items.filter((i) => !i.hidden)
     return json(res, { ...(await registry.overview(shown)), hidden: items.length - shown.length })
   }
@@ -165,7 +165,7 @@ async function apiV2(ctx, req, res, url, parts) {
     const limit = q.get("limit")
     if (limit !== null && !/^\d{1,6}$/.test(limit)) return json(res, { error: "bad limit" }, 400)
     const source = q.get("source"), id = q.get("id")
-    let items = await unarchived()
+    let items = await listed()
     if (source !== null) items = items.filter((i) => i.source === source)
     if (id !== null) items = items.filter((i) => i.id === id)
     return json(res, await placeFirst(items, git, hidden(), (i) => all || !i.hidden, limit === null ? Infinity : Number(limit)))
@@ -173,14 +173,14 @@ async function apiV2(ctx, req, res, url, parts) {
   if (get && parts[0] === "projects" && parts.length === 1) {
     const tz = tzOf()
     if (!isTz(tz)) return json(res, { error: "bad tz" }, 400)
-    const tree = await buildTree(await unarchived(), { git })
+    const tree = await buildTree(await listed(), { git })
     return json(res, shapeTree(tree, { tz, now: now(), slim: q.get("slim") === "1", isHidden }))
   }
   if (get && parts[0] === "project" && parts.length === 2) {
     const key = decode(parts[1])
     const tz = tzOf()
     if (!isKey(key) || !isTz(tz)) return json(res, { error: "not allowed" }, 400)
-    const p = (await buildTree(await unarchived(), { git, only: key })).find((x) => x.key === key)
+    const p = (await buildTree(await listed(), { git, only: key })).find((x) => x.key === key)
     return p ? json(res, shapeTree([p], { tz, now: now(), isHidden })[0]) : json(res, { error: "no such project" }, 404)
   }
   if (get && parts[0] === "usage" && parts.length === 1) {
@@ -321,8 +321,9 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
   const marks = createMarks(marksPath)
   const registry = createRegistry(sources, { titles, marks })
   const adapter = entries.find((e) => typeof e.listRuns === "function") ?? null
-  // What every list, count and the phone sees: archived items stay out unless asked for (`archived: true`).
-  const listed = async ({ archived = false } = {}) => (await registry.list()).filter((i) => archived || !i.archived)
+  // What every list, count and the phone sees: archived items stay out unless asked for (`archived: true`), and
+  // the earlier part of a chat that changed session id (parkedInto) always does: it is listed once, under its newest id.
+  const listed = async ({ archived = false } = {}) => (await registry.list()).filter((i) => !i.parkedInto && (archived || !i.archived))
   // `config`: path of config.json ({ "hide": [...] }); null reads nothing. The CLI passes ~/.mission-control/config.json.
   // `claudeHome` / `codexHome`: where the config readers look (names only); null reads nothing. The CLI passes the real ones.
   // `prs`: a createPrReader() for the per-PR usage view (null: none, so tests never run gh); budgets come from `config`.

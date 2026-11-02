@@ -210,6 +210,8 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
     let names
     try { names = readdirSync(dir) } catch { return null }
     const out = new Map()
+    const parked = [] // [sessionId, jobId]: the chat behind this session id continues under the job's session id
+    const jobs = new Map() // background jobId -> its sessionId
     for (const n of names) {
       if (!/^\d+\.json$/.test(n)) continue
       try {
@@ -218,7 +220,14 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
         try { process.kill(j.pid, 0) } catch (e) { if (e.code !== "EPERM") continue } // signal 0 only checks the pid exists
         const since = Number.isFinite(j.statusUpdatedAt) ? new Date(j.statusUpdatedAt).toISOString() : null
         out.set(j.sessionId, { busy: j.status === "busy", since })
+        if (typeof j.jobId === "string") jobs.set(j.jobId, j.sessionId)
+        if (typeof j.parkedJobId === "string") parked.push([j.sessionId, j.parkedJobId])
       } catch { /* half-written or unreadable: skip */ }
+    }
+    for (const [id, job] of parked) {
+      const into = jobs.get(job) ?? job
+      out.get(id).parkedInto = into
+      if (out.has(into)) out.get(into).continuedFrom = id
     }
     return out
   }
@@ -241,10 +250,14 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
     const p = procs.get(x.id)
     const { ready, readySince, ...rest } = x
     if (!p) return { ...rest, open: false, live: false, status: "idle", waiting: false } // closed: never ready
-    if (x.status === "waiting") return { ...rest, open: true }
-    if (p.busy) return { ...rest, open: true, live: true, status: x.status === "looping" ? "looping" : "working" }
+    const base = p.continuedFrom ? { ...rest, continuedFrom: p.continuedFrom } : rest // the earlier session id of the same chat
+    // Parked (parkedJobId): the chat went on under the job's session id, and this id's last status ("busy") stays
+    // frozen. The terminal is still attached; only the session id changed. Ready or not shows under the new id.
+    if (p.parkedInto) return { ...base, open: true, live: false, status: "idle", waiting: false, parkedInto: p.parkedInto }
+    if (x.status === "waiting") return { ...base, open: true }
+    if (p.busy) return { ...base, open: true, live: true, status: x.status === "looping" ? "looping" : "working" }
     // Open and not busy: ready for your next prompt now, without waiting for the hooks' idle reminder.
-    return { ...rest, open: true, live: false, status: "idle", ready: true, ...(p.since ?? readySince ? { readySince: p.since ?? readySince } : {}) }
+    return { ...base, open: true, live: false, status: "idle", ready: true, ...(p.since ?? readySince ? { readySince: p.since ?? readySince } : {}) }
   }
 
   /**

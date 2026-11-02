@@ -208,6 +208,10 @@ export type ItemSummary = {
   loop?: LoopInfo
   /** A process is still running this session (false: closed). Absent when the source cannot tell. */
   open?: boolean
+  /** The chat continues under this newer session id; this one is its earlier part (not listed). */
+  parkedInto?: string
+  /** The earlier session id of the same chat. */
+  continuedFrom?: string
   /** Shell command that resumes the session in its folder (Claude Code only). */
   resume?: string
   /** Pinned by the owner: listed first. */
