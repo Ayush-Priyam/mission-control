@@ -22,6 +22,7 @@ import DiffView from "@/views/Diff"
 import Docs from "@/views/Docs"
 import Qa from "@/views/Qa"
 import Trace from "@/views/Trace"
+import Turns from "@/views/Turns"
 import { useCalls, useCapabilities, useExtra, useItem, useSources, type ItemDetail } from "@/lib/api"
 import { useItemConfig, useItemConflicts } from "@/lib/api-v22"
 import { SameFileWarnings } from "@/components/SameFileWarnings"
@@ -40,12 +41,12 @@ const IDLE_POLL = 10000
 const MAP_START: OverlayStart = { minK: 0.8, focus: ['[data-node]:not([data-node="you"])[data-status="waiting"]', '[data-node][data-status="working"]'] }
 
 /** The tabs an item shows: the v2 four plus a v1 run's extras when its adapter lists them. */
-export function itemTabs(o: { v1Run: boolean; extras: string[]; events: Record<string, any>[] }): string[] {
+export function itemTabs(o: { v1Run: boolean; extras: string[]; events: Record<string, any>[]; turns?: boolean }): string[] {
   const has = o.v1Run ? extraTabs(o.extras, o.events) : { board: false, qa: qaRows(o.events) !== null, diff: false, docs: false }
-  return ["lanes", "map", "calls", "timeline", "chat", ...(has.board ? ["board"] : []), ...(has.qa ? ["qa"] : []), ...(has.diff ? ["diff"] : []), ...(has.docs ? ["docs"] : [])]
+  return ["lanes", "map", "calls", "timeline", ...(o.turns ? ["turns"] : []), "chat", ...(has.board ? ["board"] : []), ...(has.qa ? ["qa"] : []), ...(has.diff ? ["diff"] : []), ...(has.docs ? ["docs"] : [])]
 }
 
-const LABEL: Record<string, string> = { lanes: "Lanes", map: "Map", calls: "Calls", timeline: "Timeline", chat: "Chat", board: "Board", qa: "QA", diff: "Diff", docs: "Docs" }
+const LABEL: Record<string, string> = { turns: "Turns", lanes: "Lanes", map: "Map", calls: "Calls", timeline: "Timeline", chat: "Chat", board: "Board", qa: "QA", diff: "Diff", docs: "Docs" }
 
 const Count = ({ n }: { n: number | null | undefined }) => (n ? <span className="ml-1 font-mono text-xs text-muted-foreground">{n}</span> : null)
 const TaskCount = ({ id, refresh }: { id: string; refresh: number }) => <Count n={normaliseTasks(useExtra<unknown>("tasks", id, undefined, refresh).data).length} />
@@ -121,7 +122,7 @@ export default function Item({ source, id, tab, call }: { source: string; id: st
       </Alert>
     )
 
-  const tabs = itemTabs({ v1Run, extras: src?.extras ?? caps.data?.extras ?? [], events })
+  const tabs = itemTabs({ v1Run, extras: src?.extras ?? caps.data?.extras ?? [], events, turns: isSession && (d.summary.harness === "claude-code" || d.summary.harness === "codex") })
   const current = tabs.includes(tab) ? tab : "lanes"
   const go = (t: string) => (location.hash = toHash({ view: "item", source, id, tab: t }))
   const lanesFor = (ids: string[] | null) => (ids ? d.lanes.filter((l) => ids.includes(l.id)) : [])
@@ -197,6 +198,11 @@ export default function Item({ source, id, tab, call }: { source: string; id: st
                 <LaneTimeline lanes={d.lanes} calls={calls.data ?? []} live={d.summary.live} now={now} onPick={(c) => (location.hash = toHash({ view: "item", source, id, tab: "calls", call: c.id }))} onOpenLane={(lane) => setSheet([lane])} />
               ))}
           </TabsContent>
+          {tabs.includes("turns") && (
+            <TabsContent value="turns" className="pt-4">
+              {current === "turns" && <Turns source={source} id={id} lanes={d.lanes} live={d.summary.live} />}
+            </TabsContent>
+          )}
           <TabsContent value="chat" className="pt-4">
             {current === "chat" &&
               (v1Run && v1 ? (

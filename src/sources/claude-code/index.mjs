@@ -7,6 +7,7 @@ import { parseTranscript, peek, transcriptAcc, turnsAcc } from "./parse.mjs"
 import { createTail, parseFileWith } from "./tail.mjs"
 import { costOf } from "./prices.mjs"
 import { createUsageScanner } from "./usage.mjs"
+import { turnCosts } from "../../turn-costs.mjs"
 
 const LIVE_MS = 2 * 60 * 1000
 const TAIL_BYTES = 64 * 1024
@@ -362,6 +363,15 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
       const end = Math.max(0, Math.min(all.length, Number.isInteger(before) ? before : all.length))
       const start = Math.max(0, end - Math.max(1, limit))
       return { lane, total: all.length, start, turns: all.slice(start, end) }
+    },
+
+    /** Per-turn tokens, cost and compaction markers of one lane ("main" or "agent-<id>"); null when unknown. */
+    async getTurnCosts(id, lane = "main") {
+      const s = locate(id)
+      const d = s && parsed(s)
+      if (!d) return null
+      const p = lane === "main" ? d.mp : d.subs.find((a) => `agent-${a.aid}` === lane)?.p
+      return p ? { lane, ...turnCosts(p.messages, costOf) } : null
     },
 
     /** Raw transcript text: "main.jsonl" (or "<id>.jsonl") or "agent-<id>.jsonl". Anything else is null. */

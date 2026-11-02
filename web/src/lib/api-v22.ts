@@ -17,3 +17,8 @@ export const useItemConflicts = (source: string, id: string | null, pollMs = 30_
   useFetch<{ warnings: SameFile[] }>(id ? `/api/item/${enc(source)}/${enc(id)}/conflicts` : null, pollMs)
 export const useProjectConflicts = (key: string | null, pollMs = 30_000) =>
   useFetch<{ warnings: SameFile[] }>(key ? `/api/project/${enc(key)}/conflicts` : null, pollMs)
+
+export type TurnCost = { i: number; ts: string | null; model: string | null; in: number; out: number; cacheRead: number; cacheWrite: number; context: number; cost: number; compacted: boolean; why: string | null }
+export type TurnCosts = { lane: string; turns: TurnCost[]; total: { cost: number; turns: number; compactions: number } }
+export const useTurnCosts = (source: string, id: string | null, lane: string, pollMs = 0) =>
+  useFetch<TurnCosts>(id ? `/api/item/${enc(source)}/${enc(id)}/turn-costs?lane=${enc(lane)}` : null, pollMs)

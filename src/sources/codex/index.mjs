@@ -7,6 +7,7 @@ import { costOf } from "../claude-code/prices.mjs"
 import { createTail, parseFileWith } from "../claude-code/tail.mjs"
 import { createUsageScanner } from "../claude-code/usage.mjs"
 import { peek, rolloutAcc, turnsAcc } from "./parse.mjs"
+import { turnCosts } from "../../turn-costs.mjs"
 
 const LIVE_MS = 2 * 60 * 1000
 const TAIL_BYTES = 64 * 1024
@@ -317,6 +318,15 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, onPa
       const end = Math.max(0, Math.min(all.length, Number.isInteger(before) ? before : all.length))
       const start = Math.max(0, end - Math.max(1, limit))
       return { lane, total: all.length, start, turns: all.slice(start, end) }
+    },
+
+    /** Per-turn tokens, cost and compaction markers of one lane ("main" or "agent-<thread id>"); null when unknown. */
+    async getTurnCosts(id, lane = "main") {
+      const l = locate(id)
+      const d = l && parsed(l.r, l.kids)
+      if (!d) return null
+      const p = lane === "main" ? d.mp : d.subs.find((a) => `agent-${a.k.id}` === lane)?.p
+      return p ? { lane, ...turnCosts(p.messages, costOf) } : null
     },
 
     /** Raw rollout text: "main.jsonl" (or "<id>.jsonl") or "agent-<thread id>.jsonl". Anything else is null. */

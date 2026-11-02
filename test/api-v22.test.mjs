@@ -77,3 +77,13 @@ test("conflicts routes: two sessions of one project editing the same file show o
     assert.equal((await fetch(`${base}/api/project/nope-1/conflicts`)).status, 404)
   })
 })
+
+test("turn-costs route: a session's turns; bad lane 400; a source without turns 404", async () => {
+  await withServer([create({ root: claudeRoot })], {}, async (base) => {
+    const r = await (await fetch(`${base}/api/item/claude-code/s1/turn-costs`)).json()
+    assert.equal(r.lane, "main")
+    assert.ok(r.turns.length > 0 && r.turns.every((t) => typeof t.cost === "number" && typeof t.context === "number"))
+    assert.equal((await fetch(`${base}/api/item/claude-code/s1/turn-costs?lane=..%2Fx`)).status, 400)
+    assert.equal((await fetch(`${base}/api/item/claude-code/s1/turn-costs?lane=agent-zz`)).status, 404)
+  })
+})

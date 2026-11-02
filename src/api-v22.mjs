@@ -63,6 +63,15 @@ export async function apiV22(ctx, { get, parts, isKey, q }) {
     }
     return { body: { sessions: recent.length, unusedServers: unusedServers(joins) } }
   }
+  // GET /api/item/:source/:id/turn-costs?lane=
+  if (get && parts[0] === "item" && parts[3] === "turn-costs" && parts.length === 4) {
+    const [source, id] = [parts[1], parts[2]]
+    const lane = q?.get("lane") ?? "main"
+    if (!isKey(source) || !isKey(id) || !/^[\w-]{1,128}$/.test(lane)) return bad
+    const src = registry.source(source)
+    const r = src?.getTurnCosts ? await src.getTurnCosts(id, lane) : null
+    return r ? { body: r } : { body: { error: "not found" }, status: 404 }
+  }
   // GET /api/project/:key/conflicts
   if (get && parts[0] === "project" && parts[2] === "conflicts" && parts.length === 3) {
     if (!isKey(parts[1])) return bad
