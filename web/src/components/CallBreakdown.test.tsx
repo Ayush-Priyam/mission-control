@@ -50,8 +50,10 @@ describe("skills and servers", () => {
   it("BY TOOL keeps a long server's tool name outside the truncating part", () => {
     render(<CallBreakdown calls={[c({ kind: "mcp", server: "plugin_some-very-long_mcp-server-name", name: "work_state_write" })]} />)
     const tool = screen.getByText("· work_state_write")
-    expect(tool.closest(".truncate")).toBeNull()
+    expect(tool.parentElement?.closest(".truncate")).toBeNull() // the server part truncates first
     expect(tool.className).toContain("shrink-0")
+    expect(tool.className).toContain("max-w-[70%]") // a very long tool name is capped, never overflows into the bar
+    expect(tool.className).toContain("truncate")
     expect(screen.getAllByText("plugin_some-very-long_mcp-server-name")[0].className).toContain("truncate")
   })
   it("renders empty states when nothing was called", () => {

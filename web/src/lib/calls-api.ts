@@ -66,6 +66,7 @@ function useJson<T>(url: string | null, pollMs = 0, same?: (a: T, b: T) => boole
         last = data
         dispatch({ type: "ok", url, data })
       } catch (e) {
+        last = undefined // the next answer must be dispatched, even if unchanged, so the error clears
         if (!cancelled) dispatch({ type: "fail", url, error: String((e as Error)?.message ?? e) })
       } finally {
         busy = false

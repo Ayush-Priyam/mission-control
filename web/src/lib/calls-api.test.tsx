@@ -53,3 +53,21 @@ describe("useItemCalls polling", () => {
     expect(fetch.mock.calls.length).toBe(n + 1)
   })
 })
+
+describe("useItemCalls errors", () => {
+  it("ok → failed poll → the same calls again clears the error", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const same = [call("a", true)]
+    let fail = false
+    vi.stubGlobal("fetch", vi.fn(async () => (fail ? { ok: false, status: 500, json: async () => ({}) } : { ok: true, status: 200, json: async () => [...same] })))
+    const { result } = renderHook(() => useItemCalls("s", "i", 1000))
+    await waitFor(() => expect(result.current.data).toHaveLength(1))
+    fail = true
+    await act(() => vi.advanceTimersByTimeAsync(1000))
+    await waitFor(() => expect(result.current.error).toContain("500"))
+    fail = false
+    await act(() => vi.advanceTimersByTimeAsync(1000))
+    await waitFor(() => expect(result.current.error).toBeNull())
+    expect(result.current.data).toHaveLength(1)
+  })
+})

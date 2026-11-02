@@ -62,7 +62,7 @@ export function CallBreakdown({ calls }: { calls: Call[] }) {
               {t.server ? (
                 <span className="flex w-48 min-w-0 items-baseline gap-1" title={t.label}>
                   <span className="min-w-0 truncate">{t.server}</span>
-                  <span className="shrink-0">· {t.name}</span>
+                  <span className="max-w-[70%] shrink-0 truncate">· {t.name}</span>
                 </span>
               ) : (
                 <span className="w-48 truncate" title={t.label}>{t.label}</span>
