@@ -65,6 +65,8 @@ export function createRegistry(sources) {
       const s = byName.get(source)
       return s ? s.getSession(id, name) : null
     },
+    /** True when every source that scans in the background has finished its first pass. */
+    usageComplete: () => all().every((s) => !s.usageStatus || s.usageStatus().complete),
     async usage(range = {}) {
       const rows = await Promise.all(all().map((s) => (s.usage ? s.usage(range).catch(() => []) : [])))
       return rows.flat()

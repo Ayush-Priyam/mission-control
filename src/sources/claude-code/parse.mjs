@@ -95,7 +95,8 @@ export function parseTranscript(text, laneId = "main") {
     if (e.type === "assistant" && m) {
       const model = str(m.model)
       firstModel ??= model
-      msgs.set(str(m.id) ?? `anon${anon++}`, { model, usage: m.usage ?? {} })
+      const key = str(m.id) ?? `anon${anon++}`
+      msgs.set(key, { model, usage: m.usage ?? {}, ts: msgs.get(key)?.ts ?? ts }) // last usage wins, first timestamp stays
       for (const b of Array.isArray(m.content) ? m.content : []) {
         if (b?.type !== "tool_use" || typeof b.name !== "string") continue
         const c = classify(b.name, b.input)
@@ -123,16 +124,18 @@ export function parseTranscript(text, laneId = "main") {
   }
   const tokens = zero()
   const models = {}
+  const messages = [] // one per assistant message id, for per-day usage
   let cost = 0
-  for (const { model, usage } of msgs.values()) {
+  for (const { model, usage, ts } of msgs.values()) {
     const t = { in: num(usage.input_tokens), out: num(usage.output_tokens), cacheRead: num(usage.cache_read_input_tokens), cacheWrite: num(usage.cache_creation_input_tokens) }
     tokens.in += t.in; tokens.out += t.out; tokens.cacheRead += t.cacheRead; tokens.cacheWrite += t.cacheWrite
     cost += costOf(model, t)
+    messages.push({ model, ts: ts ?? null, tokens: t })
     if (model) models[model] = (models[model] ?? 0) + 1
   }
   meta.title = clip(meta.summary ?? firstUser ?? "", 160) || null
   const open = [...calls].reverse().find((c) => c.ok === undefined)
   const last = open ?? calls.at(-1)
   const nowDoing = last ? { name: last.name, kind: last.kind, summary: last.summary, ts: last.ts } : undefined
-  return { calls, tokens, cost, errors, models, firstModel, firstTs, lastTs, meta, nowDoing }
+  return { calls, tokens, cost, errors, models, messages, firstModel, firstTs, lastTs, meta, nowDoing }
 }

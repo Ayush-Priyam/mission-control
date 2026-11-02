@@ -3,6 +3,8 @@ import { join, sep } from "node:path"
 import { capText, isSessionName } from "../../names.mjs"
 import { createCache } from "./cache.mjs"
 import { parseTranscript, peek } from "./parse.mjs"
+import { costOf } from "./prices.mjs"
+import { createUsageScanner } from "./usage.mjs"
 
 const LIVE_MS = 2 * 60 * 1000
 const HEAD_BYTES = 64 * 1024
@@ -15,9 +17,10 @@ const iso = (ms) => new Date(ms).toISOString()
 /**
  * Claude Code sessions as a v2 source. `root` is the projects dir (default ~/.claude/projects),
  * `now` an injectable clock. `hooksDir` is accepted for the level-1 hook logs (waiting status) and not
- * used yet. Read-only; every file read is confined to the real path of `root`.
+ * used yet. Read-only; every file read is confined to the real path of `root`. `cachePath` is where the
+ * usage scan persists its per-file results (omitted: memory only); `parse` is injectable for tests.
  */
-export function create({ root, now = () => Date.now(), hooksDir } = {}) {
+export function create({ root, now = () => Date.now(), hooksDir, cachePath, parse = parseTranscript } = {}) {
   void hooksDir
   const cache = createCache()
   const peeked = createCache(8192) // path|size|mtime -> peek of the head, so warm lists skip file reads
@@ -120,6 +123,22 @@ export function create({ root, now = () => Date.now(), hooksDir } = {}) {
     const key = cache.key(c.real, c.st)
     return cache.get(key) ?? cache.set(key, { ...parseTranscript(readFileSync(c.real, "utf8")), mtimeMs: c.st.mtimeMs })
   }
+
+  /** Every transcript that counts toward usage: sessions and their subagents, with stat. */
+  function usageFiles() {
+    const out = []
+    for (const s of sessionFiles()) {
+      const c = confined(s.file)
+      if (!c) continue
+      out.push({ session: s.id, main: true, file: c.real, st: c.st })
+      for (const a of subagents(s)) {
+        const ac = confined(a.file)
+        if (ac) out.push({ session: s.id, main: false, file: ac.real, st: ac.st })
+      }
+    }
+    return out
+  }
+  const scanner = createUsageScanner({ files: usageFiles, parse, costOf, cachePath, now })
 
   const liveAt = (ms) => now() - ms <= LIVE_MS
 
@@ -241,6 +260,21 @@ export function create({ root, now = () => Date.now(), hooksDir } = {}) {
       }
       const c = file && confined(file)
       return c ? capText(readFileSync(c.real)) : null
+    },
+
+    /** Rows from the background scan; partial while `usageStatus().complete` is false. */
+    async usage(range = {}) {
+      scanner.kick()
+      return scanner.rows(range)
+    },
+    usageStatus: () => scanner.status(),
+    /** Resolves when the running usage scan (if any) has finished. */
+    whenScanned: () => scanner.idle(),
+    /** Server start: fill the list cache and begin the usage scan without blocking the caller. */
+    async warm() {
+      await new Promise((r) => setImmediate(r))
+      try { await this.listItems() } catch { /* a bad file must not stop the scan */ }
+      scanner.kick()
     },
 
     describe: () => ({ source: root }),

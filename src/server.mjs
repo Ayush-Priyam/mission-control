@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url"
 import { isRunId, isSessionName } from "./names.mjs"
 import { crewStats } from "./crew.mjs"
 import { fromAdapter } from "./sources/from-adapter.mjs"
-import { buildTree } from "./projects.mjs"
+import { buildTree, projectsOf } from "./projects.mjs"
+import { aggregate, isBy } from "./usage.mjs"
 import { createRegistry } from "./sources/registry.mjs"
 
 const DEFAULT_DIST = join(dirname(fileURLToPath(import.meta.url)), "..", "dist")
@@ -101,8 +102,21 @@ async function apiV2(registry, git, req, res, url, parts) {
   if (get && parts[0] === "project" && parts.length === 2) {
     const key = decode(parts[1])
     if (!isKey(key)) return json(res, { error: "not allowed" }, 400)
-    const p = (await buildTree(await registry.list(), { git })).find((x) => x.key === key)
+    const p = (await buildTree(await registry.list(), { git, only: key })).find((x) => x.key === key)
     return p ? json(res, p) : json(res, { error: "no such project" }, 404)
+  }
+  if (get && parts[0] === "usage" && parts.length === 1) {
+    const q = url.searchParams
+    const from = q.get("from") ?? undefined, to = q.get("to") ?? undefined, by = q.get("by") ?? "model"
+    const day = /^\d{4}-\d{2}-\d{2}$/
+    if ((from !== undefined && !day.test(from)) || (to !== undefined && !day.test(to)) || !isBy(by)) return json(res, { error: "bad from, to or by" }, 400)
+    const rows = await registry.usage({ from, to })
+    const where = await projectsOf(rows.map((r) => r.project), { git })
+    const named = rows.map((r) => {
+      const p = where.get(r.project)
+      return p ? { ...r, project: p.key, projectName: p.name } : { ...r, project: "no-project", projectName: "(no project)" }
+    })
+    return json(res, { ...aggregate(named, { by }), by, from: from ?? null, to: to ?? null, complete: registry.usageComplete() })
   }
   if (parts[0] !== "item" || parts.length < 3) return false
   const source = decode(parts[1]), id = decode(parts[2])
@@ -253,6 +267,8 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git }
       v6.on("error", (e) => console.error(`mission control: ::1 listener failed: ${e.code ?? e.message}`))
       v6.listen(actual, "::1")
       console.log(`mission control on http://localhost:${actual}`)
+      // Warm caches (Claude Code list, usage scan) without holding the first request.
+      for (const s of registry.sources()) Promise.resolve().then(() => s.warm?.()).catch(() => {})
       resolveStart({
         port: actual,
         close: () =>

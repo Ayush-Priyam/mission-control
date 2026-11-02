@@ -7,7 +7,10 @@ const GIT_TIMEOUT_MS = 4000
 const STATUS_TTL_MS = 30_000
 const CONCURRENCY = 8
 
-function run(args, cwd) {
+// No fsmonitor daemon or hook of the inspected repo may run: its config is untrusted input.
+const GIT_FLAGS = ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null"]
+
+function exec(args, cwd) {
   return new Promise((done) => {
     execFile("git", args, {
       cwd, timeout: GIT_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024,
@@ -17,38 +20,52 @@ function run(args, cwd) {
 }
 
 /**
- * Read-only git with per-path caches: locations never change for a cwd (cached for good, misses too),
- * worktree lists and status/ahead/behind live for `ttl` ms. Every method resolves, never rejects.
+ * Read-only git with per-path caches. A located repo never changes for a cwd (kept for good); a miss
+ * (not a repo yet, or git failed) is retried after `ttl` ms. Worktree lists and status/ahead/behind are
+ * stale-while-revalidate: once loaded they are returned at once, and past `ttl` a background refresh
+ * replaces them for the next call. Every method resolves, never rejects. `exec(args, cwd)` is injectable.
  * Interface (a test can stub it): resolve(cwd) -> { commonDir, toplevel } | null,
- * worktrees(commonDir) -> [{ path, branch }], status(path) -> { dirty, ahead?, behind? } | null.
+ * worktrees(commonDir) -> [{ path, branch }] | null, status(path) -> { dirty, ahead?, behind? } | null.
  */
-export function createGit({ ttl = STATUS_TTL_MS, now = () => Date.now() } = {}) {
-  const located = new Map()
-  const timed = new Map()
+export function createGit({ ttl = STATUS_TTL_MS, now = () => Date.now(), exec: execImpl = exec } = {}) {
+  const run = (args, cwd) => execImpl([...GIT_FLAGS, ...args], cwd)
+  const located = new Map() // cwd -> { promise, at, miss }
+  const timed = new Map() // key -> { at, promise, settled, refreshing }
   const fresh = (key, load) => {
     const hit = timed.get(key)
-    if (hit && now() - hit.at < ttl) return hit.value
-    const value = load()
-    timed.set(key, { at: now(), value })
-    return value
+    if (!hit) {
+      const e = { at: now(), promise: null, settled: undefined, refreshing: false }
+      e.promise = load().then((v) => { e.settled = v; return v }, () => { e.settled = null; return null })
+      timed.set(key, e)
+      return e.promise
+    }
+    if (now() - hit.at < ttl) return hit.promise
+    if (!hit.refreshing) {
+      hit.refreshing = true
+      load().then((v) => { if (v !== null) { hit.settled = v; hit.promise = Promise.resolve(v) } }, () => {}).finally(() => { hit.at = now(); hit.refreshing = false })
+    }
+    return hit.settled !== undefined ? Promise.resolve(hit.settled) : hit.promise
   }
   return {
     resolve(cwd) {
-      if (!located.has(cwd)) {
-        located.set(cwd, (async () => {
-          if (!isAbsolute(cwd) || !existsSync(cwd)) return null
-          const out = await run(["rev-parse", "--git-common-dir", "--show-toplevel"], cwd)
-          const [common, top] = (out ?? "").split("\n")
-          if (!common || !top) return null
-          try { return { commonDir: realpathSync(resolve(cwd, common)), toplevel: realpathSync(top) } } catch { return null }
-        })())
-      }
-      return located.get(cwd)
+      const hit = located.get(cwd)
+      if (hit && !(hit.miss && now() - hit.at >= ttl)) return hit.promise
+      const e = { at: now(), miss: false, promise: null }
+      e.promise = (async () => {
+        if (!isAbsolute(cwd) || !existsSync(cwd)) return null
+        const out = await run(["rev-parse", "--git-common-dir", "--show-toplevel"], cwd)
+        const [common, top] = (out ?? "").split("\n")
+        if (!common || !top) return null
+        try { return { commonDir: realpathSync(resolve(cwd, common)), toplevel: realpathSync(top) } } catch { return null }
+      })().then((v) => { e.miss = v === null; return v })
+      located.set(cwd, e)
+      return e.promise
     },
     worktrees: (commonDir) => fresh(`wt|${commonDir}`, async () => {
       const out = await run(["worktree", "list", "--porcelain"], commonDir)
+      if (out === null) return null
       const list = []
-      for (const block of (out ?? "").split("\n\n")) {
+      for (const block of out.split("\n\n")) {
         const path = /^worktree (.+)$/m.exec(block)?.[1]
         if (!path) continue
         const branch = /^branch refs\/heads\/(.+)$/m.exec(block)?.[1] ?? null
@@ -75,6 +92,29 @@ export const realGit = createGit()
 const keyOf = (path) => `${basename(path).replace(/[^\w.-]/g, "_") || "root"}-${createHash("sha1").update(path).digest("hex").slice(0, 8)}`
 const NO_PROJECT = "no-project"
 
+/** Key, name and path of the project a cwd belongs to, given its git location (or null). */
+function projectInfo(cwd, loc) {
+  if (loc) {
+    const path = basename(loc.commonDir) === ".git" ? dirname(loc.commonDir) : loc.commonDir
+    return { key: keyOf(loc.commonDir), name: basename(path), path }
+  }
+  if (cwd) return { key: keyOf(cwd), name: basename(cwd) || cwd, path: cwd }
+  return { key: NO_PROJECT, name: "(no project)", path: "" }
+}
+
+/** cwd -> { key, name } for each distinct cwd, using the same keys as buildTree. "" and missing -> no-project. */
+export async function projectsOf(cwds, { git = realGit } = {}) {
+  const list = [...new Set(cwds.filter((c) => typeof c === "string" && c))]
+  const out = new Map()
+  await pool(list, async (cwd) => {
+    let loc = null
+    try { loc = await git.resolve(cwd) } catch { /* fall back to the cwd */ }
+    const { key, name } = projectInfo(cwd, loc)
+    out.set(cwd, { key, name })
+  })
+  return out
+}
+
 async function pool(list, fn) {
   let i = 0
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, list.length) }, async () => {
@@ -85,8 +125,9 @@ async function pool(list, fn) {
 /**
  * Group items by project (the git common dir of their cwd) and worktree. Items whose cwd is missing or
  * not a git repo fall back to a project at the cwd itself. Git failures never throw.
+ * `only` (a project key) keeps just that project: other items are dropped before any worktree or status call.
  */
-export async function buildTree(items, { git = realGit } = {}) {
+export async function buildTree(items, { git = realGit, only } = {}) {
   const cwds = [...new Set(items.map((i) => i.cwd).filter((c) => typeof c === "string" && c))]
   const where = new Map()
   await pool(cwds, async (cwd) => {
@@ -107,19 +148,15 @@ export async function buildTree(items, { git = realGit } = {}) {
 
   for (const item of items) {
     const loc = item.cwd ? where.get(item.cwd) : null
-    let p, w
+    const info = projectInfo(item.cwd, loc)
+    if (only !== undefined && info.key !== only) continue
+    const p = project(info.key, info.name, info.path)
+    let w
     if (loc) {
-      const path = basename(loc.commonDir) === ".git" ? dirname(loc.commonDir) : loc.commonDir
-      p = project(keyOf(loc.commonDir), basename(path), path)
       p.common = loc.commonDir
       w = worktree(p, loc.toplevel, null)
-    } else if (item.cwd) {
-      p = project(keyOf(item.cwd), basename(item.cwd) || item.cwd, item.cwd)
-      w = worktree(p, item.cwd, item.branch)
-    } else {
-      p = project(NO_PROJECT, "(no project)", "")
-      w = worktree(p, "", item.branch)
-    }
+    } else if (item.cwd) w = worktree(p, item.cwd, item.branch)
+    else w = worktree(p, "", item.branch)
     w.items.push(item)
     w.live ||= !!item.live
     w.waiting ||= !!item.waiting || item.status === "waiting"
@@ -129,7 +166,7 @@ export async function buildTree(items, { git = realGit } = {}) {
   const gitProjects = [...projects.values()].filter((p) => p.common)
   await pool(gitProjects, async (p) => {
     try {
-      for (const t of await git.worktrees(p.common)) worktree(p, t.path, t.branch)
+      for (const t of (await git.worktrees(p.common)) ?? []) worktree(p, t.path, t.branch)
       for (const w of p.worktrees.values()) if (w.branch == null) w.branch = w.items.find((i) => i.branch)?.branch ?? null
     } catch { /* keep the worktrees the items imply */ }
   })

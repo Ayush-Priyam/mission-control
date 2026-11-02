@@ -80,5 +80,5 @@ export async function loadClaude(argv, cwd = process.cwd(), home = homedir()) {
   if (a.noClaude) return null
   const root = a["claude-dir"] ? resolve(cwd, a["claude-dir"]) : join(home, ".claude", "projects")
   const { create } = await import("../sources/claude-code/index.mjs")
-  return create({ root, hooksDir: join(home, ".mission-control", "hooks") })
+  return create({ root, hooksDir: join(home, ".mission-control", "hooks"), cachePath: join(home, ".mission-control", "cache", "usage.json") })
 }

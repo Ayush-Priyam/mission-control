@@ -92,7 +92,9 @@ test("git lookups are cached per cwd (resolve for good, status within the ttl)",
   writeFileSync(join(r.main, "m.txt"), "m")
   assert.equal((await g.status(r.main)).dirty, s1.dirty) // cached
   t = 31_000
-  assert.equal((await g.status(r.main)).dirty, s1.dirty + 1) // expired
+  assert.equal((await g.status(r.main)).dirty, s1.dirty) // expired: stale value now, refresh in the background
+  await new Promise((done) => setTimeout(done, 400))
+  assert.equal((await g.status(r.main)).dirty, s1.dirty + 1)
 })
 
 test("2,000 synthetic items build under 500 ms with a stub git", async () => {
@@ -158,5 +160,150 @@ test("server: /api/projects from cached claude-code summaries, 2,000 sessions wa
     assert.equal((await one.json()).key, tree[0].key)
     assert.equal((await get("/api/project/nope-0")).status, 404)
     assert.equal((await get("/api/project/..%2Fx")).status, 400)
+  } finally { await srv.close() }
+})
+
+const recorder = (answer = () => "") => {
+  const calls = []
+  return { calls, exec: async (args, cwd) => { calls.push({ args, cwd }); return answer(args, cwd) } }
+}
+
+test("every git subcommand runs with fsmonitor and hooks disabled", async () => {
+  const r = repoWithWorktree()
+  const rec = recorder((args) => (args.includes("rev-parse") ? `${join(r.main, ".git")}\n${r.main}\n` : ""))
+  const g = createGit({ exec: rec.exec })
+  await g.resolve(r.main)
+  await g.worktrees(join(r.main, ".git"))
+  await g.status(r.main)
+  assert.ok(rec.calls.length >= 4) // rev-parse, worktree list, status, rev-list
+  for (const { args } of rec.calls) assert.deepEqual(args.slice(0, 4), ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null"], args.join(" "))
+  assert.deepEqual(new Set(rec.calls.map((c) => c.args[4])), new Set(["rev-parse", "worktree", "status", "rev-list"]))
+})
+
+test("a repo's own fsmonitor hook is never executed", async () => {
+  const r = repoWithWorktree()
+  const marker = join(r.base, "fsmonitor-ran")
+  const hook = join(r.base, "fsm.sh")
+  writeFileSync(hook, `#!/bin/sh\ntouch '${marker}'\n`, { mode: 0o755 })
+  git(r.main, "config", "core.fsmonitor", hook)
+  const g = createGit()
+  assert.ok(await g.status(r.main))
+  const { existsSync } = await import("node:fs")
+  assert.equal(existsSync(marker), false)
+})
+
+test("a resolve miss is retried after the ttl; a hit is kept for good", async () => {
+  const dir = tmp()
+  let t = 0
+  const g = createGit({ ttl: 30_000, now: () => t })
+  assert.equal(await g.resolve(dir), null)
+  git(dir, "init", "-q", "-b", "main")
+  t = 29_000
+  assert.equal(await g.resolve(dir), null) // still the cached miss
+  t = 31_000
+  const hit = await g.resolve(dir)
+  assert.equal(hit.toplevel, dir)
+  const spy = recorder()
+  const g2 = createGit({ ttl: 30_000, now: () => t, exec: spy.exec })
+  await g2.resolve(dir) // exec returns "" -> miss
+  const n = spy.calls.length
+  t += 31_000
+  await g2.resolve(dir)
+  assert.ok(spy.calls.length > n) // the miss was looked up again
+  const ok = recorder(() => `${dir}/.git\n${dir}\n`)
+  const g3 = createGit({ ttl: 30_000, now: () => t, exec: ok.exec })
+  await g3.resolve(dir)
+  const m = ok.calls.length
+  t += 1e9
+  await g3.resolve(dir)
+  assert.equal(ok.calls.length, m) // hits never expire
+})
+
+test("status and worktrees are stale-while-revalidate", async () => {
+  let t = 0
+  let dirty = 1
+  let gate = null
+  const exec = async (args) => {
+    if (gate) await gate
+    if (args.includes("status")) return " M a\n".repeat(dirty)
+    if (args.includes("rev-list")) return null
+    return ""
+  }
+  const g = createGit({ ttl: 30_000, now: () => t, exec })
+  assert.equal((await g.status("/p")).dirty, 1) // first load waits
+  dirty = 2
+  t = 31_000
+  let release
+  gate = new Promise((r) => { release = r })
+  const stale = await g.status("/p") // returns at once although the refresh is blocked
+  assert.equal(stale.dirty, 1)
+  assert.equal((await g.status("/p")).dirty, 1) // a second stale call does not start another refresh
+  release()
+  gate = null
+  await new Promise((r) => setTimeout(r, 20))
+  assert.equal((await g.status("/p")).dirty, 2) // refreshed in the background
+  // A failing refresh keeps the last good value.
+  const bad = { on: false }
+  const g2 = createGit({ ttl: 10, now: () => t, exec: async (args) => (bad.on ? null : args.includes("status") ? " M a\n" : null) })
+  assert.equal((await g2.status("/q")).dirty, 1)
+  bad.on = true
+  t += 100
+  assert.equal((await g2.status("/q")).dirty, 1)
+  await new Promise((r) => setTimeout(r, 20))
+  t += 100
+  assert.equal((await g2.status("/q")).dirty, 1)
+  // worktrees the same way
+  let listing = "worktree /tmp\nbranch refs/heads/a\n"
+  const g3 = createGit({ ttl: 10, now: () => t, exec: async () => listing })
+  assert.equal((await g3.worktrees("/c")).length, 1)
+  listing = "worktree /tmp\nbranch refs/heads/b\n"
+  t += 100
+  assert.equal((await g3.worktrees("/c"))[0].branch, "a")
+  await new Promise((r) => setTimeout(r, 20))
+  assert.equal((await g3.worktrees("/c"))[0].branch, "b")
+})
+
+test("buildTree with `only` calls git for that project alone", async () => {
+  const calls = { resolve: [], worktrees: [], status: [] }
+  const stub = {
+    resolve: async (cwd) => { calls.resolve.push(cwd); return { commonDir: `${cwd}/.git`, toplevel: cwd } },
+    worktrees: async (c) => { calls.worktrees.push(c); return [{ path: c.replace(/\/\.git$/, ""), branch: "main" }] },
+    status: async (p) => { calls.status.push(p); return { dirty: 0 } },
+  }
+  const items = [item("a", "/work/one"), item("b", "/work/two"), item("c", "/work/two")]
+  const all = await buildTree(items, { git: stub })
+  const key = all.find((p) => p.name === "two").key
+  calls.worktrees.length = 0
+  calls.status.length = 0
+  const only = await buildTree(items, { git: stub, only: key })
+  assert.equal(only.length, 1)
+  assert.equal(only[0].worktrees[0].items.length, 2)
+  assert.deepEqual(calls.worktrees, ["/work/two/.git"])
+  assert.deepEqual(calls.status, ["/work/two"])
+  assert.deepEqual(await buildTree(items, { git: stub, only: "nope-00000000" }), [])
+})
+
+test("server: /api/project/:key runs worktree and status for that project only", async () => {
+  const root = tmp()
+  for (const name of ["one", "two"]) {
+    mkdirSync(join(root, `-work-${name}`), { recursive: true })
+    writeFileSync(join(root, `-work-${name}`, "s.jsonl"), JSON.stringify({ type: "user", cwd: `/work/${name}`, timestamp: "2026-11-01T00:00:00.000Z", message: { content: name } }) + "\n")
+  }
+  const seen = []
+  const stub = {
+    resolve: async (cwd) => ({ commonDir: `${cwd}/.git`, toplevel: cwd }),
+    worktrees: async (c) => { seen.push(c); return [] },
+    status: async (p) => { seen.push(p); return { dirty: 0 } },
+  }
+  const dist = tmp()
+  writeFileSync(join(dist, "index.html"), "<!doctype html>")
+  const srv = await createServer(create({ root }), { port: 0, distDir: dist, git: stub })
+  try {
+    const tree = await (await fetch(`http://127.0.0.1:${srv.port}/api/projects`)).json()
+    seen.length = 0
+    const key = tree.find((p) => p.name === "two").key
+    const one = await (await fetch(`http://127.0.0.1:${srv.port}/api/project/${key}`)).json()
+    assert.equal(one.name, "two")
+    assert.deepEqual(seen.sort(), ["/work/two", "/work/two/.git"])
   } finally { await srv.close() }
 })

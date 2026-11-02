@@ -193,5 +193,28 @@ export function fromAdapter(adapter) {
       )
     },
     getSession: (id, name) => adapter.getSession(id, name),
+    /** Per day per run per model, from the runs' `session` events (tokens, cost, model, ts). */
+    async usage({ from, to } = {}) {
+      const rows = new Map()
+      const runs = await adapter.listRuns()
+      for (const r of runs) {
+        const i = await load(r.id)
+        if (!i) continue
+        const { cwd, branch, harness } = i.summary
+        for (const e of i.events) {
+          const ts = str(e.ts)
+          if (e.type !== "session" || !ts) continue
+          const day = ts.slice(0, 10)
+          if ((from && day < from) || (to && day > to)) continue
+          const model = str(e.model) ?? "unknown"
+          const k = `${day}|${r.id}|${model}`
+          const row = rows.get(k) ?? { day, source: adapter.name, harness, project: cwd ?? "", worktree: cwd ?? "", branch: branch ?? "", model, in: 0, out: 0, cacheRead: 0, cacheWrite: 0, cost: 0, sessions: 1, session: r.id }
+          rows.set(k, row)
+          add(row, sessionTokens(e.tokens))
+          row.cost += num(e.cost)
+        }
+      }
+      return [...rows.values()]
+    },
   }
 }

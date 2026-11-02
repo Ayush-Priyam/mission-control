@@ -57,7 +57,11 @@
  * @property {string} day YYYY-MM-DD
  * @property {string} source
  * @property {string} harness
- * @property {string} project
+ * @property {string} project  the item's cwd from a source; the server rewrites it to the /api/projects key
+ * @property {string} [projectName] set by the server
+ * @property {string} worktree  the item's cwd
+ * @property {string} branch
+ * @property {string} [session] session or run id, for distinct session counts
  * @property {string} model
  * @property {number} in
  * @property {number} out
@@ -74,6 +78,8 @@
  * @property {(id: string, filter?: { lane?: string, kind?: string, q?: string }) => Promise<Call[]>} getCalls
  * @property {(id: string, name: string) => Promise<unknown>} getSession
  * @property {(range: { from?: string, to?: string }) => Promise<UsageRow[]>} [usage]
+ * @property {() => { complete: boolean }} [usageStatus]  whether the usage scan has covered everything once
+ * @property {() => Promise<void>} [warm]  called once at server start, in the background
  * @property {Record<string, Function>} [extras]  keyed handlers: (id, searchParams) => { body, status?, type? }
  * @property {Record<string, Function>} [actions] keyed handlers: (id, body) => result
  * @property {() => { source?: string }} [describe]
