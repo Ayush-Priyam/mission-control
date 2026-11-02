@@ -93,6 +93,11 @@ export function createRegistry(sources) {
       const s = byName.get(source)
       return s ? s.getCalls(id, filter ?? {}) : []
     },
+    /** Chat turns of one lane; null when the source has no transcript turns or the item/lane is unknown. */
+    async turns(source, id, lane, page) {
+      const s = byName.get(source)
+      return s?.getTurns ? s.getTurns(id, lane, page) : null
+    },
     async session(source, id, name) {
       const s = byName.get(source)
       return s ? s.getSession(id, name) : null

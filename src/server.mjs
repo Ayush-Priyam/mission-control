@@ -195,6 +195,14 @@ async function apiV2({ registry, git, hide, now }, req, res, url, parts) {
   if (get && parts[3] === "calls" && parts.length === 4) {
     return json(res, await registry.calls(source, id, { lane: q.get("lane") ?? undefined, kind: q.get("kind") ?? undefined, q: q.get("q") ?? undefined }))
   }
+  if (get && parts[3] === "turns" && parts.length === 4) {
+    const lane = q.get("lane") ?? "main"
+    const int = (k, d) => (q.has(k) ? (/^\d{1,7}$/.test(q.get(k)) ? Number(q.get(k)) : NaN) : d)
+    const before = int("before", undefined), limit = int("limit", 100)
+    if (!/^[\w-]{1,128}$/.test(lane) || Number.isNaN(before) || Number.isNaN(limit) || limit < 1 || limit > 500) return json(res, { error: "not allowed" }, 400)
+    const t = await registry.turns(source, id, lane, { before, limit })
+    return t ? json(res, t) : json(res, { error: "not found" }, 404)
+  }
   if (get && parts[3] === "session" && parts.length === 5) {
     const name = decode(parts[4])
     if (!isSessionName(name)) return json(res, { error: "not allowed" }, 400)

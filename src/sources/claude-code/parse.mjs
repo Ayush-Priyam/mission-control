@@ -139,3 +139,73 @@ export function parseTranscript(text, laneId = "main") {
   const nowDoing = last ? { name: last.name, kind: last.kind, summary: last.summary, ts: last.ts } : undefined
   return { calls, tokens, cost, errors, models, messages, firstModel, firstTs, lastTs, meta, nowDoing }
 }
+
+const TURN_TEXT = 20_000
+const CHIP_TEXT = 4_000
+
+function chipInput(input) {
+  if (!input || typeof input !== "object") return input
+  const o = {}
+  for (const [k, v] of Object.entries(input)) o[k] = typeof v === "string" ? clip(v, CHIP_TEXT) : v
+  return o
+}
+
+/** The plain text of a message's content: a string, or its text blocks joined. */
+function textBlocks(c) {
+  if (typeof c === "string") return c
+  return Array.isArray(c) ? c.filter((b) => b?.type === "text" && typeof b.text === "string").map((b) => b.text).join("\n\n") : ""
+}
+
+/**
+ * A transcript as chat turns, in file order: { i, role: "user"|"assistant", ts, text, tools[] }. One
+ * assistant turn per message id (Claude Code writes a line per content block); tool results land on the
+ * tool chip they answer (ok/error, result, duration), never as turns of their own. Meta lines, system
+ * reminders and bad lines are skipped.
+ */
+export function parseTurns(text) {
+  const turns = []
+  const byMsg = new Map()
+  const byUse = new Map()
+  for (const e of lines(text)) {
+    const m = e.message && typeof e.message === "object" ? e.message : null
+    if (!m || e.isMeta) continue
+    const ts = str(e.timestamp)
+    if (e.type === "assistant") {
+      const key = str(m.id)
+      let turn = key ? byMsg.get(key) : null
+      if (!turn) {
+        turn = { i: turns.length, role: "assistant", ts, text: "", tools: [] }
+        turns.push(turn)
+        if (key) byMsg.set(key, turn)
+      }
+      for (const b of Array.isArray(m.content) ? m.content : typeof m.content === "string" ? [{ type: "text", text: m.content }] : []) {
+        if (b?.type === "text" && typeof b.text === "string" && b.text.trim()) turn.text = clip(turn.text ? `${turn.text}\n\n${b.text}` : b.text, TURN_TEXT)
+        else if (b?.type === "tool_use" && typeof b.name === "string") {
+          const c = classify(b.name, b.input)
+          const chip = { id: str(b.id) ?? `${turn.i}:${turn.tools.length}`, name: c.name, kind: c.kind, summary: summarize(b.name, b.input) }
+          if (c.server) chip.server = c.server
+          if (b.input !== undefined) chip.input = chipInput(b.input)
+          turn.tools.push(chip)
+          if (str(b.id)) byUse.set(b.id, { chip, at: ts })
+        }
+      }
+    } else if (e.type === "user") {
+      const blocks = Array.isArray(m.content) ? m.content : []
+      for (const b of blocks) {
+        if (b?.type !== "tool_result") continue
+        const hit = byUse.get(b.tool_use_id)
+        if (!hit) continue
+        const body = clip(resultText(b.content).trim(), CHIP_TEXT)
+        hit.chip.ok = b.is_error !== true
+        if (b.is_error === true) hit.chip.error = body || "error"
+        else if (body) hit.chip.result = body
+        const d = Date.parse(ts ?? "") - Date.parse(hit.at ?? "")
+        if (Number.isFinite(d) && d >= 0) hit.chip.durationMs = d
+      }
+      const said = textBlocks(m.content).trim()
+      if (said && !said.startsWith("<system-reminder>")) turns.push({ i: turns.length, role: "user", ts, text: clip(said, TURN_TEXT), tools: [] })
+    }
+  }
+  // An assistant message that was only thinking (no text, no tools) is not a turn; renumber after dropping.
+  return turns.filter((t) => t.text || t.tools.length).map((t, i) => ({ ...t, i }))
+}

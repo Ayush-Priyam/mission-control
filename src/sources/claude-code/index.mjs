@@ -3,7 +3,7 @@ import { join, sep } from "node:path"
 import { readWaiting } from "../../hooks.mjs"
 import { capText, isSessionName } from "../../names.mjs"
 import { createCache } from "./cache.mjs"
-import { parseTranscript, peek } from "./parse.mjs"
+import { parseTranscript, parseTurns, peek } from "./parse.mjs"
 import { costOf } from "./prices.mjs"
 import { createUsageScanner } from "./usage.mjs"
 
@@ -26,6 +26,7 @@ const iso = (ms) => new Date(ms).toISOString()
  */
 export function create({ root, now = () => Date.now(), hooksDir, cachePath, parse = parseTranscript } = {}) {
   const cache = createCache()
+  const turned = createCache(8) // path|size|mtime -> parseTurns of that file, for chat paging
   const peeked = createCache(8192) // path|size|mtime -> peek of the head, so warm lists skip file reads
   const opened = new Map() // id -> { lastMs, summary } of sessions already fully parsed, for list totals
   let realRoot = null
@@ -294,6 +295,24 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
       return r.calls.filter((c) =>
         (!lane || c.lane === lane) && (!kind || c.kind === kind) &&
         (!needle || `${c.name} ${c.summary} ${c.server ?? ""}`.toLowerCase().includes(needle)))
+    },
+
+    /**
+     * Chat turns of one lane ("main" or "agent-<id>"), newest page by default: turns [max(0, end - limit), end)
+     * where end is `before` (default: all). { lane, total, start, turns } or null for an unknown session or lane.
+     */
+    async getTurns(id, lane, { before, limit = 100 } = {}) {
+      const s = locate(id)
+      if (!s || typeof lane !== "string") return null
+      const m = /^agent-([\w-]+)$/.exec(lane)
+      const file = lane === "main" ? s.file : m ? join(root, s.slug, s.id, "subagents", `agent-${m[1]}.jsonl`) : null
+      const c = file && confined(file)
+      if (!c) return null
+      const key = turned.key(c.real, c.st)
+      const all = turned.get(key) ?? turned.set(key, parseTurns(readFileSync(c.real, "utf8")))
+      const end = Math.max(0, Math.min(all.length, Number.isInteger(before) ? before : all.length))
+      const start = Math.max(0, end - Math.max(1, limit))
+      return { lane, total: all.length, start, turns: all.slice(start, end) }
     },
 
     /** Raw transcript text: "main.jsonl" (or "<id>.jsonl") or "agent-<id>.jsonl". Anything else is null. */
