@@ -188,7 +188,7 @@ test("CLI: --claude-dir serves claude-code sessions through the multi-source API
   const port = probe.address().port
   await new Promise((r) => probe.close(r))
   const bin = fileURLToPath(new URL("../bin/mission-control.mjs", import.meta.url))
-  const child = spawn("node", [bin, "--runs", fileURLToPath(new URL("./fixtures/runs", import.meta.url)), "--claude-dir", root, "--port", String(port), "--no-open"])
+  const child = spawn("node", [bin, "--runs", fileURLToPath(new URL("./fixtures/runs", import.meta.url)), "--claude-dir", root, "--port", String(port), "--no-open"], { env: { ...process.env, HOME: mkdtempSync(join(tmpdir(), "mc-home-")) } }) // warm writes the usage cache under HOME
   try {
     await new Promise((res, rej) => {
       child.stdout.on("data", (d) => String(d).includes("\n") && res())
