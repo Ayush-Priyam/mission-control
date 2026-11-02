@@ -13,6 +13,7 @@ import { aggregate, defaultTz, isBy, isTz } from "./usage.mjs"
 import { createRegistry } from "./sources/registry.mjs"
 import { apiV22 } from "./api-v22.mjs"
 import { createBudgets } from "./budgets.mjs"
+import { createWindowConfig } from "./forecast.mjs"
 
 const DEFAULT_DIST = join(dirname(fileURLToPath(import.meta.url)), "..", "dist")
 
@@ -297,7 +298,7 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
   // `config`: path of config.json ({ "hide": [...] }); null reads nothing. The CLI passes ~/.mission-control/config.json.
   // `claudeHome` / `codexHome`: where the config readers look (names only); null reads nothing. The CLI passes the real ones.
   // `prs`: a createPrReader() for the per-PR usage view (null: none, so tests never run gh); budgets come from `config`.
-  const ctx = { adapter, registry, git, hide: createHide(config), now, claudeHome, codexHome, configPath: config, prs, budgets: createBudgets(config) }
+  const ctx = { adapter, registry, git, hide: createHide(config), now, claudeHome, codexHome, configPath: config, prs, budgets: createBudgets(config), windowConfig: createWindowConfig(config) }
   if (!existsSync(join(distDir, "index.html"))) {
     console.error(`mission control: no built page at ${join(distDir, "index.html")} — run npm run build`)
   }

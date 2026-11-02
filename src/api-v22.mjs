@@ -6,6 +6,8 @@ import { buildTree, projectsOf } from "./projects.mjs"
 import { sameFileWarnings, warningText, WINDOW_MS } from "./conflicts.mjs"
 import { evaluateBudgets } from "./budgets.mjs"
 import { prUsage } from "./prs.mjs"
+import { forecastWindow } from "./forecast.mjs"
+import { bucketOf } from "./usage.mjs"
 import { defaultTz, isTz, localDay, shiftDay } from "./usage.mjs"
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/
@@ -104,6 +106,17 @@ export async function apiV22(ctx, { get, parts, isKey, q }) {
     const today = todayIn(ctx, tz)
     const rows = await namedRows(ctx, { from: shiftDay(today, -29), to: today, tz })
     return { body: { today, budgets: evaluateBudgets(list, rows, { today }) } }
+  }
+  // GET /api/usage-window: Claude Code's current rolling window, estimated from local logs
+  if (get && parts[0] === "usage-window" && parts.length === 1) {
+    const src = registry.sources().find((x) => x.harness === "claude-code" && typeof x.usageBuckets === "function")
+    if (!src) return { body: { available: false } }
+    const cfg = ctx.windowConfig?.get() ?? { hours: 5 }
+    const now = (ctx.now ?? Date.now)()
+    // Windows chain from the last 24 h of activity (an estimate: a chain older than that is not followed).
+    const since = bucketOf(new Date(now - Math.max(24, cfg.hours * 2) * 3600_000).toISOString())
+    const buckets = await src.usageBuckets(since)
+    return { body: { available: true, harness: "claude-code", estimate: true, complete: src.usageStatus?.().complete ?? true, ...forecastWindow(buckets, { now, ...cfg }) } }
   }
   // GET /api/project/:key/conflicts
   if (get && parts[0] === "project" && parts[2] === "conflicts" && parts.length === 3) {

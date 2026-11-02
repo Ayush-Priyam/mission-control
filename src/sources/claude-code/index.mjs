@@ -395,6 +395,11 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
       return scanner.rows(range)
     },
     usageStatus: () => scanner.status(),
+    /** 15-minute token buckets since a bucket time, from the background scan (for the usage-window estimate). */
+    async usageBuckets(since) {
+      scanner.kick()
+      return scanner.buckets({ since })
+    },
     /** Resolves when the running usage scan (if any) has finished. */
     whenScanned: () => scanner.idle(),
     /** Server start: fill the list cache and begin the usage scan without blocking the caller. */

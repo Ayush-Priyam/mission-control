@@ -102,6 +102,19 @@ export function createUsageScanner({ source = "claude-code", harness = source, f
     /** Resolves when no scan is running. */
     idle: () => scanning ?? Promise.resolve(),
     status: () => ({ complete: completedOnce, ...progress }),
+    /**
+     * Token sums per 15-minute UTC bucket from `since` (a bucket string "YYYY-MM-DDTHH:mm", inclusive), all
+     * sessions and models folded: [{ b, in, out, cacheRead, cacheWrite, cost }] ascending. For the usage-window estimate.
+     */
+    buckets({ since = "" } = {}) {
+      const m = new Map()
+      for (const e of live.values()) for (const d of e.days) {
+        if (d.b < since) continue
+        const x = m.get(d.b) ?? m.set(d.b, { b: d.b, in: 0, out: 0, cacheRead: 0, cacheWrite: 0, cost: 0 }).get(d.b)
+        x.in += d.in; x.out += d.out; x.cacheRead += d.cacheRead; x.cacheWrite += d.cacheWrite; x.cost += costOf(d.model, d)
+      }
+      return [...m.values()].sort((a, b) => a.b.localeCompare(b.b))
+    },
     /** UsageRow[] for local days in [from, to] (YYYY-MM-DD, inclusive, both optional) in zone `tz`. */
     rows({ from, to, tz = defaultTz() } = {}) {
       const lo = from ? `${shiftDay(from, -1)}T` : null // raw UTC filter, a day wider each side

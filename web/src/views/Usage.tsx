@@ -15,7 +15,8 @@ import {
 } from "@/lib/usage"
 import { cn } from "@/lib/utils"
 import { BudgetBars } from "@/components/Budgets"
-import { useBudgets, usePrUsage, type PrRow } from "@/lib/api-v22"
+import { useBudgets, usePrUsage, useUsageWindow, type PrRow } from "@/lib/api-v22"
+import { UsageWindowCard } from "@/components/UsageWindowCard"
 
 /** A PR as a table row: "#42 title", with project and branch under it. */
 export const prRow = (r: PrRow): UsageRowView => ({ ...r, label: `#${r.pr.number} ${r.pr.title}`, sub: `${r.projectName} · ${r.branch}${r.pr.state ? ` · ${r.pr.state}` : ""}` })
@@ -65,6 +66,7 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
   const grouped = useUsage(table === "day" || table === "pr" ? null : url(table as By), poll)
   const prs = usePrUsage(table === "pr" ? dates : null, tz)
   const budgets = useBudgets(tz)
+  const usageWindow = useUsageWindow(tz)
 
   const partial = [main, harness, half].some((r) => r.data && !r.data.complete)
   useEffect(() => setScanning(partial), [partial])
@@ -141,6 +143,7 @@ export function Usage({ initialRange = "month", initialTable = "day" }: { initia
       <div aria-label="Totals" {...busy(main.stale)}>
         <UsageTotals totals={u.totals} label={main.stale ? spanOf(u) : RANGE_LABEL[range]} />
       </div>
+      {usageWindow.data && "available" in usageWindow.data && <UsageWindowCard w={usageWindow.data} />}
       {Array.isArray(budgets.data?.budgets) && budgets.data.budgets.length > 0 && (
         <Panel title="Budgets" aside={<span className="font-mono text-xs text-faint">est. · from config.json</span>}>
           <BudgetBars budgets={budgets.data.budgets} />

@@ -110,3 +110,24 @@ test("budgets and PR routes: spend against a configured budget; PR rows only fro
     assert.deepEqual(await (await fetch(`${base}/api/usage/prs`)).json(), { gh: false, rows: [] })
   })
 })
+
+test("usage-window route: an estimate from the Claude Code scan, with the owner's limit; unavailable without Claude Code", async () => {
+  const root = mkdtempSync(join(tmpdir(), "mc-win-"))
+  mkdirSync(join(root, "-w"), { recursive: true })
+  const NOW = Date.parse("2026-11-02T10:00:00Z")
+  const a = (id, ts, n) => JSON.stringify({ type: "assistant", cwd: "/w", timestamp: ts, message: { id, model: "claude-sonnet-4-5", usage: { input_tokens: n, output_tokens: 0 }, content: [] } })
+  writeFileSync(join(root, "-w", "s.jsonl"), [a("m1", "2026-11-02T09:00:00Z", 30_000), a("m2", "2026-11-02T09:40:00Z", 30_000)].join("\n") + "\n")
+  const dir = mkdtempSync(join(tmpdir(), "mc-wcfg-"))
+  const config = join(dir, "config.json")
+  writeFileSync(config, JSON.stringify({ usageWindow: { hours: 5, limitTokens: 100_000 } }))
+  const src = create({ root, now: () => NOW })
+  await src.usage({}); await src.whenScanned()
+  await withServer([src], { config, now: () => NOW }, async (base) => {
+    const w = await (await fetch(`${base}/api/usage-window`)).json()
+    assert.deepEqual([w.available, w.estimate, w.active, w.start, w.used.tokens], [true, true, true, "2026-11-02T09:00:00.000Z", 60_000])
+    assert.equal(w.message, "At this rate you hit the limit in ~40m")
+  })
+  await withServer([], {}, async (base) => {
+    assert.deepEqual(await (await fetch(`${base}/api/usage-window`)).json(), { available: false })
+  })
+})

@@ -14,7 +14,6 @@ Ideas and fixes, roughly in the order they'll land. Many came from people trying
 
 - Answer prompts from the browser (allow / deny / pick an option) through the hooks, not by reading the terminal screen.
 - Cost per task (spec-kit task, Ronin stage).
-- "Will this finish before my usage window resets?"
 - Approve and steer from a phone (local-first PWA).
 - Rewind or fork a session from its log.
 - More readers: opencode, Pi.
@@ -36,3 +35,4 @@ None open right now.
 - Same-file warning: two sessions or runs of one project (any worktrees) that edited the same repo-relative path within 30 minutes show a warning on the project page and on both items' rails.
 - Turns view: each assistant turn's input, cache read, cache write and output tokens with an estimated cost, sortable by cost, with markers where the context dropped sharply (compaction) and a short "why expensive" hint. Claude Code and Codex.
 - Cost per pull request (branches mapped to PRs through `gh`, cached, optional) and budgets per project, worktree or branch in `~/.mission-control/config.json`, with bars on the Usage page and a top-bar chip at 80% and 100%.
+- Usage-window estimate (Claude Code): the current rolling window from local logs, with "at this rate you hit the limit in ~1h 40m" when you set your own limit in `config.json` (`usageWindow`), or "no limit set". Always labelled an estimate; it never claims Anthropic's actual limits.

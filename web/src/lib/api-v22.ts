@@ -35,3 +35,9 @@ export function budgetAlert(list: BudgetState[] | undefined): BudgetState | null
   const hot = (Array.isArray(list) ? list : []).filter((b) => b.level !== "ok").sort((a, b) => b.ratio - a.ratio)
   return hot[0] ?? null
 }
+
+export type UsageWindow =
+  | { available: false }
+  | { available: true; harness: string; estimate: true; complete: boolean; active: boolean; hours: number; start: string | null; resetsAt: string | null; used: { tokens: number; cost: number }; rate: { tokensPerHour: number; usdPerHour: number }; limit: { tokens?: number; usd?: number } | null; eta: number | null; hitsBeforeReset: boolean; message: string }
+/** `tz` is sent like every usage request (the route itself works in UTC buckets). */
+export const useUsageWindow = (tz: string, pollMs = 60_000) => useFetch<UsageWindow>(`/api/usage-window?tz=${enc(tz)}`, pollMs)
