@@ -190,3 +190,21 @@ test("registry overview accepts a pre-filtered item list", async () => {
   assert.deepEqual(ov.counts, { waiting: 1, working: 0, stopped: 0, done: 0, ready: 0, looping: 0, closed: 0 })
   assert.deepEqual(ov.live, [])
 })
+
+test("marks: archived leaves items and counts until unarchived; pinned is flagged; bad bodies refused", async () => {
+  const marksPath = join(mkdtempSync(join(tmpdir(), "mc-marks-")), "marks.json")
+  await withServer({ marksPath }, async (base) => {
+    const post = (id, body) => fetch(`${base}/api/item/cc/${id}/mark`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
+    const ids = async (q = "") => (await (await fetch(`${base}/api/items${q}`)).json()).map((i) => i.id)
+    assert.deepEqual(await (await post("q1", { archived: true })).json(), { pinned: false, archived: true })
+    await post("w1", { pinned: true })
+    assert.ok(!(await ids()).includes("q1"))
+    assert.ok((await ids("?archived=1")).includes("q1"))
+    assert.equal((await (await fetch(`${base}/api/overview`)).json()).counts.waiting, 0)
+    assert.equal((await (await fetch(`${base}/api/items?id=w1`)).json())[0].pinned, true)
+    assert.equal((await post("q1", { archived: "yes" })).status, 400)
+    assert.equal((await post("q1", { other: true })).status, 400)
+    await post("q1", { archived: false })
+    assert.ok((await ids()).includes("q1"))
+  })
+})
