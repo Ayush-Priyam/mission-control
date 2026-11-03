@@ -33,7 +33,8 @@ export function repoRelative(path, base) {
 /**
  * items: [{ source, id, title, branch, worktree, cwd, calls }] of one project. Each item's edits within
  * `window` before `now` are reduced to the newest edit per path; two different items that edited one path
- * with edits at most `window` apart give a warning. Newest first:
+ * with edits at most `window` apart give a warning (not when both edits have the identical timestamp: that is
+ * replayed history of a resumed or forked session). Newest first:
  * [{ path, gapMs, a: { source, id, title, branch, worktree, ts }, b: {...} }] (a is the newer edit).
  */
 export function sameFileWarnings(items, { now = Date.now(), window = WINDOW_MS } = {}) {
@@ -59,6 +60,9 @@ export function sameFileWarnings(items, { now = Date.now(), window = WINDOW_MS }
       const [a, b] = [edits[i], edits[j]]
       if (a.it.source === b.it.source && a.it.id === b.it.id) continue
       if (a.ts - b.ts > window) continue
+      // The same edit at the same instant in two items is one edit seen twice: a resumed or forked session
+      // replays its parent's history into a new log. Not two agents.
+      if (a.ts === b.ts) continue
       out.push({ path, gapMs: a.ts - b.ts, a: who(a), b: who(b) })
     }
   }

@@ -7,7 +7,7 @@ const TIMEOUT_MS = 4000
 
 function ghExec(args, cwd) {
   return new Promise((done) => {
-    execFile("gh", args, { cwd, timeout: TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024, env: { ...process.env, GH_PROMPT_DISABLED: "1", NO_COLOR: "1" } }, (err, stdout) => done(err ? null : String(stdout)))
+    execFile("gh", args, { cwd, timeout: TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024, env: { ...process.env, GH_PROMPT_DISABLED: "1", NO_COLOR: "1", GIT_OPTIONAL_LOCKS: "0" } }, (err, stdout) => done(err ? null : String(stdout)))
   })
 }
 
@@ -57,9 +57,12 @@ export async function prUsage(rows, reader) {
     g.in += r.in; g.out += r.out; g.cacheRead += r.cacheRead; g.cacheWrite += r.cacheWrite; g.cost += r.cost
     g.sessions.add(`${r.source}|${r.session ?? k}`)
   }
+  // One gh call per project, all at once (each is cached and times out on its own).
+  const paths = [...new Set([...groups.values()].map((g) => g.path))]
+  const maps = new Map(await Promise.all(paths.map(async (p) => [p, await reader.prsOf(p)])))
   const out = []
   for (const g of groups.values()) {
-    const pr = (await reader.prsOf(g.path)).get(g.branch)
+    const pr = maps.get(g.path).get(g.branch)
     if (!pr) continue
     const { path, sessions, ...rest } = g
     out.push({ key: `${g.project}#${pr.number}`, ...rest, pr, sessions: sessions.size })

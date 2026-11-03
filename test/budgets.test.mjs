@@ -55,3 +55,13 @@ test("PRs: gh output mapped by branch, cached, failures empty and never thrown; 
   const u = await prUsage([row("2026-11-02", 2), row("2026-11-01", 1), row("2026-11-01", 5, { branch: "main" })], r)
   assert.deepEqual(u.map((x) => [x.branch, x.pr.number, x.cost, x.sessions]), [["feat/search", 42, 3, 2]])
 })
+
+test("prUsage asks gh for every project at once (in parallel), not one after another", async () => {
+  let inFlight = 0, peak = 0
+  const exec = async () => { inFlight++; peak = Math.max(peak, inFlight); await new Promise((r) => setTimeout(r, 20)); inFlight--; return JSON.stringify([{ headRefName: "feat", number: 1, title: "t" }]) }
+  const r = createPrReader({ exec, now: () => 0 })
+  const rows = ["/p1", "/p2", "/p3"].map((p, i) => ({ day: "2026-11-02", source: "claude-code", project: `k${i}`, projectName: `p${i}`, projectPath: p, branch: "feat", in: 1, out: 1, cacheRead: 0, cacheWrite: 0, cost: 1 }))
+  const u = await prUsage(rows, r)
+  assert.equal(u.length, 3)
+  assert.equal(peak, 3)
+})

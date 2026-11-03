@@ -7,8 +7,7 @@ import { sameFileWarnings, warningText, WINDOW_MS } from "./conflicts.mjs"
 import { evaluateBudgets } from "./budgets.mjs"
 import { prUsage } from "./prs.mjs"
 import { forecastWindow } from "./forecast.mjs"
-import { bucketOf } from "./usage.mjs"
-import { defaultTz, isTz, localDay, shiftDay } from "./usage.mjs"
+import { bucketOf, defaultTz, isTz, localDay, shiftDay } from "./usage.mjs"
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/
 /** Usage rows of a range with project key, name and path (as /api/usage names them) and the worktree. */
@@ -38,8 +37,13 @@ export async function projectItems(registry, git, key) {
   return p.worktrees.flatMap((w) => w.items.map((i) => ({ ...i, worktree: w.path, wtBranch: w.branch }))).sort((a, b) => String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? "")))
 }
 
-/** `parts` are the decoded path segments after /api; `isKey` validates ids; `q` the search params. */
-/** Same-file warnings of one project: items updated in the last 30 min, their edit calls compared. */
+const WARNINGS_CACHED = 256 // projects
+
+/**
+ * Same-file warnings of one project: items updated in the last 30 min, their edit calls compared. Cached per
+ * project by the versions of those items (and the minute, as edits age out of the window), so the project
+ * page and every item rail polling it do not re-read calls until an item changes.
+ */
 export async function projectWarnings(ctx, key) {
   const { registry, git, now = () => Date.now() } = ctx
   const p = (await buildTree(await registry.list(), { git, only: key })).find((x) => x.key === key)
@@ -48,9 +52,19 @@ export async function projectWarnings(ctx, key) {
   const recent = p.worktrees.flatMap((w) => w.items.map((i) => ({ ...i, worktree: w.path, branch: i.branch ?? w.branch })))
     .filter((i) => t - Date.parse(i.updatedAt ?? "") <= WINDOW_MS)
   if (recent.length < 2) return { name: p.name, warnings: [] }
+  const version = `${Math.floor(t / 60_000)}|${recent.map((i) => `${i.source}/${i.id}@${i.updatedAt}`).sort().join(",")}`
+  const cache = (ctx.warningsCache ??= new Map())
+  const hit = cache.get(key)
+  if (hit?.version === version) return hit.value
   for (const i of recent) i.calls = await registry.calls(i.source, i.id, {})
-  return { name: p.name, warnings: sameFileWarnings(recent, { now: t }).map((w) => ({ ...w, text: warningText(w, p.name) })) }
+  const value = { name: p.name, warnings: sameFileWarnings(recent, { now: t }).map((w) => ({ ...w, text: warningText(w, p.name) })) }
+  cache.delete(key)
+  if (cache.size >= WARNINGS_CACHED) cache.delete(cache.keys().next().value)
+  cache.set(key, { version, value })
+  return value
 }
+
+/** `parts` are the decoded path segments after /api; `isKey` validates ids; `q` the search params. */
 
 export async function apiV22(ctx, { get, parts, isKey, q }) {
   const { registry, git } = ctx

@@ -131,3 +131,30 @@ test("usage-window route: an estimate from the Claude Code scan, with the owner'
     assert.deepEqual(await (await fetch(`${base}/api/usage-window`)).json(), { available: false })
   })
 })
+
+test("conflicts: the per-project computation is cached by item versions (no re-read of calls until an item changes)", async () => {
+  const root = mkdtempSync(join(tmpdir(), "mc-conf-"))
+  const NOW = Date.now()
+  const ts = (min) => new Date(NOW - min * 60000).toISOString()
+  const write = (id, min) => {
+    mkdirSync(join(root, "-repo"), { recursive: true })
+    writeFileSync(join(root, "-repo", `${id}.jsonl`), [
+      JSON.stringify({ type: "user", cwd: "/repo", timestamp: ts(min + 1), message: { content: "go" } }),
+      JSON.stringify({ type: "assistant", cwd: "/repo", timestamp: ts(min), message: { id: `m-${id}-${min}`, model: "claude-sonnet-4-5", usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "tool_use", id: `t-${id}-${min}`, name: "Edit", input: { file_path: "/repo/src/api.ts" } }] } }),
+    ].join("\n") + "\n")
+  }
+  write("a1", 6); write("b1", 2)
+  const src = create({ root, now: () => NOW })
+  let reads = 0
+  const getCalls = src.getCalls.bind(src)
+  src.getCalls = (...args) => { reads++; return getCalls(...args) }
+  await withServer([src], { git: noGit, now: () => NOW }, async (base) => {
+    const key = (await (await fetch(`${base}/api/items?all=1`)).json()).find((i) => i.id === "a1").project.key
+    for (let i = 0; i < 3; i++) assert.equal((await (await fetch(`${base}/api/project/${key}/conflicts`)).json()).warnings.length, 1)
+    assert.equal((await (await fetch(`${base}/api/item/claude-code/a1/conflicts`)).json()).warnings.length, 1)
+    assert.equal(reads, 2, "one read per item, then cached")
+    write("b1", 1) // b1 changes: recomputed
+    assert.equal((await (await fetch(`${base}/api/project/${key}/conflicts`)).json()).warnings.length, 1)
+    assert.equal(reads, 4)
+  })
+})

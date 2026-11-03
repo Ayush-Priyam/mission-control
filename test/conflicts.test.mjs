@@ -35,3 +35,12 @@ test("no warning: one session editing twice, edits older than 30 min, more than 
   assert.deepEqual(sameFileWarnings([item("s1", "a", "/r", [edit("/r/a.ts", 1, { ok: false })]), item("s2", "b", "/w", [edit("/w/a.ts", 3)])], { now: NOW }), [])
   assert.deepEqual(sameFileWarnings([item("s1", "a", "/r", [edit("/r/a.ts", 1)]), item("s2", "b", "/w", [edit("/w/b.ts", 3)])], { now: NOW }), [])
 })
+
+test("a resumed or forked session replaying history: identical timestamp and path in two items is not a warning", () => {
+  const ws = sameFileWarnings([
+    item("orig", "main", "/repo", [edit("/repo/src/api.ts", 5)]),
+    item("fork", "main", "/repo", [edit("/repo/src/api.ts", 5), edit("/repo/src/b.ts", 1)]),
+    item("other", "feat/x", "/wt/x", [edit("/wt/x/src/b.ts", 3)]),
+  ], { now: NOW })
+  assert.deepEqual(ws.map((w) => [w.path, w.a.id, w.b.id]), [["src/b.ts", "fork", "other"]])
+})
