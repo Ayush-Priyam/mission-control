@@ -17,6 +17,8 @@ test("helpers: command normalised, checks recognised, edits recognised, error he
   assert.equal(commandOf(bash("npm   test\n -- --watch=false", false, 0)), "npm test -- --watch=false")
   assert.ok(isCheck(bash("npm test", false, 0)) && isCheck(bash("npx tsc --noEmit", true, 0)) && isCheck(bash("./gradlew assembleDebug", true, 0)))
   assert.ok(!isCheck(bash("ls -la", true, 0)) && !isCheck(edit("/w/test.ts", 0)))
+  for (const yes of ["cd web && npm run lint", "CI=1 pnpm test:unit", "yarn build", "make", "make -j4 all", "go test ./...", "cargo clippy", "python -m pytest -q", "npx vitest run", "pytest tests/", "bun run typecheck", "bash -lc 'npm test'"]) assert.ok(isCheck(bash(yes, true, 0)), yes)
+  for (const no of ["grep -r test src", "cat build.log", "echo check", "ls tests/", "git checkout main", "rg lint docs", "npm install", "node scripts/make-demo.mjs", "open coverage/test.html", "bash -lc 'ls test'"]) assert.ok(!isCheck(bash(no, true, 0)), no)
   assert.ok(isFileChange(edit("/w/a.ts", 0)) && !isFileChange(edit("/w/a.ts", 0, false)) && !isFileChange(read("/w/a.ts", 0)))
   assert.equal(errorHead("Exit code 1\nFAIL src/a.test.ts (2.31 s)\nmore"), "FAIL src/a.test.ts (# s)")
 })

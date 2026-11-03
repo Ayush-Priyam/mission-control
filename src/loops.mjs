@@ -31,7 +31,31 @@ export function readLoopConfig(path) {
 }
 
 const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit", "apply_patch", "edit", "write", "write_file", "edit_file", "str_replace_based_edit_tool"])
-const CHECK = /\b(test|tests|jest|vitest|pytest|mocha|ava|rspec|phpunit|ctest|tsc|typecheck|type-check|lint|eslint|ruff|mypy|pyright|clippy|build|compile|check|gradlew?|make|go\s+(test|build|vet)|cargo\s+(test|build|check|clippy)|swift\s+(test|build)|xcodebuild|mvn|dotnet\s+(test|build))\b/i
+// A check is told by the program at the head of a command (or of a part of a && / ; / | chain), never by a
+// word anywhere in it: "grep -r test src" or "cat build.log" is not a check.
+const CHECK_PROGRAMS = new Set(["jest", "vitest", "pytest", "mocha", "ava", "rspec", "phpunit", "ctest", "tsc", "eslint", "ruff", "mypy", "pyright", "xcodebuild", "mvn", "make", "gmake", "gradle", "gradlew", "test", "lint", "check", "build", "typecheck"])
+const CHECK_SUBCOMMANDS = { go: /^(test|build|vet)$/, cargo: /^(test|build|check|clippy)$/, swift: /^(test|build)$/, dotnet: /^(test|build)$/ }
+const SCRIPT_RUNNERS = new Set(["npm", "pnpm", "yarn", "bun"])
+const CHECK_SCRIPT = /^(t|test|tests|build|lint|check|typecheck|type-check|tsc|ci|verify)([:._-].*)?$/i
+const WRAPPERS = new Set(["npx", "pnpx", "bunx", "time", "sudo", "env", "nice", "exec"])
+
+function isCheckCommand(cmd) {
+  for (const part of cmd.split(/&&|\|\||;|\|/)) {
+    const words = part.trim().split(/\s+/).filter(Boolean)
+    while (words.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0]) || WRAPPERS.has(words[0]))) words.shift()
+    if (!words.length) continue
+    const prog = words[0].split("/").pop().replace(/\.(sh|bat|cmd)$/, "").toLowerCase()
+    if (/^(ba|z|da)?sh$/.test(prog) && /^-l?c$/.test(words[1] ?? "")) { if (isCheckCommand(words.slice(2).join(" ").replace(/^['"]|['"]$/g, ""))) return true; continue }
+    if (CHECK_PROGRAMS.has(prog)) return true
+    if (CHECK_SUBCOMMANDS[prog]?.test(words[1] ?? "")) return true
+    if (/^python[\d.]*$/.test(prog) && words[1] === "-m" && /^(pytest|mypy|unittest|ruff)$/.test(words[2] ?? "")) return true
+    if (SCRIPT_RUNNERS.has(prog)) {
+      const script = words[1] === "run" || words[1] === "run-script" ? words[2] : words[1]
+      if (script && CHECK_SCRIPT.test(script)) return true
+    }
+  }
+  return false
+}
 
 const str = (v) => (typeof v === "string" ? v : "")
 const ms = (ts) => { const t = Date.parse(str(ts)); return Number.isFinite(t) ? t : NaN }
@@ -55,7 +79,7 @@ export function isFileChange(call) {
 export function isCheck(call) {
   if (!call) return false
   if (call.check === true) return true
-  return CHECK.test(commandOf(call)) && !EDIT_TOOLS.has(call.name)
+  return !EDIT_TOOLS.has(call.name) && isCheckCommand(commandOf(call))
 }
 
 /** The first meaningful line of an error, digits masked, so "same failure" survives timings and counts. */
