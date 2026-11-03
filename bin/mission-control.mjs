@@ -65,7 +65,16 @@ if (argv[0] === "remote") {
   const { homedir } = await import("node:os")
   const { join, resolve } = await import("node:path")
   const altHome = process.env.MISSION_CONTROL_HOME ? resolve(process.env.MISSION_CONTROL_HOME) : null
-  const code = await runRemote({ args: argv.slice(1), remoteDir: remoteDirFromEnv(), home: altHome ?? homedir(), configPath: altHome ? join(altHome, ".mission-control", "config.json") : defaultConfigPath() })
+  const { spawnSync } = await import("node:child_process")
+  // setup/doctor: shell out to tailscale, and ask before each change (y/N) when there is a terminal.
+  const run = (cmd, a) => spawnSync(cmd, a, { encoding: "utf8", timeout: 30_000 })
+  const ask = async (q) => {
+    if (!process.stdin.isTTY) return false
+    const { createInterface } = await import("node:readline/promises")
+    const rl = createInterface({ input: process.stdin, output: process.stdout })
+    try { return /^y(es)?$/i.test((await rl.question(q)).trim()) } finally { rl.close() }
+  }
+  const code = await runRemote({ args: argv.slice(1), remoteDir: remoteDirFromEnv(), home: altHome ?? homedir(), configPath: altHome ? join(altHome, ".mission-control", "config.json") : defaultConfigPath(), script: fileURLToPath(import.meta.url), run, ask })
   process.exit(code)
 }
 

@@ -8,7 +8,7 @@ import { createPairingToken, listDevices, revokeDevice } from "./pairing.mjs"
 import { encode, toTerminal } from "../qr.mjs"
 import { ensureDir, readConfigFile, readJson, readRemoteConfig, readServer, remoteFromConfig, removeFile, validateRemote, writeJsonAtomic, writeRemoteEnabled } from "./state.mjs"
 
-const USAGE = "usage: mission-control remote pair | devices | revoke <id> | on | off | status"
+const USAGE = "usage: mission-control remote setup [--yes] [--pair] | doctor | pair | devices | revoke <id> | on | off | status"
 
 /** Validate --remote-port / --remote-host at startup (FR-2, C37): null when fine, else the message (exit 2). */
 export function checkRemoteFlags({ remotePort, remoteHost, port }) {
@@ -24,8 +24,17 @@ export function checkRemoteFlags({ remotePort, remoteHost, port }) {
  * Run one `remote` subcommand. ctx: { args, remoteDir, home, configPath, out, err, now, sleep, waitMs }.
  * Resolves with the exit code.
  */
-export async function runRemote({ args, remoteDir, home, configPath, out = console.log, err = console.error, now = () => Date.now(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)), waitMs = 5000 }) {
+export async function runRemote({ args, remoteDir, home, configPath, out = console.log, err = console.error, now = () => Date.now(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)), waitMs = 5000, script = null, run = null, ask = null }) {
   const [cmd, ...rest] = args
+  if (cmd === "setup" || cmd === "doctor") {
+    const { runSetup } = await import("./setup.mjs")
+    const again = (a) => runRemote({ args: a, remoteDir, home, configPath, out, err, now, sleep, waitMs })
+    const status = () => {
+      const srv = readServer(remoteDir, { now: now() })
+      return { on: srv ? srv.enabled === true : readRemoteConfig(configPath).enabled, server: !!srv, devices: listDevices({ remoteDir }).length }
+    }
+    return runSetup({ home, configPath, script, run, now, port: 4330, execPath: process.execPath, out, err, ask: ask ?? (async () => false), yes: rest.includes("--yes"), pair: rest.includes("--pair"), remote: again, status }, { apply: cmd === "setup" })
+  }
   if (cmd === "pair") {
     // The host the phone will open: the running server's (it may come from --remote-host), else config.
     const srv = readServer(remoteDir, { now: now() })
