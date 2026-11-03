@@ -42,7 +42,8 @@ export function startNotifier({ registry, enabled, notify = macNotify, link = ()
       }
       if (working && enabled("done")) {
         for (const i of items) {
-          if (working.has(key(i)) && i.status === "idle" && i.open !== false && !i.parkedInto) {
+          // Not done: closed, moved to another session id, or stopped by you (an interrupt).
+          if (working.has(key(i)) && i.status === "idle" && i.open !== false && !i.parkedInto && !i.interrupted) {
             notify({ title: "Done", subtitle: i.title, message: "ready for your next prompt", where: where(i), url: link(i), group: key(i) })
           }
         }
