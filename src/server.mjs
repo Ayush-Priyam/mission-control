@@ -1,5 +1,5 @@
 import { createServer as createHttpServer } from "node:http"
-import { appendFileSync, existsSync, mkdirSync } from "node:fs"
+import { appendFileSync, existsSync, mkdirSync, renameSync, statSync } from "node:fs"
 import { readFile, realpath } from "node:fs/promises"
 import { dirname, extname, join, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -139,7 +139,7 @@ async function placeFirst(items, git, hideList, keep, limit = Infinity) {
 }
 
 async function apiV2(ctx, req, res, url, parts) {
-  const { registry, git, hide, titles, marks, settings, testNotify, noteLog, now } = ctx
+  const { registry, git, hide, titles, marks, settings, testNotify, pageFailed, noteLog, now } = ctx
   const get = req.method === "GET" || req.method === "HEAD"
   const q = url.searchParams
   const all = q.get("all") === "1"
@@ -155,11 +155,15 @@ async function apiV2(ctx, req, res, url, parts) {
     // The page reports what happened to a notification it was sent: shown, error, failed (with why).
     const b = await readBody(req)
     const str = (v) => String(v ?? "").replace(/[\r\n]+/g, " ").slice(0, 200)
-    noteLog(`page ${str(b?.result)}: ${str(b?.group)} (permission ${str(b?.permission)}, tab ${str(b?.visible)})`)
+    const result = str(b?.result)
+    if (result !== "shown") {
+      noteLog(`page ${result}: ${str(b?.group)} (permission ${str(b?.permission)}, tab ${str(b?.visible)})`)
+      pageFailed?.(String(b?.group ?? ""))
+    }
     return json(res, {})
   }
   if (req.method === "POST" && parts[0] === "settings" && parts[1] === "test" && parts.length === 2) {
-    const via = testNotify({ kind: "test", title: "Test", subtitle: "Mission control", message: "notifications work; a click opens the dashboard", url: "#/", group: "test" })
+    const via = await testNotify({ kind: "test", title: "Test", subtitle: "Mission control", message: "notifications work; a click opens the dashboard", url: "#/", group: "test" })
     return json(res, { via })
   }
   if (parts[0] === "settings" && parts.length === 1) {
@@ -354,10 +358,17 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
   const noteLog = (text) => {
     const line = `${new Date().toISOString()} ${text}`
     console.log(line)
-    if (notifyLogPath) try { mkdirSync(dirname(notifyLogPath), { recursive: true, mode: 0o700 }); appendFileSync(notifyLogPath, line + "\n", { mode: 0o600 }) } catch { /* logging must not break notifying */ }
+    if (notifyLogPath) try {
+      mkdirSync(dirname(notifyLogPath), { recursive: true, mode: 0o700 })
+      // Kept to about 1 MB: the previous log moves to .1, replacing the one before it.
+      try { if (statSync(notifyLogPath).size > 1_000_000) renameSync(notifyLogPath, `${notifyLogPath}.1`) } catch { /* no log yet */ }
+      appendFileSync(notifyLogPath, line + "\n", { mode: 0o600 })
+    } catch { /* logging must not break notifying */ }
   }
-  let notifyVia = (m) => (noteLog(`notify ${m.title}: ${m.subtitle ?? ""} via none (server starting)`), "none") // set once listening
-  const ctx = { adapter, registry, git, hide: createHide(config), now, claudeHome, codexHome, configPath: config, prs, budgets: createBudgets(config), windowConfig: createWindowConfig(config), titles, marks, listed, settings, noteLog, testNotify: (m) => notifyVia(m) }
+  let notifyVia = async (m) => (noteLog(`notify ${m.title}: ${m.subtitle ?? ""} via none (server starting)`), "none") // set once listening
+  const shownOnPage = new Map() // group -> { m, at }: sent to a tab, until it reports back
+  let pageFailed = () => {} // set once listening
+  const ctx = { adapter, registry, git, hide: createHide(config), now, claudeHome, codexHome, configPath: config, prs, budgets: createBudgets(config), windowConfig: createWindowConfig(config), titles, marks, listed, settings, noteLog, testNotify: (m) => notifyVia(m), pageFailed: (g) => pageFailed(g) }
   // v2.3 remote answering: `remote` = { home, remoteDir, hooksDir, flags?, ... } turns on the runtime
   // control (status, POST /api/remote/enabled, the second listener). Without it, status is read-only defaults.
   let actualPort = port
@@ -491,11 +502,28 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
       // paired phones decide what is sent, the dispatcher where. Off (null) in tests unless injected.
       const watcher = notifier ? (() => {
         const link = (n) => `#/item/${encodeURIComponent(n.source)}/${encodeURIComponent(n.id)}/lanes`
+        // A tab takes a notification only while the sidebar switch for its kind is on (see createDispatcher).
+        const wants = (m) => (m.kind === "done" ? settings.get().notifyDone : m.kind === "needs" ? settings.get().notify : true)
         const pages = () => { let visible = 0, hidden = 0; for (const v of notifyPages.values()) v ? visible++ : hidden++; return { visible, hidden } }
-        const toPages = (visible, m) => send("notify", { ...m, dismissAfter: settings.get().notifyDismiss }, [...notifyPages].filter(([, v]) => v === visible).map(([r]) => r))
-        const dispatch = createDispatcher({ pages, toPages, phone: remoteControl?.push ?? null, mac: notifier.mac === true ? macNotify : notifier.mac || null })
-        notifyVia = (m) => {
-          const via = dispatch(m)
+        // The most recently connected tab of that kind: one alert (and one ack) however many tabs are open.
+        const toPages = (visible, m) => {
+          const r = [...notifyPages].filter(([, v]) => v === visible).map(([res]) => res).pop()
+          if (!r) return
+          if (m.group) shownOnPage.set(m.group, { m, at: Date.now() })
+          send("notify", { ...m, dismissAfter: settings.get().notifyDismiss }, [r])
+        }
+        const mac = notifier.mac === true ? macNotify : notifier.mac || null
+        const dispatch = createDispatcher({ pages, toPages, phone: remoteControl?.push ?? null, mac, wants })
+        // A tab that reports it could not show one (permission gone, an error) hands it to macOS once.
+        pageFailed = (group) => {
+          const p = shownOnPage.get(group)
+          shownOnPage.delete(group)
+          if (!p || Date.now() - p.at > 60_000 || !mac) return
+          mac(p.m)
+          noteLog(`notify ${p.m.title}: ${p.m.subtitle ?? ""} via macOS (the page could not show it)`)
+        }
+        notifyVia = async (m) => {
+          const via = await dispatch(m)
           noteLog(`notify ${m.title}: ${m.subtitle ?? ""} via ${via}`)
           return via
         }

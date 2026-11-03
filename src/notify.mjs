@@ -6,11 +6,11 @@ const as = (s) => `"${String(s).replace(/[\\"]/g, "\\$&").replace(/\s+/g, " ").s
  * A macOS notification through osascript (no click action: osascript cannot carry one); never throws.
  * Laid out like the page's: the session name, then what happened, then where.
  */
-export function macNotify({ title, subtitle, message, where }) {
+export function macNotify({ title, subtitle, message, where }, run = execFile) {
   const head = subtitle || title
   const what = subtitle ? `${title} · ${message}` : message
   const script = `display notification ${as(where || " ")} with title ${as(head)} subtitle ${as(what)}`
-  execFile("osascript", ["-e", script], { timeout: 5000 }, () => {})
+  run("osascript", ["-e", script], { timeout: 5000 }, () => {})
 }
 
 const HARNESS = { "claude-code": "Claude Code", codex: "Codex" }
@@ -67,14 +67,19 @@ export function startNotifier({ list, overview, enabled, notify = macNotify, lin
  * One channel per notification, so a prompt never reaches both phone and desktop: a visible dashboard tab
  * that allowed notifications; else, for Needs you and the test, a paired phone with push on (its ping has no
  * payload and the phone shows prompts, so Done does not go there); else a background tab; else macOS (null
- * where there is none). Returns the channel taken, for the log and the test button.
+ * where there is none). A tab takes one only while `wants(m)`, the sidebar switch for its kind: the browser
+ * permission says a tab may show it, not that the owner wants it (a paired phone alone keeps detection on). A phone ping that no push service accepted falls through to the next channel, so an expired
+ * subscription does not swallow the prompt. Resolves with the channel taken, for the log and the test button.
  */
-export function createDispatcher({ pages, toPages, phone = null, mac = null }) {
-  return (m) => {
-    const { visible, hidden } = pages()
-    if (visible) { toPages(true, m); return `page (${visible})` }
-    if (m.kind !== "done" && phone?.available()) { phone.ping(); return "phone" }
-    if (hidden) { toPages(false, m); return `page (${hidden}, background)` }
+export function createDispatcher({ pages, toPages, phone = null, mac = null, wants = () => true }) {
+  return async (m) => {
+    const { visible, hidden } = wants(m) ? pages() : { visible: 0, hidden: 0 }
+    if (visible) { toPages(true, m); return "page" }
+    if (m.kind !== "done" && phone?.available()) {
+      const sent = await Promise.resolve(phone.ping()).catch(() => 0)
+      if (sent > 0) return "phone"
+    }
+    if (hidden) { toPages(false, m); return "page (background)" }
     if (mac) { mac(m); return "macOS" }
     return "none"
   }

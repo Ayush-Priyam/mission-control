@@ -39,25 +39,52 @@ test("notifier: only newly waiting sessions notify, never on the first pass; wit
   assert.deepEqual(sent, ["day0paywall"])
 })
 
-test("dispatcher: one channel each — visible tab, else phone (not for Done), else background tab, else macOS, else none", () => {
+test("dispatcher: one channel each — visible tab, else phone (not for Done), else background tab, else macOS, else none", async () => {
   const got = []
   let pages = { visible: 0, hidden: 0 }, phoneOn = false
   const d = createDispatcher({
     pages: () => pages,
     toPages: (visible, m) => got.push(`${visible ? "visible" : "background"} ${m.kind}`),
-    phone: { available: () => phoneOn, ping: () => got.push("phone") },
+    phone: { available: () => phoneOn, ping: async () => (got.push("phone"), 1) },
     mac: (m) => got.push(`mac ${m.kind}`),
   })
   pages = { visible: 1, hidden: 1 }; phoneOn = true
-  assert.equal(d({ kind: "needs" }), "page (1)")
+  assert.equal(await d({ kind: "needs" }), "page")
   pages = { visible: 0, hidden: 1 }
-  assert.equal(d({ kind: "needs" }), "phone")
-  assert.equal(d({ kind: "done" }), "page (1, background)")
+  assert.equal(await d({ kind: "needs" }), "phone")
+  assert.equal(await d({ kind: "done" }), "page (background)")
   phoneOn = false
   pages = { visible: 0, hidden: 0 }
-  assert.equal(d({ kind: "needs" }), "macOS")
-  assert.equal(createDispatcher({ pages: () => pages, toPages: () => {} })({ kind: "needs" }), "none")
+  assert.equal(await d({ kind: "needs" }), "macOS")
+  assert.equal(await createDispatcher({ pages: () => pages, toPages: () => {} })({ kind: "needs" }), "none")
   assert.deepEqual(got, ["visible needs", "phone", "background done", "mac needs"])
+})
+
+test("dispatcher: a tab whose switch is off is skipped (the phone gets it), and a ping nobody accepted falls through", async () => {
+  const got = []
+  let accepted = 1
+  const d = createDispatcher({
+    pages: () => ({ visible: 1, hidden: 0 }),
+    toPages: (visible, m) => got.push(`tab ${m.kind}`),
+    phone: { available: () => true, ping: async () => (got.push("ping"), accepted) },
+    mac: (m) => got.push(`mac ${m.kind}`),
+    wants: (m) => m.kind !== "needs", // Needs you switched off; only the phone asked for it
+  })
+  assert.equal(await d({ kind: "needs" }), "phone")
+  accepted = 0 // an expired subscription: nothing accepted
+  assert.equal(await d({ kind: "needs" }), "macOS")
+  const failing = createDispatcher({ pages: () => ({ visible: 0, hidden: 0 }), toPages: () => {}, phone: { available: () => true, ping: async () => { throw new Error("down") } }, mac: () => got.push("mac after error") })
+  assert.equal(await failing({ kind: "needs" }), "macOS")
+  assert.deepEqual(got, ["ping", "ping", "mac needs", "mac after error"])
+})
+
+test("macNotify: quotes, backslashes and newlines stay inside the AppleScript strings", async () => {
+  const { macNotify } = await import("../src/notify.mjs")
+  const calls = []
+  macNotify({ title: "Needs you", subtitle: 'say "hi" \\ bye', message: "line1\nline2", where: 'x" & do shell script "rm' }, (cmd, args) => calls.push([cmd, args]))
+  assert.equal(calls[0][0], "osascript")
+  const script = calls[0][1][1]
+  assert.equal(script, 'display notification "x\\" & do shell script \\"rm" with title "say \\"hi\\" \\\\ bye" subtitle "Needs you · line1 line2"')
 })
 
 test("server: a notification goes to a visible ?notify=1 page first, a background one next, else the macOS fallback", async () => {
@@ -83,12 +110,17 @@ test("server: a notification goes to a visible ?notify=1 page first, a backgroun
     assert.equal(await test(), "macOS")
     const plain = await open("") // a page that did not ask: never a channel
     const background = await open("?notify=1&visible=0")
-    assert.equal(await test(), "page (1, background)")
+    assert.equal(await test(), "page (background)")
     assert.match(await next(background), /event: notify\ndata: \{"kind":"test","title":"Test"/)
     const visible = await open("?notify=1&visible=1")
-    assert.equal(await test(), "page (1)")
+    assert.equal(await test(), "page")
     assert.match(await next(visible), /"dismissAfter":10/)
     assert.deepEqual(mac, ["Test"])
+    // The tab reports it could not show it: macOS gets it once; a later "shown" changes nothing.
+    const ack = (result) => fetch(`${base}/api/events/ack`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ group: "test", result }) })
+    await ack("not shown: permission denied")
+    await ack("not shown: permission denied")
+    assert.deepEqual(mac, ["Test", "Test"])
     for (const r of [plain, background, visible]) await r.cancel()
   } finally { await srv.close() }
 })
