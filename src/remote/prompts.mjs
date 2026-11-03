@@ -251,7 +251,9 @@ export function joinEntries(needsYou, pendings) {
     seen.add(key)
     out.push(entryOf({ source: p.harness, id: p.sessionId, title: HARNESS_TITLE[p.harness] ?? p.sessionId, lane: "main", since: p.askedAt }, p))
   }
-  return out
+  // What the phone can answer first, then read-only entries; newest first within each.
+  const t = (e) => Date.parse(e.askedAt ?? e.since ?? "") || 0
+  return out.sort((a, b) => Number(b.answerable) - Number(a.answerable) || t(b) - t(a))
 }
 
 function entryOf(e, p) {
