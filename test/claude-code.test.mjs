@@ -4,7 +4,7 @@ import { appendFileSync, mkdtempSync, mkdirSync, statSync, symlinkSync, writeFil
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
-import create from "../src/sources/claude-code/index.mjs"
+import create, { comparableStart } from "../src/sources/claude-code/index.mjs"
 import { PRICES, costOf, family, version } from "../src/sources/claude-code/prices.mjs"
 import { parseTranscript } from "../src/sources/claude-code/parse.mjs"
 import { createCache } from "../src/sources/claude-code/cache.mjs"
@@ -378,4 +378,20 @@ test("v2.2: a subagent file that fails to read once is retried on the next call,
   } finally { chmodSync(b.sub(0), 0o644) }
   // Same size and mtime as before (chmod changes neither): the lane must still appear now.
   assert.equal((await s.getItem("big")).lanes.length, 2)
+})
+
+test("a chat parked on a job whose process has exited stays listed; procStart is compared only in lstart form", async () => {
+  const cfg = mkdtempSync(join(tmpdir(), "mc-cc-"))
+  const r = join(cfg, "projects")
+  mkdirSync(join(r, "-p"), { recursive: true })
+  mkdirSync(join(cfg, "sessions"))
+  for (const id of ["parked", "linux"]) writeFileSync(join(r, "-p", `${id}.jsonl`), JSON.stringify({ type: "user", cwd: "/w", message: { role: "user", content: id } }) + "\n")
+  writeFileSync(join(cfg, "sessions", "1.json"), JSON.stringify({ pid: 1, sessionId: "parked", status: "idle", parkedJobId: "gone-job" }))
+  writeFileSync(join(cfg, "sessions", `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: "linux", status: "idle", procStart: "1730619905", pidDomain: "linux" }))
+  const s = create({ root: r, startOf: () => "Sat Oct 31 08:00:00 2026" })
+  const got = Object.fromEntries((await s.listItems()).map((i) => [i.id, [i.open, i.parkedInto ?? null]]))
+  assert.deepEqual(got, { parked: [true, null], linux: [true, null] })
+  assert.equal(comparableStart({ procStart: "Tue Nov  3 16:45:05 2026" }), true)
+  assert.equal(comparableStart({ procStart: "Tue Nov  3 16:45:05 2026", pidDomain: "linux" }), false)
+  assert.equal(comparableStart({ procStart: "2026-11-03T16:45:05Z" }), false)
 })

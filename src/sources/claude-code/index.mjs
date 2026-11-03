@@ -27,6 +27,13 @@ const add = (a, b) => { a.in += b.in; a.out += b.out; a.cacheRead += b.cacheRead
 const iso = (ms) => new Date(ms).toISOString()
 const shq = (s) => (/^[\w@%+=:,./-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`)
 
+/**
+ * Whether a sessions file's procStart can be compared with `ps -o lstart=`: the lstart text Claude Code writes on
+ * macOS ("Tue Nov  3 16:45:05 2026"). Another format (or another pidDomain) is not compared, so a live pid stays open.
+ */
+export const comparableStart = (j) =>
+  typeof j?.procStart === "string" && /^\w{3} \w{3} +\d{1,2} \d\d:\d\d:\d\d \d{4}$/.test(j.procStart.trim()) && (j.pidDomain ?? "darwin") === "darwin"
+
 const startCache = new Map() // pid -> { at, value }: `ps` once a minute per pid at most
 /**
  * When a process started, as `ps -o lstart=` prints it in UTC (Claude Code's procStart is UTC), whitespace
@@ -40,6 +47,7 @@ function processStart(pid) {
     const r = spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", timeout: 2000, env: { ...process.env, TZ: "UTC" } })
     value = r.status === 0 ? r.stdout.replace(/\s+/g, " ").trim() || null : null
   } catch { value = null }
+  if (startCache.size > 512) startCache.clear() // pids come and go over a long uptime; a refill costs one `ps` each
   startCache.set(pid, { at: Date.now(), value })
   return value
 }
@@ -224,12 +232,19 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
     } catch { return null } finally { if (fd !== undefined) closeSync(fd) }
   }
 
+  // Lists, item pages and the change feed all ask within the same poll: read the pid files at most once a second.
+  let openMemo = { at: -Infinity, value: null }
+  function openSessions() {
+    if (Date.now() - openMemo.at < 1000) return openMemo.value
+    openMemo = { at: Date.now(), value: readOpenSessions() }
+    return openMemo.value
+  }
   /**
    * Running Claude Code processes by session id, from the <config dir>/sessions/<pid>.json files Claude Code
    * keeps next to projects/ (status "busy" or "idle"). A file whose pid is gone is a closed session. null when
    * there is no such dir (an older Claude Code, or a projects dir passed on its own): open state is unknown.
    */
-  function openSessions() {
+  function readOpenSessions() {
     const dir = join(dirname(root), "sessions")
     let names
     try { names = readdirSync(dir) } catch { return null }
@@ -243,7 +258,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
         if (typeof j?.sessionId !== "string" || !Number.isInteger(j.pid) || j.pid <= 0) continue
         try { process.kill(j.pid, 0) } catch (e) { if (e.code !== "EPERM") continue } // signal 0 only checks the pid exists
         // A pid can be reused after a crash: a live pid that started at another time than the file says is not it.
-        const started = typeof j.procStart === "string" ? startOf(j.pid) : null
+        const started = comparableStart(j) ? startOf(j.pid) : null
         if (started && started !== j.procStart.replace(/\s+/g, " ").trim()) continue
         const since = Number.isFinite(j.statusUpdatedAt) ? new Date(j.statusUpdatedAt).toISOString() : null
         out.set(j.sessionId, { busy: j.status === "busy", since })
@@ -251,10 +266,13 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
         if (typeof j.parkedJobId === "string") parked.push([j.sessionId, j.parkedJobId])
       } catch { /* half-written or unreadable: skip */ }
     }
+    // Only a job whose session is still open counts: once the job's process exits, its jobId names no session,
+    // and pointing at it would hide this chat with nothing listed in its place.
     for (const [id, job] of parked) {
-      const into = jobs.get(job) ?? job
+      const into = jobs.get(job)
+      if (!into || !out.has(into) || into === id) continue
       out.get(id).parkedInto = into
-      if (out.has(into)) out.get(into).continuedFrom = id
+      out.get(into).continuedFrom = id
     }
     return out
   }
