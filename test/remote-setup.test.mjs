@@ -133,3 +133,13 @@ test("a settings.json that is not valid JSON is never overwritten", async () => 
     assert.equal(readFileSync(join(t.h, ".claude", "settings.json"), "utf8"), "{ not json")
   } finally { t.done() }
 })
+
+test("through npx: setup stops before writing hooks and says to install globally", async () => {
+  const t = home({ settings: OWNER_SETTINGS })
+  try {
+    const c = ctxFor(t, fakeTailscale(), { yes: true, script: "/Users/x/.npm/_npx/1a2b3c/node_modules/@aldefy/mission-control/bin/mission-control.mjs" })
+    assert.equal(await runSetup(c.ctx, { apply: true }), 1)
+    assert.match(c.lines.join("\n"), /npm install -g @aldefy\/mission-control/)
+    assert.deepEqual(JSON.parse(readFileSync(join(t.h, ".claude", "settings.json"), "utf8")), OWNER_SETTINGS)
+  } finally { t.done() }
+})

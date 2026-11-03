@@ -12,65 +12,48 @@ Zero runtime dependencies. Runtime: Node 20 or newer. Building the page and runn
 
 ## Quick start
 
-You need `git` and Node 20.19 or newer (`node --version` prints it). The package is not on npm yet, so you run it from a clone.
+You need Node 20 or newer (`node --version` prints it).
 
-### With Claude Code
+**Try it** (nothing to install):
 
-1. Get the code and build the page:
+```bash
+npx @aldefy/mission-control
+```
 
-   ```bash
-   git clone https://github.com/aldefy/mission-control
-   cd mission-control
-   npm ci
-   npm run build
-   ```
+It prints `mission control on http://localhost:4319` and, on macOS, opens that page. Every Claude Code session under `~/.claude/projects` and every Codex session under `~/.codex/sessions` is already there, grouped by project and git worktree. Open one to see its lanes (the main agent and each subagent), calls, timeline, chat and usage. Stop it with Ctrl-C.
 
-2. Start it:
+**Keep it** (needed for the hooks and the phone, because they point at the installed copy):
 
-   ```bash
-   node bin/mission-control.mjs
-   ```
+```bash
+npm install -g @aldefy/mission-control
+mission-control
+```
 
-   It prints `mission control on http://localhost:4319` and, on macOS, opens that page. Elsewhere, open the URL yourself. Leave the command running; stop it with Ctrl-C.
+### Needs you, and answering from your phone
 
-3. Look at the home page. Every Claude Code session under `~/.claude/projects` is listed, grouped by project and worktree. Open one to see its lanes (the main agent and each subagent), calls, timeline, chat and usage.
+The **Needs you** queue fills from Claude Code and Codex hooks. With [Tailscale](https://tailscale.com) on your laptop and phone, one command sets up the hooks and the phone together, asking before each change:
 
-4. Optional, for the **Needs you** queue: install the hooks.
+```bash
+mission-control remote setup
+```
 
-   ```bash
-   node bin/mission-control.mjs hooks install
-   ```
+It writes the hooks into `~/.claude/settings.json` (and `~/.codex/hooks.json`), keeping your other hooks and saving a backup, puts the phone page on your tailnet, and shows a QR code. Scan it, add the page to your Home Screen, and turn on notifications. A prompt that waits on you then buzzes your phone, and you can Allow, Deny or pick an option there. `mission-control remote doctor` shows anything still missing. Full guide: [docs/remote-answering.md](docs/remote-answering.md).
 
-   This prints a `hooks` block. Merge it into `~/.claude/settings.json` by hand (it changes nothing itself), then start a new Claude Code session. A session that asks for permission now shows up under Needs you. Full details, including the exact block, are in [docs/claude-code.md](docs/claude-code.md).
+Only want the queue on the laptop, without Tailscale? `mission-control hooks install` (or `hooks install codex`) prints the hooks block to merge by hand: [docs/claude-code.md](docs/claude-code.md), [docs/codex.md](docs/codex.md). In Codex, run `/hooks` once to trust them.
 
-### With Codex CLI
+Codex sessions are read from `~/.codex/sessions` whenever it exists; pass `--codex-dir <dir>` if your Codex home is elsewhere.
 
-1. Get the code and build the page (skip this if you did it above):
+### From source
 
-   ```bash
-   git clone https://github.com/aldefy/mission-control
-   cd mission-control
-   npm ci
-   npm run build
-   ```
+```bash
+git clone https://github.com/aldefy/mission-control
+cd mission-control
+npm ci
+npm run build
+node bin/mission-control.mjs
+```
 
-2. Start it:
-
-   ```bash
-   node bin/mission-control.mjs
-   ```
-
-   Codex sessions are read from `~/.codex/sessions` whenever that directory exists, next to any Claude Code sessions. If your Codex home is elsewhere, pass the sessions directory: `node bin/mission-control.mjs --codex-dir /work/codex-home/sessions`.
-
-3. Open `http://localhost:4319`. Codex sessions show with the harness `codex`: project, branch, title, calls (shell commands, patches, MCP tools, spawned agents), tokens and estimated cost. Subagents Codex spawned are lanes of the session that spawned them.
-
-4. Optional, for the **Needs you** queue: install the Codex hooks.
-
-   ```bash
-   node bin/mission-control.mjs hooks install codex
-   ```
-
-   This prints a `hooks` block for `~/.codex/hooks.json`. Merge it in by hand, then run `/hooks` inside Codex to review and trust the new hooks (Codex does not run untrusted hooks). A session waiting for your approval now shows up under Needs you. Full details are in [docs/codex.md](docs/codex.md).
+Building needs Node 20.19 or newer.
 
 ### Check that it works
 
@@ -84,12 +67,12 @@ lists every source that is on (`claude-code`, `codex`, and any runs or adapters 
 
 | what you see | what to do |
 |---|---|
-| `npm ci` or `npm run build` fails on syntax or engine errors | Node is too old. Install Node 20.19 or newer and run both again. |
-| The browser shows a 404 and the terminal says `no built page ... run npm run build` | The page was not built in this checkout. Run `npm run build`, then restart. The API works without it. |
+| `npm ci` or `npm run build` fails on syntax or engine errors (from source) | Node is too old. Install Node 20.19 or newer and run both again. |
+| The browser shows a 404 and the terminal says `no built page ... run npm run build` | From source only: the page was not built in this checkout. Run `npm run build`, then restart. |
 | `EADDRINUSE` or "port in use" | Something already listens on 4319 (maybe another copy). Use `--port 4400`, or set `MISSION_CONTROL_PORT`. |
 | No Claude Code sessions | Sessions live in `~/.claude/projects`. If yours are elsewhere, pass `--claude-dir <dir>`. |
 | No Codex sessions | Codex turns on only when `$CODEX_HOME/sessions` (default `~/.codex/sessions`) exists. Pass `--codex-dir <dir>` to point at a sessions directory directly. |
-| Needs you stays empty | Hooks are optional and off until you merge the printed block. After moving the checkout or upgrading Node, run `hooks install` again and merge again: the block holds absolute paths. |
+| Needs you stays empty | Hooks are optional. Run `mission-control remote doctor` to see whether they are in; `mission-control remote setup` (or `hooks install`) adds them. After moving the install or upgrading Node, run it again: the hooks hold absolute paths. |
 | Costs look wrong | They are API list-price estimates, not your bill. See [Costs are estimates](#costs-are-estimates). |
 
 ## Try it with demo data

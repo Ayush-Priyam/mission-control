@@ -1,7 +1,7 @@
 {
   "name": "@aldefy/mission-control",
-  "version": "0.1.0",
-  "description": "One local dashboard for all your AI coding work: projects, worktrees, sessions, runs and lanes, with a Needs-you queue, calls, timeline and usage",
+  "version": "2.4.0",
+  "description": "One local dashboard for all your AI coding work (Claude Code, Codex, any harness), with a Needs-you queue you can answer from your phone",
   "keywords": [
     "ai",
     "coding-agents",
@@ -10,13 +10,28 @@
     "observability",
     "agents",
     "developer-tools",
-    "local-first"
+    "local-first",
+    "tailscale",
+    "pwa",
+    "codex",
+    "web-push"
   ],
   "license": "MIT",
   "author": "Adit Lal",
+  "homepage": "https://github.com/aldefy/mission-control#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aldefy/mission-control.git"
+  },
+  "bugs": {
+    "url": "https://github.com/aldefy/mission-control/issues"
+  },
   "type": "module",
   "engines": {
     "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "bin": {
     "mission-control": "bin/mission-control.mjs"

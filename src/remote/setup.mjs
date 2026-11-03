@@ -104,6 +104,11 @@ export function plan(ctx) {
     } : undefined,
   })
 
+  // Hooks must point at a path that stays: npx runs from a cache npm may delete at any time.
+  if (/[\\/]_npx[\\/]/.test(script)) {
+    steps.push({ key: "install", label: "Install", ok: false, detail: "running through npx, whose cache can be deleted: hooks would break", fix: "npm install -g @aldefy/mission-control, then run mission-control remote setup" })
+    return steps
+  }
   const node = stableNode(ctx.execPath)
   const waitSeconds = cur?.waitSeconds
   const hookStep = (key, label, path, block, extra) => {
