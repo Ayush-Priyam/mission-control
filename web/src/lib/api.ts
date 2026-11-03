@@ -270,7 +270,7 @@ export type ReadyItem = Where & { since: string | null }
 /** An item looping now, with its looping lane's loop. */
 export type LoopingItem = Where & { lane: string; loop: LoopInfo; sinceChange: SinceChange | null }
 export type Overview = {
-  counts: { waiting: number; working: number; stopped: number; done: number; ready?: number; looping?: number }
+  counts: { waiting: number; working: number; stopped: number; done: number; ready?: number; looping?: number; closed?: number }
   needsYou: NeedsYou[]
   ready?: ReadyItem[]
   looping?: LoopingItem[]
@@ -278,7 +278,8 @@ export type Overview = {
   /** Items left out because their project is hidden. */
   hidden: number
 }
-export type StatusCounts = Record<Status, number> & { items: number; live: number; ready?: number }
+/** `closed` items are also counted in their status (idle). */
+export type StatusCounts = Record<Status, number> & { items: number; live: number; ready?: number; closed?: number }
 /** A worktree as the sidebar sees it (`/api/projects?slim=1`): counts, no item list. */
 export type WorktreeSummary = {
   path: string

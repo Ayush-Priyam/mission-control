@@ -51,9 +51,11 @@ export function createRegistry(sources, { titles = null } = {}) {
    */
   async function overview(items) {
     items ??= await list()
-    const counts = { waiting: 0, working: 0, stopped: 0, done: 0, ready: 0, looping: 0 }
+    // closed (open === false) is counted apart from its status, which stays idle.
+    const counts = { waiting: 0, working: 0, stopped: 0, done: 0, ready: 0, looping: 0, closed: 0 }
     const ready = []
     for (const i of items) {
+      if (i.open === false) counts.closed++
       if (i.ready && i.status !== "waiting") counts.ready++
       if (i.status === "waiting") counts.waiting++
       else if (i.status === "working") counts.working++
