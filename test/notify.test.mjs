@@ -1,0 +1,100 @@
+import { test } from "node:test"
+import assert from "node:assert/strict"
+import { mkdtempSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { createDispatcher, startNotifier } from "../src/notify.mjs"
+import { createServer } from "../src/server.mjs"
+
+const it = (id, status, extra = {}) => ({ source: "cc", id, title: id, status, open: true, harness: "claude-code", cwd: "/w/shop", branch: "main", ...extra })
+
+test("notifier: done fires once when an open session goes working to idle, not when it closes, moves id, waits or is interrupted", async () => {
+  let items = [it("a", "working"), it("b", "working"), it("c", "working"), it("d", "idle"), it("e", "working"), it("f", "working")]
+  const sent = []
+  const n = startNotifier({ list: async () => items, overview: async () => ({ needsYou: [] }), enabled: (k) => k === "done", notify: (m) => sent.push(`${m.kind} ${m.subtitle} | ${m.where}`), everyMs: 1e9 })
+  await n.ready
+  items = [it("a", "idle"), it("b", "idle", { open: false }), it("c", "waiting"), it("d", "idle"), it("e", "idle", { parkedInto: "x" }), it("f", "idle", { interrupted: true })]
+  await n.pass()
+  await n.pass()
+  n.stop()
+  assert.deepEqual(sent, ["done a | Claude Code · shop · main"])
+})
+
+test("notifier: only newly waiting sessions notify, never on the first pass; with nothing on it does no work and replays nothing", async () => {
+  let waiting = [{ source: "cc", id: "a", title: "old prompt", detail: "x" }]
+  let on = true, lists = 0
+  const sent = []
+  const n = startNotifier({ list: async () => (lists++, []), overview: async () => ({ needsYou: waiting }), enabled: (k) => on && k === "needs", notify: (m) => sent.push(m.subtitle), everyMs: 1e9 })
+  await n.ready
+  waiting = [...waiting, { source: "cc", id: "b", title: "day0paywall", detail: "permission for Bash" }]
+  await n.pass()
+  on = false
+  const before = lists
+  waiting = [...waiting, { source: "cc", id: "c", title: "while off", detail: "" }]
+  await n.pass()
+  assert.equal(lists, before) // nothing on: no listing at all
+  on = true
+  await n.pass() // seeds again: "while off" is not replayed
+  n.stop()
+  assert.deepEqual(sent, ["day0paywall"])
+})
+
+test("dispatcher: one channel each — visible tab, else phone (not for Done), else background tab, else macOS, else none", () => {
+  const got = []
+  let pages = { visible: 0, hidden: 0 }, phoneOn = false
+  const d = createDispatcher({
+    pages: () => pages,
+    toPages: (visible, m) => got.push(`${visible ? "visible" : "background"} ${m.kind}`),
+    phone: { available: () => phoneOn, ping: () => got.push("phone") },
+    mac: (m) => got.push(`mac ${m.kind}`),
+  })
+  pages = { visible: 1, hidden: 1 }; phoneOn = true
+  assert.equal(d({ kind: "needs" }), "page (1)")
+  pages = { visible: 0, hidden: 1 }
+  assert.equal(d({ kind: "needs" }), "phone")
+  assert.equal(d({ kind: "done" }), "page (1, background)")
+  phoneOn = false
+  pages = { visible: 0, hidden: 0 }
+  assert.equal(d({ kind: "needs" }), "macOS")
+  assert.equal(createDispatcher({ pages: () => pages, toPages: () => {} })({ kind: "needs" }), "none")
+  assert.deepEqual(got, ["visible needs", "phone", "background done", "mac needs"])
+})
+
+test("server: a notification goes to a visible ?notify=1 page first, a background one next, else the macOS fallback", async () => {
+  const dist = mkdtempSync(join(tmpdir(), "mc-dist-"))
+  writeFileSync(join(dist, "index.html"), "ok")
+  const mac = []
+  const src = { name: "cc", harness: "claude-code", listItems: async () => [], getItem: async () => null, getCalls: async () => [], getSession: async () => null }
+  const srv = await createServer(src, { port: 0, distDir: dist, notifier: { mac: (m) => mac.push(m.title) } })
+  const base = `http://127.0.0.1:${srv.port}`
+  const test = async () => (await (await fetch(`${base}/api/settings/test`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).json()).via
+  const open = async (q) => {
+    const r = await fetch(`${base}/api/events${q}`)
+    const reader = r.body.getReader()
+    await reader.read() // the opening heartbeat
+    return reader
+  }
+  const next = async (reader) => {
+    let text = ""
+    while (!text.includes("event: notify")) text += new TextDecoder().decode((await reader.read()).value)
+    return text
+  }
+  try {
+    assert.equal(await test(), "macOS")
+    const plain = await open("") // a page that did not ask: never a channel
+    const background = await open("?notify=1&visible=0")
+    assert.equal(await test(), "page (1, background)")
+    assert.match(await next(background), /event: notify\ndata: \{"kind":"test","title":"Test"/)
+    const visible = await open("?notify=1&visible=1")
+    assert.equal(await test(), "page (1)")
+    assert.match(await next(visible), /"dismissAfter":10/)
+    assert.deepEqual(mac, ["Test"])
+    for (const r of [plain, background, visible]) await r.cancel()
+  } finally { await srv.close() }
+})
+
+test("settings: notifications are off until turned on", async () => {
+  const { createSettings } = await import("../src/settings.mjs")
+  const path = join(mkdtempSync(join(tmpdir(), "mc-set-")), "settings.json")
+  assert.deepEqual(createSettings(path).get(), { notify: false, notifyDone: false, notifyDismiss: 10 })
+})
