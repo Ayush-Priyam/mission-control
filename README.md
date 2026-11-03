@@ -8,7 +8,7 @@ It reads Claude Code and Codex CLI sessions with no setup, and any other harness
 
 ![Home: needs-you queue, live lanes and recent work](docs/screenshots/home.png)
 
-Zero runtime dependencies. Runtime: Node 20 or newer. Building the page and running the tests need Node 20.19 or newer. Strictly local and read-only.
+Zero runtime dependencies. Runtime: Node 20 or newer. Building the page and running the server tests need Node 20.19 or newer; the page tests (vitest) need Node 22.12 or newer. Strictly local and read-only.
 
 ## Quick start
 
@@ -258,7 +258,9 @@ The config readers behind "Config vs calls" read names only: MCP server names fr
 ```bash
 npm ci
 npm run build       # builds the React app into dist/
-npm test            # node tests + vitest
+npm test            # node tests + vitest (vitest needs Node 22.12+)
+npm run test:server # node tests only (Node 20.19+)
+npm run test:web    # vitest only
 npm run typecheck
 npm run dev         # vite dev server for the page
 ```

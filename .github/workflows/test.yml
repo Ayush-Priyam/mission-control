@@ -17,4 +17,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - run: npm test
+      - run: npm run test:server
+      # vitest 5 and jsdom 30 need Node 22.12 or newer; the server and the build still run on 20.19.
+      - run: npm run test:web
+        if: matrix.node != '20.19'
