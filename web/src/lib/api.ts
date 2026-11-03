@@ -407,6 +407,25 @@ export async function postTitle(source: string, id: string, title: string) {
   return j as { title: string | null }
 }
 
+export type Settings = {
+  notify: boolean
+  notifyDone?: boolean
+}
+export const useSettings = () => useFetch<Settings>("/api/settings")
+export async function postSettings(patch: { notify?: boolean; notifyDone?: boolean }) {
+  const r = await fetch("/api/settings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(patch) })
+  const j = await r.json().catch(() => ({}))
+  if (!r.ok) throw new Error(j.error ?? `settings: ${r.status}`)
+  return j as Settings
+}
+
+export async function postTestNotification() {
+  const r = await fetch("/api/settings/test", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
+  const j = await r.json().catch(() => ({}))
+  if (!r.ok) throw new Error(j.error ?? `test: ${r.status}`)
+  return j as { via: string }
+}
+
 /** Pin or archive an item (either flag may be left out). */
 export async function postMark(source: string, id: string, patch: { pinned?: boolean; archived?: boolean }) {
   const r = await fetch(`${itemUrl(source, id)}/mark`, {

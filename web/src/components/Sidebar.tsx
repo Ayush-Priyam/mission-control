@@ -5,6 +5,7 @@ import { toHash, type Route } from "@/lib/route"
 import { filterTree, rollupCounts, worktreeLabel, type ChipFilter } from "@/lib/tree"
 import { cn } from "@/lib/utils"
 import { StatusDot } from "@/components/StatusDot"
+import { SettingsToggles } from "@/components/SettingsToggles"
 
 const count = (ws: WorktreeSummary[]) => ws.reduce((n, w) => n + w.counts.items, 0)
 
@@ -203,6 +204,7 @@ export function Sidebar({
           ))}
         </ul>
       </div>
+      <SettingsToggles />
       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-t border-sidebar-border px-3 py-2 font-mono text-xs text-faint">
         <span className="whitespace-nowrap">{footer}</span>
         {hiddenCount > 0 && onShowHidden && (

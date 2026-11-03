@@ -7,6 +7,7 @@ import { doneToday, worktreeLabel } from "@/lib/tree"
 import { cn } from "@/lib/utils"
 import { workingLine } from "@/lib/status-ui"
 import { BP, useMedia } from "@/lib/media"
+import { useNeedsYouNotifications } from "@/lib/notify"
 import { FreshnessBadge } from "@/components/Freshness"
 import { ThemePicker } from "@/components/ThemePicker"
 import { useTheme } from "@/lib/use-theme"
@@ -105,6 +106,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
   const found = useItems(isItem ? { all: true, source: route.source, id: route.id } : {}, isItem, false)
   const item = isItem ? (found.data?.[0] ?? null) : null
 
+  useNeedsYouNotifications()
   useEffect(() => store(SIDEBAR_KEY, sidebar ? "open" : "closed"), [sidebar])
   // Below lg the sidebar is an overlay drawer, closed by default and on every navigation.
   const desktop = useMedia(BP.lg)

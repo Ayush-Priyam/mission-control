@@ -71,7 +71,13 @@ const prs = demoPrs ? createPrReader({ exec: async () => { try { return readFile
 const config = altHome ? joinPath(altHome, ".mission-control", "config.json") : defaultConfigPath()
 // The dashboard's own state (renames, pins and the like) sits next to config.json, under the same home.
 const stateFile = (name) => joinPath(home, ".mission-control", name)
-try { srv = await createServer(adapters, { port, config, claudeHome: home, codexHome, prs, titlesPath: stateFile("titles.json"), marksPath: stateFile("marks.json") }) } catch { process.exit(1) }
+try {
+  srv = await createServer(adapters, {
+    port, config, claudeHome: home, codexHome, prs,
+    titlesPath: stateFile("titles.json"), marksPath: stateFile("marks.json"), settingsPath: stateFile("settings.json"),
+    notifier: process.platform === "darwin",
+  })
+} catch { process.exit(1) }
 
 if (!args.noOpen && process.platform === "darwin") {
   spawn("open", [`http://localhost:${srv.port}`], { stdio: "ignore", detached: true }).on("error", () => {}).unref()

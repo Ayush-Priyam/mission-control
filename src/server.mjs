@@ -18,6 +18,8 @@ import { createBudgets } from "./budgets.mjs"
 import { createWindowConfig } from "./forecast.mjs"
 import { createTitles } from "./titles.mjs"
 import { createMarks } from "./marks.mjs"
+import { createSettings } from "./settings.mjs"
+import { macNotify, startNotifier } from "./notify.mjs"
 
 const DEFAULT_DIST = join(dirname(fileURLToPath(import.meta.url)), "..", "dist")
 
@@ -136,7 +138,7 @@ async function placeFirst(items, git, hideList, keep, limit = Infinity) {
 }
 
 async function apiV2(ctx, req, res, url, parts) {
-  const { registry, git, hide, titles, marks, now } = ctx
+  const { registry, git, hide, titles, marks, settings, testNotify, now } = ctx
   const get = req.method === "GET" || req.method === "HEAD"
   const q = url.searchParams
   const all = q.get("all") === "1"
@@ -149,6 +151,20 @@ async function apiV2(ctx, req, res, url, parts) {
   // Archived items stay out of counts, the tree and lists unless asked for (?archived=1, or all=1 on lists).
   const withArchived = q.get("archived") === "1"
   const unarchived = async () => (await registry.list()).filter((i) => withArchived || !i.archived)
+  if (req.method === "POST" && parts[0] === "settings" && parts[1] === "test" && parts.length === 2) {
+    const via = testNotify({ title: "Test", subtitle: "Mission control", message: "Notifications work. Clicking opens the dashboard.", url: "#/", group: "test" })
+    return via ? json(res, { via }) : json(res, { error: "notifications are off in this server" }, 501)
+  }
+  if (parts[0] === "settings" && parts.length === 1) {
+    if (get) return json(res, settings.get())
+    if (req.method !== "POST") return false
+    const body = await readBody(req)
+    const keys = Object.keys(body ?? {})
+    if (!keys.length || !keys.every((k) => ["notify", "notifyDone"].includes(k) && typeof body[k] === "boolean")) {
+      return json(res, { error: "send notify and/or notifyDone as booleans" }, 400)
+    }
+    return json(res, settings.set(body))
+  }
   if (get && parts[0] === "sources" && parts.length === 1) {
     await registry.list() // refresh per-source errors
     return json(res, registry.sources().map((s) => ({
@@ -311,7 +327,7 @@ const LOOPBACK = ["localhost", "127.0.0.1", "[::1]"]
  * `input` is one v1 adapter, one source, or an array of either. Every entry becomes a source;
  * the v1 routes (/api/runs, /api/run/..., /api/crew, /api/x/...) stay as aliases for the first adapter.
  */
-export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, config = null, titlesPath = null, marksPath = null, now = () => Date.now(), loops = null, heartbeatMs = 15_000, eventsPollMs = 1000, claudeHome = null, codexHome = null, prs = null } = {}) {
+export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, config = null, titlesPath = null, marksPath = null, settingsPath = null, notifier = false, now = () => Date.now(), loops = null, heartbeatMs = 15_000, eventsPollMs = 1000, claudeHome = null, codexHome = null, prs = null } = {}) {
   const entries = Array.isArray(input) ? input : [input]
   // Loop thresholds from config.json {"loops": {...}} (re-read when the file changes); `loops` injects them.
   const loopCfg = typeof loops === "function" ? loops : loops ? () => loops : createLoopConfig(config)
@@ -320,27 +336,33 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
   const titles = createTitles(titlesPath)
   const marks = createMarks(marksPath)
   const registry = createRegistry(sources, { titles, marks })
+  const settings = createSettings(settingsPath)
   const adapter = entries.find((e) => typeof e.listRuns === "function") ?? null
   // `config`: path of config.json ({ "hide": [...] }); null reads nothing. The CLI passes ~/.mission-control/config.json.
   // `claudeHome` / `codexHome`: where the config readers look (names only); null reads nothing. The CLI passes the real ones.
   // `prs`: a createPrReader() for the per-PR usage view (null: none, so tests never run gh); budgets come from `config`.
-  const ctx = { adapter, registry, git, hide: createHide(config), now, claudeHome, codexHome, configPath: config, prs, budgets: createBudgets(config), windowConfig: createWindowConfig(config), titles, marks }
+  const ctx = { adapter, registry, git, hide: createHide(config), now, claudeHome, codexHome, configPath: config, prs, budgets: createBudgets(config), windowConfig: createWindowConfig(config), titles, marks, settings, testNotify: (m) => notifyVia?.(m) ?? null }
   if (!existsSync(join(distDir, "index.html"))) {
     console.error(`mission control: no built page at ${join(distDir, "index.html")} — run npm run build`)
   }
   // Server-Sent Events: "changed" when a hook line lands or a live session file grows; "heartbeat" keeps
-  // the page's freshness badge honest. The feed runs only while at least one page listens.
+  // the page's freshness badge honest; "notify" carries a notification to the pages that asked for them
+  // (/api/events?notify=1: a page that may show notifications). The feed runs only while a page listens.
   const clients = new Set()
+  const notifyClients = new Set()
   const drop = (r) => {
     clients.delete(r)
+    notifyClients.delete(r)
     if (!clients.size) feed.stop()
   }
   // One dead socket must not stop the others (or the feed callback): a failed write drops that client only.
-  const send = (event) => {
-    for (const r of clients) {
-      try { r.write(`event: ${event}\ndata: {}\n\n`) } catch { drop(r); try { r.destroy() } catch { /* already gone */ } }
+  const send = (event, data = {}, to = clients) => {
+    const frame = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
+    for (const r of to) {
+      try { r.write(frame) } catch { drop(r); try { r.destroy() } catch { /* already gone */ } }
     }
   }
+  let notifyVia = null // set once listening; the settings test button uses it
   const feed = createChangeFeed({ targets: () => registry.watchTargets(), pollMs: eventsPollMs, onChange: () => send("changed") })
   const beat = setInterval(() => send("heartbeat"), heartbeatMs)
   beat.unref?.()
@@ -348,6 +370,7 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
     res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-store", connection: "keep-alive", "x-accel-buffering": "no" })
     res.write("retry: 2000\nevent: heartbeat\ndata: {}\n\n")
     clients.add(res)
+    if (new URL(req.url, "http://localhost").searchParams.get("notify") === "1") notifyClients.add(res)
     feed.start()
     res.on("error", () => drop(res))
     req.on("close", () => drop(res))
@@ -410,6 +433,19 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
       v6.on("error", (e) => console.error(`mission control: ::1 listener failed: ${e.code ?? e.message}`))
       v6.listen(actual, "::1")
       console.log(`mission control on http://localhost:${actual}`)
+      // `notifier`: true for macOS notifications, or a notify function (tests); the page toggles gate it.
+      // A page that allowed notifications shows them itself (clickable); without one, macOS shows them.
+      const link = (n) => `#/item/${encodeURIComponent(n.source)}/${encodeURIComponent(n.id)}/lanes`
+      const fallback = typeof notifier === "function" ? notifier : macNotify
+      notifyVia = (m) => {
+        const via = notifyClients.size ? `page (${notifyClients.size})` : "macOS"
+        if (notifyClients.size) send("notify", m, notifyClients)
+        else fallback(m)
+        console.log(`${new Date().toISOString()} notify ${m.title}: ${m.subtitle ?? ""} via ${via}`)
+        return via
+      }
+      const notify = notifyVia
+      const watcher = notifier ? startNotifier({ registry, enabled: (kind) => settings.get()[kind === "done" ? "notifyDone" : "notify"], link, notify }) : null
       // Warm caches (Claude Code list, usage scan) without holding the first request.
       for (const s of registry.sources()) Promise.resolve().then(() => s.warm?.()).catch(() => {})
       resolveStart({
@@ -417,6 +453,7 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
         close: () =>
           new Promise((done) => {
             clearInterval(beat)
+            watcher?.stop()
             feed.stop()
             for (const r of clients) r.end()
             clients.clear()
