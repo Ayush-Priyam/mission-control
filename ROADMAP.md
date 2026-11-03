@@ -28,11 +28,22 @@ Ideas and fixes, roughly in the order they'll land. Many came from people trying
 - Checks are recognised by the program at the head of a command (or the npm/pnpm/yarn/bun script name), not by a word anywhere in it.
 - Same-file warnings ignore a resumed or forked session replaying its parent's edits; PR lookups run in parallel per project.
 
+## Done in v2.3
+
+- **Answer prompts from your phone.** Allow once / deny a Claude Code or Codex permission prompt, or pick an option of a Claude Code AskUserQuestion, from a paired phone over your tailnet. A second loopback listener behind `tailscale serve`, one-time QR pairing, per-device cookies, answers bound to what the phone showed, hooks that fail open to the terminal, and an audit log. See [docs/remote-answering.md](docs/remote-answering.md).
+- Installable phone app (PWA) with a mobile Needs you list.
+
+## Done in v2.4
+
+- **`mission-control remote setup`**: one command from zero to a paired phone. It checks Tailscale, writes the config, merges the hooks into Claude Code and Codex settings (with a backup, asking first), runs `tailscale serve`, turns it on and shows the QR. **`remote doctor`** shows what is missing.
+- **Phone notifications** (opt-in): a new prompt sends an empty Web Push ping; the app fetches the details over the tailnet.
+- Answerable prompts are listed first on the phone; the app reconnects when it comes back to the foreground.
+
 ## Later
 
-- Answer prompts from the browser (allow / deny / pick an option) through the hooks, not by reading the terminal screen.
 - Cost per task (spec-kit task, Ronin stage).
-- Approve and steer from a phone (local-first PWA).
+- Steer from the phone: send a session a new instruction (v2.3/v2.4 answer prompts only).
+- Answer Ronin stops (sign, approve a design, pick, reply) from the phone through the adapter's actions.
 - Rewind or fork a session from its log.
 - More readers: opencode, Pi.
 - A terminal UI over the same data.
@@ -44,23 +55,9 @@ Ideas and fixes, roughly in the order they'll land. Many came from people trying
 
 None open right now.
 
-## Verified by ronin, 2026-11-03 (specs/001-mission-control-v2-3-answer)
+## Verified on a device, 2026-11-03
 
-- **Date:** 2026-11-03.
-- **Device:** none. This was a code and documentation review only. No phone, emulator or live Claude Code or Codex session was used.
-- **Cases tried:**
-  - README and docs statements against the hook code.
-  - The `sw.js` `/api/` bypass: expected no caching, observed network-only.
-  - The hook timeout (`waitSeconds + 15`): observed.
-  - `onFailure` in `src/`: only a comment mentions it.
-  - Hex and rgb literals in the remote UI files: none found.
-  - The spike outcome in the docs: Claude Code B (2.1.317), Codex C (0.159.3).
-- **Not verified:**
-  - T21: no per-class test results were provided, so that task is open.
-  - T22: the temp-home test setup was not inspected.
-  - T24–T26: no device or tailnet, no pairing, no live prompts, no installability or offline checks, and `audit.jsonl` was not read.
-  - iOS Safari and the Android install flow.
-- **T27:** open. `ROADMAP.md` is unchanged. It still lists "Answer prompts from the browser" (line 33) and "Approve and steer from a phone" (line 35) under Later, and has no "Done in v2.3". Ronin needs to add "Done in v2.3" with the remote answering items. It should remove both Later lines, with a note that steering is still not done.
-- **T23:** the docs name the outcomes and versions. `test/remote-spike-outcome.test.mjs` exists and is described as covering them. I did not see it pass.
-
-Done: none
+- **Device:** an iPhone on the same tailnet as a MacBook (macOS), Safari and the Home Screen app, through `tailscale serve`.
+- **Checked:** pairing by QR; the Host and Origin checks behind `tailscale serve` (pairing and answers succeed, so the name passes through unchanged); `remote setup` merging the hooks while keeping the owner's other hooks, with a backup; a permission prompt sent through the real hook binary, shown on the phone and allowed there, with the hook returning `allow` and one audit line; a notification arriving with the phone locked and opening the app.
+- **Found and fixed on the device:** the live prompt was listed under old read-only entries; Apple refused the `Topic` header; the app said "offline" after coming back from the background.
+- **Not checked on a device:** Android; a Codex prompt answered from the phone; AskUserQuestion answered from the phone.
