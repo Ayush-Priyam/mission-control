@@ -130,3 +130,42 @@ test("settings: notifications are off until turned on", async () => {
   const path = join(mkdtempSync(join(tmpdir(), "mc-set-")), "settings.json")
   assert.deepEqual(createSettings(path).get(), { notify: false, notifyDone: false, notifyDismiss: 10 })
 })
+
+test("notifier: one per session (source/id) — a second prompt while the first still waits does not notify again; after it clears, the next does", async () => {
+  let waiting = []
+  const sent = []
+  const n = startNotifier({ list: async () => [], overview: async () => ({ needsYou: waiting }), enabled: (k) => k === "needs", notify: (m) => sent.push(m.message), everyMs: 1e9 })
+  await n.ready
+  waiting = [{ source: "cc", id: "a", title: "a", detail: "permission for Bash" }]
+  await n.pass()
+  waiting = [{ source: "cc", id: "a", title: "a", detail: "permission for Edit" }] // a new prompt, same session, still waiting
+  await n.pass()
+  waiting = []
+  await n.pass()
+  waiting = [{ source: "cc", id: "a", title: "a", detail: "permission for Write" }]
+  await n.pass()
+  n.stop()
+  assert.deepEqual(sent, ["permission for Bash", "permission for Write"])
+})
+
+test("server: a tab that never answers hands the notification to macOS; one that answers 'shown' does not", async () => {
+  const dist = mkdtempSync(join(tmpdir(), "mc-dist-"))
+  writeFileSync(join(dist, "index.html"), "ok")
+  const mac = []
+  const src = { name: "cc", harness: "claude-code", listItems: async () => [], getItem: async () => null, getCalls: async () => [], getSession: async () => null }
+  const srv = await createServer(src, { port: 0, distDir: dist, notifier: { mac: (m) => mac.push(m.title) }, ackWaitMs: 150 })
+  const base = `http://127.0.0.1:${srv.port}`
+  const post = (path, body) => fetch(`${base}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
+  const tab = await fetch(`${base}/api/events?notify=1&visible=1`)
+  const reader = tab.body.getReader()
+  await reader.read() // the opening heartbeat
+  try {
+    assert.equal((await (await post("/api/settings/test", {})).json()).via, "page")
+    await new Promise((r) => setTimeout(r, 300))
+    assert.deepEqual(mac, ["Test"]) // silent tab: macOS took it
+    assert.equal((await (await post("/api/settings/test", {})).json()).via, "page")
+    await post("/api/events/ack", { group: "test", result: "shown", permission: "granted", visible: "visible" })
+    await new Promise((r) => setTimeout(r, 300))
+    assert.deepEqual(mac, ["Test"]) // shown: no second banner
+  } finally { await reader.cancel(); await srv.close() }
+})
