@@ -36,6 +36,9 @@ Ideas and fixes, roughly in the order they'll land. Many came from people trying
 - Rewind or fork a session from its log.
 - More readers: opencode, Pi.
 - A terminal UI over the same data.
+- Fleets (from a reply showing Skiff): a level above projects that groups several repos, so one view covers a release across all of them.
+- Hand-off ledger: what was handed from one session or run to another, to whom, and how far along it is (for example 0/4 items done), with a link to each result.
+- Unread: sessions and runs that finished since you last opened them, as a count in the top bar and a dot in the sidebar.
 
 ## Known small issues
 
