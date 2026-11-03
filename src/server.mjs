@@ -140,7 +140,7 @@ async function placeFirst(items, git, hideList, keep, limit = Infinity) {
 }
 
 async function apiV2(ctx, req, res, url, parts) {
-  const { registry, git, hide, titles, marks, settings, autostart, onRestart, testNotify, pageFailed, noteLog, now } = ctx
+  const { registry, git, hide, titles, marks, settings, autostart, onRestart, testNotify, pageFailed, pageShown, noteLog, now } = ctx
   const get = req.method === "GET" || req.method === "HEAD"
   const q = url.searchParams
   const all = q.get("all") === "1"
@@ -157,7 +157,8 @@ async function apiV2(ctx, req, res, url, parts) {
     const b = await readBody(req)
     const str = (v) => String(v ?? "").replace(/[\r\n]+/g, " ").slice(0, 200)
     const result = str(b?.result)
-    if (result !== "shown") {
+    if (result === "shown") pageShown?.(String(b?.group ?? ""))
+    else {
       noteLog(`page ${result}: ${str(b?.group)} (permission ${str(b?.permission)}, tab ${str(b?.visible)})`)
       pageFailed?.(String(b?.group ?? ""))
     }
@@ -367,7 +368,7 @@ const LOOPBACK = ["localhost", "127.0.0.1", "[::1]"]
  * `input` is one v1 adapter, one source, or an array of either. Every entry becomes a source;
  * the v1 routes (/api/runs, /api/run/..., /api/crew, /api/x/...) stay as aliases for the first adapter.
  */
-export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, config = null, titlesPath = null, marksPath = null, settingsPath = null, notifyLogPath = null, notifier = null, autostart = null, onRestart = null, now = () => Date.now(), loops = null, heartbeatMs = 15_000, eventsPollMs = 1000, claudeHome = null, codexHome = null, prs = null, remote = null } = {}) {
+export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, config = null, titlesPath = null, marksPath = null, settingsPath = null, notifyLogPath = null, notifier = null, ackWaitMs = 5000, autostart = null, onRestart = null, now = () => Date.now(), loops = null, heartbeatMs = 15_000, eventsPollMs = 1000, claudeHome = null, codexHome = null, prs = null, remote = null } = {}) {
   const entries = Array.isArray(input) ? input : [input]
   // Loop thresholds from config.json {"loops": {...}} (re-read when the file changes); `loops` injects them.
   const loopCfg = typeof loops === "function" ? loops : loops ? () => loops : createLoopConfig(config)
@@ -377,9 +378,10 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
   const marks = createMarks(marksPath)
   const registry = createRegistry(sources, { titles, marks })
   const adapter = entries.find((e) => typeof e.listRuns === "function") ?? null
-  // What every list, count and the phone sees: archived items stay out unless asked for (`archived: true`), and
+  // What every list, count and the phone sees: archived items stay out unless asked for (`archived: true`) or
+  // open again (resuming one never hides live work), and
   // the earlier part of a chat that changed session id (parkedInto) always does: it is listed once, under its newest id.
-  const listed = async ({ archived = false } = {}) => (await registry.list()).filter((i) => !i.parkedInto && (archived || !i.archived))
+  const listed = async ({ archived = false } = {}) => (await registry.list()).filter((i) => !i.parkedInto && (archived || !i.archived || i.open === true))
   // `config`: path of config.json ({ "hide": [...] }); null reads nothing. The CLI passes ~/.mission-control/config.json.
   // `claudeHome` / `codexHome`: where the config readers look (names only); null reads nothing. The CLI passes the real ones.
   // `prs`: a createPrReader() for the per-PR usage view (null: none, so tests never run gh); budgets come from `config`.
@@ -398,7 +400,8 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
   let notifyVia = async (m) => (noteLog(`notify ${m.title}: ${m.subtitle ?? ""} via none (server starting)`), "none") // set once listening
   const shownOnPage = new Map() // group -> { m, at }: sent to a tab, until it reports back
   let pageFailed = () => {} // set once listening
-  const ctx = { adapter, registry, git, hide: createHide(config), now, claudeHome, codexHome, configPath: config, prs, budgets: createBudgets(config), windowConfig: createWindowConfig(config), titles, marks, listed, settings, noteLog, testNotify: (m) => notifyVia(m), pageFailed: (g) => pageFailed(g), autostart, onRestart }
+  const pageShown = (group) => shownOnPage.delete(group)
+  const ctx = { adapter, registry, git, hide: createHide(config), now, claudeHome, codexHome, configPath: config, prs, budgets: createBudgets(config), windowConfig: createWindowConfig(config), titles, marks, listed, settings, noteLog, testNotify: (m) => notifyVia(m), pageFailed: (g) => pageFailed(g), pageShown, autostart, onRestart }
   // v2.3 remote answering: `remote` = { home, remoteDir, hooksDir, flags?, ... } turns on the runtime
   // control (status, POST /api/remote/enabled, the second listener). Without it, status is read-only defaults.
   let actualPort = port
@@ -539,18 +542,21 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
         const toPages = (visible, m) => {
           const r = [...notifyPages].filter(([, v]) => v === visible).map(([res]) => res).pop()
           if (!r) return
-          if (m.group) shownOnPage.set(m.group, { m, at: Date.now() })
+          const at = Date.now()
+          if (m.group) shownOnPage.set(m.group, { m, at })
           send("notify", { ...m, dismissAfter: settings.get().notifyDismiss }, [r])
+          // A tab that never answers (a half-closed connection still counts as connected) failed too.
+          if (m.group) setTimeout(() => { if (shownOnPage.get(m.group)?.at === at) pageFailed(m.group, "no answer from the page") }, ackWaitMs).unref?.()
         }
         const mac = notifier.mac === true ? macNotify : notifier.mac || null
         const dispatch = createDispatcher({ pages, toPages, phone: remoteControl?.push ?? null, mac, wants })
         // A tab that reports it could not show one (permission gone, an error) hands it to macOS once.
-        pageFailed = (group) => {
+        pageFailed = (group, why = "the page could not show it") => {
           const p = shownOnPage.get(group)
           shownOnPage.delete(group)
           if (!p || Date.now() - p.at > 60_000 || !mac) return
           mac(p.m)
-          noteLog(`notify ${p.m.title}: ${p.m.subtitle ?? ""} via macOS (the page could not show it)`)
+          noteLog(`notify ${p.m.title}: ${p.m.subtitle ?? ""} via macOS (${why})`)
         }
         notifyVia = async (m) => {
           const via = await dispatch(m)

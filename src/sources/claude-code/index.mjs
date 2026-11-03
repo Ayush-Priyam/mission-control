@@ -39,12 +39,12 @@ const startCache = new Map() // pid -> { at, value }: `ps` once a minute per pid
  * When a process started, as `ps -o lstart=` prints it in UTC (Claude Code's procStart is UTC), whitespace
  * folded; null when `ps` cannot say (no such pid, no `ps`), so the caller keeps the plain pid check.
  */
-function processStart(pid) {
+export function processStart(pid, { spawn = spawnSync } = {}) {
   const hit = startCache.get(pid)
   if (hit && Date.now() - hit.at < 60_000) return hit.value
   let value = null
   try {
-    const r = spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", timeout: 2000, env: { ...process.env, TZ: "UTC" } })
+    const r = spawn("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", timeout: 2000, env: { ...process.env, TZ: "UTC" } })
     value = r.status === 0 ? r.stdout.replace(/\s+/g, " ").trim() || null : null
   } catch { value = null }
   if (startCache.size > 512) startCache.clear() // pids come and go over a long uptime; a refill costs one `ps` each
