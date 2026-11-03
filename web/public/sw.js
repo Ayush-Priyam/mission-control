@@ -55,3 +55,36 @@ self.addEventListener("fetch", (event) => {
     )
   }
 })
+
+// Notifications. A push carries no content: fetch what is waiting from this server (over the tailnet,
+// with the device cookie) and show it. iOS requires a visible notification for every push.
+self.addEventListener("push", (event) => {
+  event.waitUntil(
+    fetch("/api/remote/prompts", { credentials: "include", cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : { prompts: [] }))
+      .catch(() => ({ prompts: [] }))
+      .then(({ prompts = [] }) => {
+        const p = prompts.find((x) => x.answerable) ?? prompts[0]
+        const what = p ? [p.tool, p.target].filter(Boolean).join(" · ") || p.title : ""
+        const n = prompts.filter((x) => x.answerable).length
+        return self.registration.showNotification(n > 1 ? `Needs you (${n})` : "Needs you", {
+          body: what ? `${p.title ? `${p.title}: ` : ""}${what}`.slice(0, 180) : "A prompt is waiting",
+          tag: "mc-needs-you",
+          renotify: true,
+          icon: "/icons/icon-192.png",
+          badge: "/icons/icon-192.png",
+          data: { url: "/" },
+        })
+      }),
+  )
+})
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close()
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      const open = list.find((c) => new URL(c.url).origin === self.location.origin)
+      return open ? open.focus() : self.clients.openWindow("/")
+    }),
+  )
+})

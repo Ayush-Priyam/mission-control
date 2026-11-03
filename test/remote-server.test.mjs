@@ -289,3 +289,31 @@ test("control: a CLI request under remote/control/ is applied and answered in <i
     assert.deepEqual(auditLines(e.home).map((l) => [l.actor, l.action]), [["cli", "remote-on"], ["cli", "remote-off"]])
   } finally { await ctl.close() }
 })
+
+test("notifications: subscribe needs a paired device and a known push service; a new prompt pings once", async () => {
+  const e = env()
+  const pings = []
+  const srv = await createRemoteServer({ port: 0, host: HOST, ...e, needsYou: async () => [], heartbeatMs: 200, scanMs: 50, pushFetch: async (url, init) => { pings.push({ url, init }); return { status: 201 } } })
+  try {
+    const port = srv.port
+    assert.equal((await req(port, { path: "/api/remote/push/key" })).status, 401)
+    assert.equal((await post(port, "/api/remote/push/subscribe", { endpoint: "https://web.push.apple.com/x" })).status, 401)
+    const { cookie } = await pairDevice(port, e)
+    const key = await req(port, { path: "/api/remote/push/key", headers: { cookie } })
+    assert.equal(Buffer.from(key.json.publicKey, "base64url").length, 65)
+    assert.equal((await post(port, "/api/remote/push/subscribe", { endpoint: "https://evil.example/x" }, { cookie })).status, 400)
+    assert.equal((await post(port, "/api/remote/push/subscribe", { endpoint: "https://web.push.apple.com/x" }, { cookie })).status, 200)
+
+    await new Promise((r) => setTimeout(r, 150))
+    writePending(e.remoteDir, { promptId: newPromptId(), harness: "claude-code", sessionId: "s9", kind: "permission", tool: "Bash", target: "npm test", askedAt: new Date().toISOString(), pid: process.pid })
+    await new Promise((r) => setTimeout(r, 300))
+    assert.equal(pings.length, 1)
+    assert.equal(pings[0].url, "https://web.push.apple.com/x")
+    assert.equal(pings[0].init.body, undefined)
+
+    assert.equal((await post(port, "/api/remote/push/unsubscribe", {}, { cookie })).status, 200)
+    writePending(e.remoteDir, { promptId: newPromptId(), harness: "claude-code", sessionId: "s10", kind: "permission", tool: "Bash", target: "ls", askedAt: new Date().toISOString(), pid: process.pid })
+    await new Promise((r) => setTimeout(r, 300))
+    assert.equal(pings.length, 1)
+  } finally { await srv.close() }
+})

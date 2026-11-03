@@ -8,6 +8,7 @@ import { join, resolve, sep } from "node:path"
 import { ANSWER_REASONS, ERRORS, HEARTBEAT_SECONDS, SERVER_HEARTBEAT_MS } from "./contract.mjs"
 import { appendAudit, appendToggle } from "./audit.mjs"
 import { createChangeFeed } from "../events.mjs"
+import { createNewPromptWatch, loadVapid, ping, setSubscription, validSubscription } from "./push.mjs"
 import { clearCookieHeader, createPairLimiter, listDevices, pairingStatus, redeemToken, verifyDevice } from "./pairing.mjs"
 import { abandonAll, abandonAnswered, decide, isPromptId, joinEntries, listPending, pendingDir } from "./prompts.mjs"
 import { ensureDir, isPidAlive, readConfigFile, readJson, readRemoteConfig, remoteFromConfig, removeFile, startHeartbeat, validateRemote, writeJsonAtomic, writeRemoteEnabled } from "./state.mjs"
@@ -84,7 +85,7 @@ async function serveShell(res, distDir, pathname) {
  * `ctx`: { remoteDir, hooksDir, home, distDir, needsYou(), watchDirs(), seen(deviceId), known, now, isAlive }.
  */
 export function createRemoteServer({ port, host, ...ctx }) {
-  const { remoteDir, hooksDir, home, distDir, needsYou, watchDirs = () => [], now = () => Date.now(), isAlive = isPidAlive, seen = () => {}, known = new Map(), heartbeatMs = HEARTBEAT_SECONDS * 1000 - 500, scanMs = 1000 } = ctx
+  const { remoteDir, hooksDir, home, distDir, needsYou, watchDirs = () => [], now = () => Date.now(), isAlive = isPidAlive, seen = () => {}, known = new Map(), heartbeatMs = HEARTBEAT_SECONDS * 1000 - 500, scanMs = 1000, pushFetch = globalThis.fetch } = ctx
   const hosts = new Set([host, `${host}:443`])
   const origin = `https://${host}`
   const limiter = ctx.limiter ?? createPairLimiter({ now })
@@ -106,8 +107,13 @@ export function createRemoteServer({ port, host, ...ctx }) {
   const beat = setInterval(() => push("heartbeat"), heartbeatMs)
   beat.unref?.()
   // Outcome B: a prompt answered in the terminal gets an abandon, so its hook exits at once.
+  // A new prompt pings subscribed phones (Web Push, no payload), once per prompt.
+  const pings = createNewPromptWatch(() => {
+    ping({ remoteDir, deviceIds: listDevices({ remoteDir }).map((d) => d.id), fetch: pushFetch, now }).catch(() => {})
+  })
   const scan = setInterval(() => {
     try { if (abandonAnswered({ remoteDir, hooksDir, now: now(), isAlive }) > 0) push("changed") } catch { /* next scan */ }
+    try { pings(listPending({ remoteDir, hooksDir, isAlive }).map((p) => p.promptId)) } catch { /* next scan */ }
   }, scanMs)
   scan.unref?.()
 
@@ -145,6 +151,20 @@ export function createRemoteServer({ port, host, ...ctx }) {
     if (get && path === "/api/remote/me") {
       const d = auth(req, res)
       return d && send(res, 200, { device: { id: d.id, label: d.label } })
+    }
+    // Notifications (opt-in per device): the VAPID public key, then the browser's subscription.
+    if (get && path === "/api/remote/push/key") {
+      const d = auth(req, res)
+      return d && send(res, 200, { publicKey: loadVapid(remoteDir).publicKey })
+    }
+    if (req.method === "POST" && (path === "/api/remote/push/subscribe" || path === "/api/remote/push/unsubscribe")) {
+      const d = auth(req, res)
+      if (!d) return
+      if (path.endsWith("/unsubscribe")) { setSubscription(remoteDir, d.id, null, now()); return send(res, 200, { ok: true }) }
+      const sub = validSubscription(await readJsonBody(req))
+      if (!sub) return send(res, 400, { error: "not a push subscription from a known push service" })
+      setSubscription(remoteDir, d.id, sub, now())
+      return send(res, 200, { ok: true })
     }
     if (get && path === "/api/remote/prompts") {
       const d = auth(req, res)

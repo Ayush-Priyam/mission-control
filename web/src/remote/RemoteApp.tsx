@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { answer as answerApi, me as meApi, prompts as promptsApi, useOnline, type AnswerResult, type Decision, type Entry, type MeResult, type PromptsResult } from "@/lib/remote"
+import { NotifyButton } from "./NotifyButton"
 import { OfflineBanner } from "./OfflineBanner"
 import { PairScreen } from "./PairScreen"
 import { PromptList } from "./PromptList"
@@ -59,6 +60,9 @@ function Queue({ api, onAuth, makeEventSource }: { api: RemoteApi; onAuth: (k: "
   return (
     <>
       <OfflineBanner offline={!online || (failed && entries === null)} />
+      <div className="mx-auto w-full max-w-md px-4 pt-3">
+        <NotifyButton />
+      </div>
       <PromptList entries={entries} online={online} answer={api.answer} onAuth={onAuth} failed={failed} />
     </>
   )
