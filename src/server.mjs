@@ -508,6 +508,7 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
       resolveStart({
         port: actual,
         remote: remoteControl,
+        needsYou, // what the phone is offered (no hidden, archived or parked items); exposed for tests
         close: async () => {
           await remoteControl?.close().catch(() => {})
           return new Promise((done) => {

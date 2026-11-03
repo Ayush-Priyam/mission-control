@@ -221,3 +221,37 @@ test("a chat that changed session id is listed once, under the newest id, which 
     assert.deepEqual(items.map((i) => [i.id, i.title]), [["new", "my chat"]])
   } finally { await srv.close() }
 })
+
+test("rename route: sets and restores the title, keeps originalTitle, refuses bad bodies, 501 when off", async () => {
+  const titlesPath = join(mkdtempSync(join(tmpdir(), "mc-titles-")), "titles.json")
+  await withServer({ titlesPath }, async (base) => {
+    const post = (id, body) => fetch(`${base}/api/item/cc/${id}/title`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
+    const one = async (id) => (await (await fetch(`${base}/api/items?id=${id}`)).json())[0]
+    assert.deepEqual(await (await post("w1", { title: "  my   rename " })).json(), { title: "my rename" })
+    assert.deepEqual([(await one("w1")).title, (await one("w1")).originalTitle], ["my rename", "task w1"])
+    assert.equal((await (await post("w1", { title: "x".repeat(500) })).json()).title.length, 160)
+    assert.deepEqual(await (await post("w1", { title: "" })).json(), { title: null })
+    assert.equal((await one("w1")).title, "task w1")
+    assert.equal((await post("w1", { title: 5 })).status, 400)
+    assert.equal((await post("nope", { title: "x" })).status, 404)
+  })
+  await withServer({}, async (base) => {
+    const r = await fetch(`${base}/api/item/cc/w1/title`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: "x" }) })
+    assert.equal(r.status, 501)
+  })
+})
+
+test("the phone's Needs you leaves out hidden, archived and parked sessions", async () => {
+  const marksPath = join(mkdtempSync(join(tmpdir(), "mc-marks-")), "marks.json")
+  const waiting = { status: "waiting", waiting: true }
+  const items = [item("a", "/work/shop", waiting), item("arch", "/work/shop", waiting), item("old", "/work/shop", { ...waiting, parkedInto: "a" }), item("noise", "/home/u/.claude-mem/observer-sessions", waiting)]
+  const src = { ...source(), listItems: async () => items.map((i) => ({ ...i })), getItem: async (id) => { const s = items.find((i) => i.id === id); return s ? { summary: s, lanes: [], events: [] } : null } }
+  const dist = mkdtempSync(join(tmpdir(), "mc-dist-"))
+  writeFileSync(join(dist, "index.html"), "ok")
+  const srv = await createServer(src, { port: 0, distDir: dist, git: stubGit, marksPath })
+  try {
+    const r = await fetch(`http://127.0.0.1:${srv.port}/api/item/cc/arch/mark`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ archived: true }) })
+    assert.equal(r.status, 200, await r.text())
+    assert.deepEqual((await srv.needsYou()).map((n) => n.id), ["a"])
+  } finally { await srv.close() }
+})
