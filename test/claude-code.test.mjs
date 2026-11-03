@@ -217,6 +217,19 @@ test("parseTranscript: the newest away_summary is the recap, without the /config
   assert.deepEqual(p.meta.recap, { text: "Tests pass; next, commit.", ts: "2026-11-02T00:00:00Z" })
 })
 
+test("a live pid that started at another time than its sessions file says is a reused pid: closed", async () => {
+  const cfg = mkdtempSync(join(tmpdir(), "mc-cc-"))
+  const r = join(cfg, "projects")
+  mkdirSync(join(r, "-p"), { recursive: true })
+  mkdirSync(join(cfg, "sessions"))
+  for (const id of ["same", "reused"]) writeFileSync(join(r, "-p", `${id}.jsonl`), JSON.stringify({ type: "user", cwd: "/w", message: { role: "user", content: id } }) + "\n")
+  writeFileSync(join(cfg, "sessions", `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: "same", status: "idle", procStart: "Tue Nov  3 06:39:58 2026" }))
+  writeFileSync(join(cfg, "sessions", "1.json"), JSON.stringify({ pid: 1, sessionId: "reused", status: "idle", procStart: "Mon Oct  5 09:00:00 2026" }))
+  const startOf = (pid) => (pid === process.pid ? "Tue Nov 3 06:39:58 2026" : "Sat Oct 31 08:00:00 2026")
+  const got = Object.fromEntries((await create({ root: r, startOf }).listItems()).map((i) => [i.id, i.open]))
+  assert.deepEqual(got, { same: true, reused: false })
+})
+
 test("parseTranscript: half-written last line is skipped", () => {
   const p = parseTranscript('{"type":"user","timestamp":"2026-11-02T09:00:00Z","message":{"content":"hi"}}\n{"type":"assistant","message":{"id":"x","content":[{"type":"tool_u')
   assert.deepEqual([p.calls.length, p.meta.title], [0, "hi"])

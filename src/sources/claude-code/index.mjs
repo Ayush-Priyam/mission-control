@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process"
 import { closeSync, openSync, readSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, join, sep } from "node:path"
@@ -26,15 +27,32 @@ const add = (a, b) => { a.in += b.in; a.out += b.out; a.cacheRead += b.cacheRead
 const iso = (ms) => new Date(ms).toISOString()
 const shq = (s) => (/^[\w@%+=:,./-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`)
 
+const startCache = new Map() // pid -> { at, value }: `ps` once a minute per pid at most
+/**
+ * When a process started, as `ps -o lstart=` prints it in UTC (Claude Code's procStart is UTC), whitespace
+ * folded; null when `ps` cannot say (no such pid, no `ps`), so the caller keeps the plain pid check.
+ */
+function processStart(pid) {
+  const hit = startCache.get(pid)
+  if (hit && Date.now() - hit.at < 60_000) return hit.value
+  let value = null
+  try {
+    const r = spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", timeout: 2000, env: { ...process.env, TZ: "UTC" } })
+    value = r.status === 0 ? r.stdout.replace(/\s+/g, " ").trim() || null : null
+  } catch { value = null }
+  startCache.set(pid, { at: Date.now(), value })
+  return value
+}
+
 /**
  * Claude Code sessions as a v2 source. `root` is the projects dir (default ~/.claude/projects),
  * `now` an injectable clock. `hooksDir` holds the level-1 hook logs: a session whose last Notification is
  * unanswered is "waiting" (an idle reminder is "ready", i.e. idle). Read-only; every file read is confined to the real path of `root`. `cachePath` is where the
  * usage scan persists its per-file results (omitted: memory only); `parse` (text -> parseTranscript result,
  * usage scan only) and `onParse(path, { bytes, full })` (every transcript read for items, calls and turns)
- * are for tests.
+ * are for tests, and so is `startOf` (pid -> its start time, null when unknown).
  */
-export function create({ root, now = () => Date.now(), hooksDir, cachePath, parse = parseTranscript, onParse, loops = () => LOOP_DEFAULTS } = {}) {
+export function create({ root, now = () => Date.now(), hooksDir, cachePath, parse = parseTranscript, startOf = processStart, onParse, loops = () => LOOP_DEFAULTS } = {}) {
   const cache = createCache() // key helper for the head cache below
   // id -> { stamp, tails, data }: one parse per session version (stamp = identity of all its files), shared by
   // getItem, getCalls and the overview. tails keeps each file's incremental reader, so a growing
@@ -224,6 +242,9 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
         const j = JSON.parse(readFileSync(join(dir, n), "utf8"))
         if (typeof j?.sessionId !== "string" || !Number.isInteger(j.pid) || j.pid <= 0) continue
         try { process.kill(j.pid, 0) } catch (e) { if (e.code !== "EPERM") continue } // signal 0 only checks the pid exists
+        // A pid can be reused after a crash: a live pid that started at another time than the file says is not it.
+        const started = typeof j.procStart === "string" ? startOf(j.pid) : null
+        if (started && started !== j.procStart.replace(/\s+/g, " ").trim()) continue
         const since = Number.isFinite(j.statusUpdatedAt) ? new Date(j.statusUpdatedAt).toISOString() : null
         out.set(j.sessionId, { busy: j.status === "busy", since })
         if (typeof j.jobId === "string") jobs.set(j.jobId, j.sessionId)
