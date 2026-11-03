@@ -206,6 +206,8 @@ export type ItemSummary = {
   readySince?: string
   sinceChange?: SinceChange
   loop?: LoopInfo
+  /** A process is still running this session (false: closed). Absent when the source cannot tell. */
+  open?: boolean
 }
 export type Placed = { key: string; name: string; worktree: string }
 export type Lane = {
