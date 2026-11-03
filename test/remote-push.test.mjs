@@ -46,13 +46,13 @@ test("ping: no payload, VAPID header; 410 removes the subscription; revoked devi
     setSubscription(d, "gone", { endpoint: "https://web.push.apple.com/old" }, 0)
     setSubscription(d, "revoked", { endpoint: "https://web.push.apple.com/r" }, 0)
     const calls = []
-    const fetch = async (url, init) => { calls.push({ url, init }); return { status: url.endsWith("/old") ? 410 : 201 } }
+    const fetch = async (url, init) => { calls.push({ url, init }); return { status: url.endsWith("/old") ? 410 : 201, text: async () => "" } }
     assert.equal(await ping({ remoteDir: d, deviceIds: ["phone", "gone"], fetch }), 1)
     assert.deepEqual(calls.map((c) => c.url).sort(), [APPLE, "https://web.push.apple.com/old"])
     const c = calls.find((x) => x.url === APPLE)
     assert.equal(c.init.method, "POST")
     assert.equal(c.init.body, undefined)
-    assert.equal(c.init.headers["Content-Length"], "0")
+    assert.equal(c.init.headers.Topic, undefined) // Apple: BadWebPushTopic
     assert.match(c.init.headers.Authorization, /^vapid t=.+, k=/)
     assert.deepEqual(Object.keys(readSubscriptions(d)), ["phone"])
   } finally { rmSync(d, { recursive: true, force: true }) }

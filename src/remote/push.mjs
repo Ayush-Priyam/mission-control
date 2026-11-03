@@ -70,10 +70,11 @@ export async function ping({ remoteDir, deviceIds, fetch = globalThis.fetch, now
   for (const [id, s] of Object.entries(subs)) {
     if (!live.has(id) || !validSubscription(s)) { setSubscription(remoteDir, id, null, now()); continue }
     try {
-      const r = await fetch(s.endpoint, { method: "POST", headers: { TTL: "120", Urgency: "high", Topic: "needs-you", Authorization: vapidAuth(s.endpoint, vapid, now()), "Content-Length": "0" }, signal: AbortSignal.timeout(10_000) })
+      // No Topic header: Apple refuses ours as BadWebPushTopic, and an empty ping has nothing to collapse.
+      const r = await fetch(s.endpoint, { method: "POST", headers: { TTL: "120", Urgency: "high", Authorization: vapidAuth(s.endpoint, vapid, now()) }, signal: AbortSignal.timeout(10_000) })
       if (r.status === 404 || r.status === 410) setSubscription(remoteDir, id, null, now())
       else if (r.status < 300) sent++
-      else console.error(`mission control: push to ${new URL(s.endpoint).hostname} refused (${r.status})`)
+      else console.error(`mission control: push to ${new URL(s.endpoint).hostname} refused (${r.status}${await r.text().then((t) => (t ? `: ${t.slice(0, 200)}` : "")).catch(() => "")})`)
     } catch (e) {
       console.error(`mission control: push failed: ${e?.message ?? e}`)
     }
