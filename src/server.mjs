@@ -364,8 +364,10 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
   // What the phone, the notifier and every surface agree on: listed() without hidden (noise) projects.
   const shown = async () => (await place(await listed(), git, ctx.hide.list())).filter((i) => !i.hidden)
   const needsYou = async () => (await registry.overview(await shown())).needsYou
+  // With the notifier on, its dispatcher decides which channel gets each prompt, so the remote server does
+  // not ping phones on its own as well.
   const remoteControl = remote
-    ? createRemoteControl({ configPath: config, distDir, needsYou, watchDirs: () => registry.watchTargets().dirs, dashboardPort: () => actualPort, ...remote })
+    ? createRemoteControl({ configPath: config, distDir, needsYou, watchDirs: () => registry.watchTargets().dirs, dashboardPort: () => actualPort, ...(notifier ? { pushOnNewPrompt: false } : {}), ...remote })
     : null
   if (!existsSync(join(distDir, "index.html"))) {
     console.error(`mission control: no built page at ${join(distDir, "index.html")} — run npm run build`)
@@ -491,13 +493,14 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
         const link = (n) => `#/item/${encodeURIComponent(n.source)}/${encodeURIComponent(n.id)}/lanes`
         const pages = () => { let visible = 0, hidden = 0; for (const v of notifyPages.values()) v ? visible++ : hidden++; return { visible, hidden } }
         const toPages = (visible, m) => send("notify", { ...m, dismissAfter: settings.get().notifyDismiss }, [...notifyPages].filter(([, v]) => v === visible).map(([r]) => r))
-        const dispatch = createDispatcher({ pages, toPages, mac: notifier.mac === true ? macNotify : notifier.mac || null })
+        const dispatch = createDispatcher({ pages, toPages, phone: remoteControl?.push ?? null, mac: notifier.mac === true ? macNotify : notifier.mac || null })
         notifyVia = (m) => {
           const via = dispatch(m)
           noteLog(`notify ${m.title}: ${m.subtitle ?? ""} via ${via}`)
           return via
         }
-        const enabled = (kind) => (kind === "done" ? settings.get().notifyDone : settings.get().notify)
+        const phoneOn = () => !!remoteControl?.push.available()
+        const enabled = (kind) => (kind === "done" ? settings.get().notifyDone : settings.get().notify || phoneOn())
         return startNotifier({ list: shown, overview: (items) => registry.overview(items), enabled, link, notify: notifyVia })
       })() : null
       // Warm caches (Claude Code list, usage scan) without holding the first request.
