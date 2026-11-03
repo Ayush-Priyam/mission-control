@@ -309,7 +309,16 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
   // Server-Sent Events: "changed" when a hook line lands or a live session file grows; "heartbeat" keeps
   // the page's freshness badge honest. The feed runs only while at least one page listens.
   const clients = new Set()
-  const send = (event) => { for (const r of clients) r.write(`event: ${event}\ndata: {}\n\n`) }
+  const drop = (r) => {
+    clients.delete(r)
+    if (!clients.size) feed.stop()
+  }
+  // One dead socket must not stop the others (or the feed callback): a failed write drops that client only.
+  const send = (event) => {
+    for (const r of clients) {
+      try { r.write(`event: ${event}\ndata: {}\n\n`) } catch { drop(r); try { r.destroy() } catch { /* already gone */ } }
+    }
+  }
   const feed = createChangeFeed({ targets: () => registry.watchTargets(), pollMs: eventsPollMs, onChange: () => send("changed") })
   const beat = setInterval(() => send("heartbeat"), heartbeatMs)
   beat.unref?.()
@@ -318,10 +327,8 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
     res.write("retry: 2000\nevent: heartbeat\ndata: {}\n\n")
     clients.add(res)
     feed.start()
-    req.on("close", () => {
-      clients.delete(res)
-      if (!clients.size) feed.stop()
-    })
+    res.on("error", () => drop(res))
+    req.on("close", () => drop(res))
   }
 
   // Filled once the actual port is known (port 0 picks one).

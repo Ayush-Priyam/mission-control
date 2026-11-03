@@ -109,3 +109,26 @@ test("change feed: debounced to one 'changed' per burst, and idle once stopped",
   assert.equal(n, 1)
   assert.equal(feed.running(), false)
 })
+
+test("/api/events: a client that drops does not stop the others; a write that throws drops only that client", async () => {
+  const root = tmp(), hooksDir = tmp()
+  mkdirSync(join(root, "-work-shop"))
+  writeFileSync(join(root, "-work-shop", "s1.jsonl"), JSON.stringify({ type: "user", cwd: "/work/shop", timestamp: new Date().toISOString(), message: { role: "user", content: "hi" } }) + "\n")
+  const srv = await createServer([create({ root, hooksDir })], { port: 0, distDir: dist(), eventsPollMs: 100, heartbeatMs: 50 })
+  const gone = await listen(srv.port), b = await listen(srv.port), c = await listen(srv.port)
+  const { ServerResponse } = await import("node:http")
+  const orig = ServerResponse.prototype.write
+  try {
+    await Promise.all([gone, b, c].map((x) => x.waitFor("heartbeat")))
+    gone.close()
+    // The next server-side write throws (as a dead socket can): send() must catch it, drop that client and go on.
+    let thrown = 0
+    ServerResponse.prototype.write = function (...args) { if (!thrown) { thrown++; throw new Error("EPIPE") } return orig.apply(this, args) }
+    await new Promise((r) => setTimeout(r, 120))
+    ServerResponse.prototype.write = orig
+    assert.equal(thrown, 1)
+    const [nb, nc] = [b.events.length, c.events.length]
+    await new Promise((r) => setTimeout(r, 200))
+    assert.ok(b.events.length > nb || c.events.length > nc, "the remaining client keeps receiving heartbeats")
+  } finally { ServerResponse.prototype.write = orig; b.close(); c.close(); await srv.close() }
+})

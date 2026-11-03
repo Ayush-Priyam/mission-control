@@ -140,7 +140,7 @@ The guide has a complete worked run, writer snippets in Node, Python and Bash, a
 
 **Home** lists what needs you, what is looping, what is ready for your next prompt (collapsed), what is live, and the latest work across every project. The top bar has a chip per state: **Needs you**, **Looping**, **Ready**, Working, Stopped, Done today; a click filters the sidebar and Home.
 
-The page gets pushed updates: `GET /api/events` (Server-Sent Events) says "changed" the moment a hook line lands or a live session file grows, and the page refetches at once. Polling every 2 s stays as the fallback, and the freshness badge counts the stream's heartbeats.
+The page gets pushed updates: `GET /api/events` (Server-Sent Events) says "changed" the moment a hook line lands or a live session file grows, and the page refetches at once. Polling every 2 s stays as the fallback, and the freshness badge counts the stream's heartbeats. Browsers allow about 6 open HTTP/1.1 connections per origin, and each tab holds one for the stream: with more than ~5 dashboard tabs open on the same address, further tabs (and their fetches) queue until one closes. Keep one or two tabs open, or open extra ones on `127.0.0.1` as well as `localhost` (two origins).
 
 ## States
 
