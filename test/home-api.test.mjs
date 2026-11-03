@@ -255,3 +255,20 @@ test("the phone's Needs you leaves out hidden, archived and parked sessions", as
     assert.deepEqual((await srv.needsYou()).map((n) => n.id), ["a"])
   } finally { await srv.close() }
 })
+
+test("an archived session that is open stays listed, flagged archived; closed, it is hidden", async () => {
+  const marksPath = join(mkdtempSync(join(tmpdir(), "mc-marks-")), "marks.json")
+  let open = true
+  const live1 = () => item("live1", "/work/shop", { open })
+  const src = { ...source(), listItems: async () => [live1()], getItem: async (id) => (id === "live1" ? { summary: live1(), lanes: [], events: [] } : null) }
+  const dist = mkdtempSync(join(tmpdir(), "mc-dist-"))
+  writeFileSync(join(dist, "index.html"), "ok")
+  const srv = await createServer(src, { port: 0, distDir: dist, git: stubGit, marksPath })
+  const base = `http://127.0.0.1:${srv.port}`
+  try {
+    await fetch(`${base}/api/item/cc/live1/mark`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ archived: true }) })
+    assert.deepEqual((await (await fetch(`${base}/api/items`)).json()).map((i) => [i.id, i.archived]), [["live1", true]])
+    open = false
+    assert.deepEqual(await (await fetch(`${base}/api/items`)).json(), [])
+  } finally { await srv.close() }
+})

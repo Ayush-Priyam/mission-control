@@ -347,9 +347,10 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
   const marks = createMarks(marksPath)
   const registry = createRegistry(sources, { titles, marks })
   const adapter = entries.find((e) => typeof e.listRuns === "function") ?? null
-  // What every list, count and the phone sees: archived items stay out unless asked for (`archived: true`), and
+  // What every list, count and the phone sees: archived items stay out unless asked for (`archived: true`) or
+  // open again (resuming one never hides live work), and
   // the earlier part of a chat that changed session id (parkedInto) always does: it is listed once, under its newest id.
-  const listed = async ({ archived = false } = {}) => (await registry.list()).filter((i) => !i.parkedInto && (archived || !i.archived))
+  const listed = async ({ archived = false } = {}) => (await registry.list()).filter((i) => !i.parkedInto && (archived || !i.archived || i.open === true))
   // `config`: path of config.json ({ "hide": [...] }); null reads nothing. The CLI passes ~/.mission-control/config.json.
   // `claudeHome` / `codexHome`: where the config readers look (names only); null reads nothing. The CLI passes the real ones.
   // `prs`: a createPrReader() for the per-PR usage view (null: none, so tests never run gh); budgets come from `config`.
