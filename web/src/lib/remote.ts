@@ -182,23 +182,40 @@ export function useOnline(onChanged?: () => void, make?: (url: string) => EventS
   cb.current = onChanged
 
   useEffect(() => {
-    last.current = Date.now()
-    const close = connectRemoteEvents((e) => {
-      if (e === "error") return // down is judged by silence, so a quick reconnect does not flicker
+    let close = () => {}
+    const connect = () => {
+      close()
       last.current = Date.now()
-      setStreamUp(true)
-      if (e === "changed") cb.current?.()
-    }, make)
+      close = connectRemoteEvents((e) => {
+        if (e === "error") return // down is judged by silence, so a quick reconnect does not flicker
+        last.current = Date.now()
+        setStreamUp(true)
+        if (e === "changed") cb.current?.()
+      }, make)
+    }
+    connect()
     const tick = setInterval(() => setStreamUp(Date.now() - last.current <= OFFLINE_AFTER_MS), 1000)
     const on = () => setOnline(true)
     const off = () => setOnline(false)
+    // iOS freezes a Home Screen app in the background and its stream dies without reconnecting: coming back
+    // (opening it from a notification, say) opens a fresh stream and re-fetches at once.
+    const back = () => {
+      if (document.visibilityState !== "visible") return
+      connect()
+      setStreamUp(true)
+      cb.current?.()
+    }
     window.addEventListener("online", on)
     window.addEventListener("offline", off)
+    document.addEventListener("visibilitychange", back)
+    window.addEventListener("pageshow", back)
     return () => {
       close()
       clearInterval(tick)
       window.removeEventListener("online", on)
       window.removeEventListener("offline", off)
+      document.removeEventListener("visibilitychange", back)
+      window.removeEventListener("pageshow", back)
     }
   }, [make])
 

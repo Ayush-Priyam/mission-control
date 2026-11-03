@@ -134,6 +134,21 @@ describe("events and useOnline", () => {
     expect(changed).toHaveBeenCalledTimes(1)
   })
 
+  it("coming back to the foreground opens a fresh stream and re-fetches (iOS kills it in the background)", async () => {
+    vi.useFakeTimers()
+    const changed = vi.fn()
+    render(<Probe onChanged={changed} />)
+    const first = FakeES.last
+    await act(async () => { await vi.advanceTimersByTimeAsync(9000) })
+    expect(text()).toBe("false")
+    await act(async () => { document.dispatchEvent(new Event("visibilitychange")) })
+    expect(first.closed).toBe(true)
+    expect(FakeES.last).not.toBe(first)
+    expect(changed).toHaveBeenCalledTimes(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(1100) })
+    expect(text()).toBe("true")
+  })
+
   it("is offline while navigator.onLine is false", async () => {
     render(<Probe />)
     await act(async () => { window.dispatchEvent(new Event("offline")) })
