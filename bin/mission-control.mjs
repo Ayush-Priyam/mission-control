@@ -135,6 +135,8 @@ const stateFile = (name) => joinPath(home, ".mission-control", name)
 // Start at login (a LaunchAgent per port); not for a stand-in home (the demo): it would go in the real ~/Library.
 const { createAutostart } = await import("../src/autostart.mjs")
 const autostart = port && !altHome ? createAutostart({ port, argv, script: fileURLToPath(import.meta.url) }) : null
+// Started by launchd: keep the agent file in step with what runs now (node path, script, carried variables).
+try { if (autostart?.refresh()) console.log("mission control: start at login updated for this node and script") } catch { /* next start */ }
 // Turning it on from a dashboard started by hand: launchd already accepted the agent (autostart.set), and its
 // copy is waiting for this port, so stop listening and leave.
 const onRestart = async () => {

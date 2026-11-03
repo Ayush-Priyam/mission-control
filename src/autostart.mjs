@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process"
-import { existsSync, mkdirSync, realpathSync, unlinkSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from "node:fs"
 import { homedir, tmpdir } from "node:os"
 import { join, sep } from "node:path"
 
@@ -41,14 +41,12 @@ export function createAutostart({
   // A node path that survives `brew upgrade` or an nvm switch when it is the same binary as this one.
   const node = () => nodes.find((n) => real(n) && real(n) === real(execPath)) ?? execPath
 
-  function write() {
+  function content() {
     const own = argv.filter((a) => a !== "--no-open")
     const hasPort = own.some((a) => a === "--port" || a.startsWith("--port="))
     const args = [node(), script, ...own, ...(hasPort ? [] : ["--port", String(port)]), "--no-open"]
     const vars = { PATH: env.PATH ?? "/usr/bin:/bin:/usr/sbin:/sbin", ...Object.fromEntries(CARRIED.filter((k) => env[k]).map((k) => [k, env[k]])) }
-    mkdirSync(join(home, "Library", "LaunchAgents"), { recursive: true })
-    mkdirSync(join(home, ".mission-control", "logs"), { recursive: true, mode: 0o700 })
-    writeFileSync(plist, `<?xml version="1.0" encoding="UTF-8"?>
+    return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -69,7 +67,12 @@ ${Object.entries(vars).map(([k, v]) => `    <key>${xml(k)}</key><string>${xml(v)
   <key>StandardErrorPath</key><string>${xml(log)}</string>
 </dict>
 </plist>
-`)
+`
+  }
+  function write() {
+    mkdirSync(join(home, "Library", "LaunchAgents"), { recursive: true })
+    mkdirSync(join(home, ".mission-control", "logs"), { recursive: true, mode: 0o700 })
+    writeFileSync(plist, content())
   }
   const remove = () => { try { unlinkSync(plist) } catch { /* already gone */ } }
 
@@ -96,6 +99,20 @@ ${Object.entries(vars).map(([k, v]) => `    <key>${xml(k)}</key><string>${xml(v)
         throw { status: 500, message: "launchctl did not load the agent; start at login stays off" }
       }
       return { enabled: true, restart: true }
+    },
+    /**
+     * Running as the agent: rewrite the agent file when what it should say has changed (a stable node path
+     * that now exists, the script, the carried variables), so the next login starts what runs now. True when
+     * it was rewritten. Never creates the file: turning start at login on is the owner's call.
+     */
+    refresh() {
+      if (!managed || !existsSync(plist)) return false
+      const next = content()
+      let now = null
+      try { now = readFileSync(plist, "utf8") } catch { return false }
+      if (now === next) return false
+      writeFileSync(plist, next)
+      return true
     },
     /** Undo a set(on) that went through, when another part of the same request failed. */
     async revert(on) {

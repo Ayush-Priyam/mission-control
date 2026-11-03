@@ -51,3 +51,17 @@ test("autostart: not offered for an npx copy; carries the env the dashboard read
   assert.ok(!text.includes("SECRET"))
   assert.equal(text.split("<string>--port</string>").length, 1) // no second --port
 })
+
+test("autostart refresh: run as the agent, a changed node path or script rewrites the agent file; unchanged or not the agent does nothing", async () => {
+  const home = mkdtempSync(join(tmpdir(), "mc-home-"))
+  const label = "dev.mission-control.4370"
+  const make = (execPath, env) => createAutostart({ port: 4370, argv: [], script: "/mc/bin/mission-control.mjs", home, platform: "darwin", env: { PATH: "/bin", ...env }, execPath, nodes: [], run: async () => true })
+  const plist = join(home, "Library", "LaunchAgents", `${label}.plist`)
+  assert.equal(make("/old/node", { XPC_SERVICE_NAME: label }).refresh(), false) // no agent file: never created here
+  await make("/old/node", { XPC_SERVICE_NAME: label }).set(true)
+  assert.ok(readFileSync(plist, "utf8").includes("<string>/old/node</string>"))
+  assert.equal(make("/old/node", { XPC_SERVICE_NAME: label }).refresh(), false)
+  assert.equal(make("/new/node", {}).refresh(), false) // started by hand: not the agent, leaves it alone
+  assert.equal(make("/new/node", { XPC_SERVICE_NAME: label }).refresh(), true)
+  assert.ok(readFileSync(plist, "utf8").includes("<string>/new/node</string>"))
+})
