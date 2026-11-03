@@ -142,7 +142,7 @@ test("waiting: a Codex PermissionRequest hook opens a wait; a later tool event c
   const w = (await s.listItems()).find((i) => i.id === C1)
   assert.deepEqual([w.status, w.waiting], ["waiting", true])
   const item = await s.getItem(C1)
-  assert.deepEqual([item.lanes[0].status, item.lanes[0].reason], ["waiting", "Codex needs your approval to use Bash: install deps"])
+  assert.deepEqual([item.lanes[0].status, item.lanes[0].reason], ["waiting", "Codex needs your approval to use Bash: npm i"])
   recordCodexHook({ raw: raw({ hook_event_name: "PostToolUse", tool_name: "Bash" }), hooksDir, now: at(base + 15_000) })
   const after = (await src(base + 30_000, { hooksDir }).listItems()).find((i) => i.id === C1)
   assert.equal(after.waiting, false)
@@ -333,4 +333,12 @@ test("v2.2 waiting: a sibling call's output in the rollout does not end a keyed 
   assert.equal(await waiting(), true, "the sibling finishing is not the session moving on")
   appendFileSync(file, JSON.stringify({ timestamp: at(20), type: "response_item", payload: { type: "function_call_output", call_id: "call_a", output: "ok" } }) + "\n")
   assert.equal(await waiting(), false)
+})
+
+test("Codex approval message never carries tool_input.description, only the masked target", () => {
+  const hooksDir = mkdtempSync(join(tmpdir(), "mc-hooks-"))
+  recordCodexHook({ raw: JSON.stringify({ session_id: C1, hook_event_name: "PermissionRequest", tool_name: "Bash", tool_input: { command: "curl -H 'Authorization: Bearer tok123' x", description: "SECRET-DESC" } }), hooksDir })
+  const text = readFileSync(join(hooksDir, "codex", `${C1}.jsonl`), "utf8")
+  assert.ok(!text.includes("SECRET-DESC") && !text.includes("tok123"))
+  assert.equal(JSON.parse(text).message, "Codex needs your approval to use Bash: curl -H 'Authorization: Bearer ***' x")
 })

@@ -22,6 +22,10 @@ describe("trackPrompts", () => {
     expect(first.fresh.size).toBe(0)
     const same = trackPrompts(first, [a], 2000)
     expect(same.fresh.size).toBe(0)
+    const moved = trackPrompts(same, [{ ...a, updatedAt: "2026-11-02T10:00:09Z" }], 2500)
+    expect(moved.fresh.size).toBe(0) // the log moving on is not a new prompt
+    const noSince = trackPrompts(trackPrompts(null, [ask("x", { since: null, updatedAt: "t1" })], 1), [ask("x", { since: null, updatedAt: "t2" })], 2)
+    expect(noSince.fresh.size).toBe(0)
     const changed = trackPrompts(same, [ask("2026-11-02T10:00:20Z")], 3000)
     expect([...changed.fresh.keys()]).toEqual(["claude-code/s1"])
     expect(changed.fresh.get("claude-code/s1")).toBe(3000 + NEW_PROMPT_MS)

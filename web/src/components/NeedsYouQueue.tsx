@@ -11,7 +11,8 @@ const itemHref = (source: string, id: string) => toHash({ view: "item", source, 
 export const NEW_PROMPT_MS = 8000
 export type PromptTrack = { seen: Map<string, string>; fresh: Map<string, number> }
 const promptKey = (e: NeedsYou) => `${e.source}/${e.id}`
-const promptStamp = (e: NeedsYou) => `${e.since ?? e.updatedAt ?? ""}|${e.lane}`
+// The prompt's own ask time only: updatedAt moves with every log line and would flag the same prompt as new.
+const promptStamp = (e: NeedsYou) => `${e.since ?? ""}|${e.lane}`
 
 /**
  * Which prompts are new: an item whose waiting prompt changed (a different since) or that started waiting

@@ -1,6 +1,6 @@
 import { closeSync, openSync, readSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs"
 import { join, sep } from "node:path"
-import { askOf, createWaitingReader, readyOf } from "../../hooks.mjs"
+import { UNCONFIRMED_MS, askOf, createWaitingReader, readyOf } from "../../hooks.mjs"
 import { capText, isSessionName } from "../../names.mjs"
 import { createCache } from "./cache.mjs"
 import { parseTranscript, peek, transcriptAcc, turnsAcc } from "./parse.mjs"
@@ -187,6 +187,8 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
     const since = Date.parse(w.since)
     if (Number.isFinite(since)) {
       if (now() - since > WAIT_EXPIRY_MS) return null
+      // A subagent's PermissionRequest no Notification confirmed: it was auto-denied in a session that cannot prompt.
+      if (w.tentative && now() - since > UNCONFIRMED_MS) return null
       const k = cache.key(main.real, main.st)
       const last = lastTurns.get(k) ?? lastTurns.set(k, lastTurnMs(main.real, main.st.size))
       if (last > since + CLEAR_GAP_MS) return null

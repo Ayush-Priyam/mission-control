@@ -17,15 +17,37 @@ const KEYED_CLEARS = new Set(["PreToolUse", "PostToolUse", "PostToolUseFailure",
 const MAX_MESSAGE = 500
 const MAX_TARGET = 120
 
+// Obvious secrets in a command line, masked before the target is cut or stored. Best effort, not a scanner.
+const SECRETS = [
+  [/(\bBearer\s+)[^\s'"]+/gi, "$1***"],
+  [/(\b[A-Za-z_]*(?:token|key|secret|password|passwd|pwd)[A-Za-z_]*\s*[=:]\s*)("[^"]*"|'[^']*'|[^\s&'"]+)/gi, "$1***"],
+  [/(^|\s)-p(?![\s-])\S+/g, "$1-p***"],
+  [/\b(AKIA|ASIA)[A-Z0-9]{16}\b/g, "$1***"],
+  [/\b(ghp_|gho_|ghs_|ghu_|github_pat_|xox[abposr]-|sk-)[A-Za-z0-9_-]{8,}/g, "$1***"],
+]
+
+/** A command line with obvious secrets masked: Bearer tokens, token=/key=/password= values, -p<password>, AWS and GitHub-style keys. */
+export function maskSecrets(text) {
+  let out = text
+  for (const [re, to] of SECRETS) out = out.replace(re, to)
+  return out
+}
+
 /**
  * What a tool call is about, secret-safe: the first 120 characters of its command or file path, on one
- * line. Nothing else from tool_input is ever kept (no file contents, no edit strings, no prompts).
+ * line, with obvious secrets masked. Nothing else from tool_input is ever kept (no file contents, no edit
+ * strings, no descriptions, no prompts).
  */
 export function targetOf(toolInput) {
   if (!toolInput || typeof toolInput !== "object") return null
   const v = [toolInput.command, toolInput.file_path, toolInput.notebook_path, toolInput.path].find((x) => typeof x === "string" && x.trim())
-  return v ? v.replace(/\s+/g, " ").trim().slice(0, MAX_TARGET) : null
+  if (!v) return null
+  const line = v.replace(/\s+/g, " ").trim()
+  return (typeof toolInput.command === "string" && v === toolInput.command ? maskSecrets(line) : line).slice(0, MAX_TARGET)
 }
+
+/** A PermissionRequest from a subagent that no Notification confirms within this long was auto-denied (no prompt shown). */
+export const UNCONFIRMED_MS = 10_000
 
 export const defaultHooksDir = (home = homedir()) => join(home, ".mission-control", "hooks")
 
@@ -44,6 +66,8 @@ export function recordHook({ raw, event, hooksDir = defaultHooksDir(), now = () 
     if (typeof input.message === "string") line.message = input.message.slice(0, MAX_MESSAGE)
     if (typeof input.tool_name === "string") line.tool = input.tool_name
     if (typeof input.notification_type === "string") line.kind = input.notification_type.slice(0, 40)
+    // A subagent's event: its PermissionRequest may never show a prompt (background, non-interactive).
+    if (typeof input.agent_id === "string" && SAFE_ID.test(input.agent_id) && input.agent_id.length <= 128) line.agentId = input.agent_id
     if (name === "PreToolUse" || name === "PermissionRequest") {
       const target = targetOf(input.tool_input)
       if (target) line.target = target
@@ -81,7 +105,9 @@ export const IDLE_MESSAGE = /waiting for your input/i
  * tool event for the same call id, a tool event with no id, a new prompt or Stop clears it, so a sibling
  * tool running in parallel never clears it. An unkeyed wait replaces every open wait (Claude's rule). The
  * oldest still-open keyed wait is reported (it is what blocks the session), else the newest.
- * { waiting, ready?, turnEnd?, message?, since?, tool?, target?, callId? }. Takes parsed events or raw lines.
+ * A subagent's PermissionRequest (agentId set) is `tentative` until a Notification follows it: the reader
+ * drops it after UNCONFIRMED_MS (it was auto-denied in a session that cannot prompt).
+ * { waiting, ready?, turnEnd?, message?, since?, tool?, target?, callId?, tentative? }. Takes parsed events or raw lines.
  */
 export function waitingFromHooks(lines) {
   const events = parseHookLines(lines)
@@ -95,12 +121,16 @@ export function waitingFromHooks(lines) {
       const idle = ev === "Notification" && (e.kind === "idle_prompt" || (msg !== undefined && IDLE_MESSAGE.test(msg)))
       if (idle) { open.clear(); open.set("", { ready: true, message: msg, since: e.ts }); continue }
       const prev = open.get(id)
-      if (ev === "Notification" && prev?.waiting && prev.from === "PermissionRequest") { prev.message ??= msg; continue }
+      if (ev === "Notification" && prev?.waiting && prev.from === "PermissionRequest") { prev.message ??= msg; prev.tentative = false; continue }
       const tool = typeof e.tool === "string" ? e.tool : pre?.tool
       const target = typeof e.target === "string" ? e.target : typeof e.tool === "string" && e.tool !== pre?.tool ? undefined : pre?.target
       if (!id) open.clear()
       open.delete(id)
-      open.set(id, { waiting: true, from: ev, message: msg, since: e.ts, tool, target, callId: id || undefined })
+      // A subagent's PermissionRequest: background subagents in non-interactive mode cannot show a prompt, and
+      // Claude Code then denies the call without a PermissionDenied hook (that fires only in auto mode). A
+      // shown prompt is followed by the ~6 s permission Notification, which confirms it; see UNCONFIRMED_MS.
+      const tentative = ev === "PermissionRequest" && typeof e.agentId === "string" && e.agentId !== ""
+      open.set(id, { waiting: true, from: ev, message: msg, since: e.ts, tool, target, callId: id || undefined, tentative })
     } else if (CLEARS.has(ev)) {
       if (id && KEYED_CLEARS.has(ev)) { open.delete(id); open.delete("") } else open.clear()
       if (ev === "Stop" && e.codexEvent === "Stop") open.set("", { ready: true, turnEnd: true, since: e.ts })
@@ -119,6 +149,7 @@ export function waitingFromHooks(lines) {
   if (typeof shown.tool === "string") out.tool = shown.tool
   if (typeof shown.target === "string") out.target = shown.target
   if (typeof shown.callId === "string") out.callId = shown.callId
+  if (shown.tentative) out.tentative = true
   return out
 }
 
@@ -214,9 +245,9 @@ export function recordCodexHook({ raw, hooksDir = defaultHooksDir(), now = () =>
     const callId = [input.tool_use_id, input.call_id, input.tool_call_id].find((v) => typeof v === "string" && SAFE_ID.test(v) && v.length <= 128)
     if (callId) line.callId = callId
     if (name === "PermissionRequest") {
-      const what = typeof input.tool_input?.description === "string" ? input.tool_input.description : ""
+      // The masked target only: tool_input.description is free text written by the model and may quote anything.
       const tool = typeof input.tool_name === "string" ? input.tool_name : "a tool"
-      line.message = `Codex needs your approval to use ${tool}${what ? `: ${what}` : ""}`.slice(0, MAX_MESSAGE)
+      line.message = `Codex needs your approval to use ${tool}${line.target ? `: ${line.target}` : ""}`.slice(0, MAX_MESSAGE)
     }
     const dir = join(hooksDir, "codex")
     mkdirSync(dir, { recursive: true, mode: 0o700 })

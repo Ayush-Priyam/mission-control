@@ -281,3 +281,42 @@ test("ready: Claude's idle reminder makes the session ready (counted and listed 
   const tree = shapeTree(await buildTree(await src.listItems(), { git: stubGit }), { now: T })
   assert.equal(tree[0].worktrees[0].counts.ready, 1)
 })
+
+test("targetOf masks obvious secrets in the 120-char target", () => {
+  const t = (command) => targetOf({ command })
+  // Fake values, split so secret scanners do not flag the fixtures themselves.
+  const fake = (...p) => p.join("")
+  assert.equal(t(fake("curl -H 'Authorization: Bea", "rer fake.value-1' https://x")), "curl -H 'Authorization: Bearer ***' https://x")
+  assert.equal(t("curl https://x/api?token=s3cr3t&key=k3y&password=hunter2"), "curl https://x/api?token=***&key=***&password=***")
+  assert.equal(t("mysql -u root -phunter2 db"), "mysql -u root -p*** db")
+  assert.equal(t(fake("export AWS_SECRET_ACCESS_KEY", "=not/a-real-value")), "export AWS_SECRET_ACCESS_KEY=***")
+  assert.equal(t("aws s3 ls --profile x AKIAIOSFODNN7EXAMPLE"), "aws s3 ls --profile x AKIA***")
+  assert.equal(t("gh auth login --with-token ghp_abcdefghijklmnopqrstuvwxyz0123456789"), "gh auth login --with-token ghp_***")
+  assert.equal(t("API_KEY=sk-live-abc npm start"), "API_KEY=*** npm start")
+  assert.equal(t("npm test -- --watch=false"), "npm test -- --watch=false", "ordinary commands unchanged")
+  assert.equal(t("ls -la /tmp"), "ls -la /tmp")
+  assert.equal(targetOf({ file_path: "/w/src/password.ts" }), "/w/src/password.ts", "a path naming a secret is not a secret")
+})
+
+test("a PermissionRequest from a subagent is tentative: confirmed by a following Notification, else dropped after 10 s by the reader", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mc-hk-"))
+  const T = Date.parse("2026-11-02T10:00:00Z")
+  assert.ok(recordHook({ hooksDir: dir, now: () => new Date(T), raw: JSON.stringify({ session_id: "s", hook_event_name: "PermissionRequest", tool_name: "Bash", agent_id: "agent-1", agent_type: "Explore", tool_input: { command: "rm -rf build" } }) }))
+  const lines = readFileSync(join(dir, "s.jsonl"), "utf8")
+  assert.equal(JSON.parse(lines.trim()).agentId, "agent-1")
+  const w = waitingFromHooks(lines)
+  assert.deepEqual([w.waiting, w.tentative], [true, true])
+  const confirmed = waitingFromHooks([...lines.trim().split("\n"), JSON.stringify({ event: "Notification", kind: "permission_prompt", message: "Claude needs your permission to use Bash", ts: new Date(T + 6000).toISOString() })])
+  assert.deepEqual([confirmed.waiting, confirmed.tentative, confirmed.since], [true, undefined, new Date(T).toISOString()])
+  const main = waitingFromHooks([JSON.stringify({ event: "PermissionRequest", tool: "Bash", ts: new Date(T).toISOString() })])
+  assert.equal(main.tentative, undefined, "the main session's own prompt is never tentative")
+})
+
+test("source: a subagent's PermissionRequest with no Notification within 10 s is not waiting (auto-denied, no prompt); with one it is", async () => {
+  const req = { event: "PermissionRequest", sessionId: "sess1", ts: new Date(T).toISOString(), tool: "Bash", target: "rm -rf build", agentId: "agent-1", message: "Claude needs your permission to use Bash" }
+  const { root, hooksDir } = fixture([req], { logMtime: T - 5000 })
+  assert.equal((await create({ root, hooksDir, now: () => T + 5_000 }).listItems())[0].waiting, true, "a prompt may be open for the first 10 s")
+  assert.equal((await create({ root, hooksDir, now: () => T + 15_000 }).listItems())[0].waiting, false)
+  const shown = fixture([req, { event: "Notification", sessionId: "sess1", kind: "permission_prompt", ts: new Date(T + 6000).toISOString(), message: "Claude needs your permission to use Bash" }], { logMtime: T - 5000 })
+  assert.equal((await create({ root: shown.root, hooksDir: shown.hooksDir, now: () => T + 60_000 }).listItems())[0].waiting, true)
+})
