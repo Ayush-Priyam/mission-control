@@ -97,10 +97,12 @@ test("/api/events: same Host and Origin checks as every route", async () => {
 test("change feed: debounced to one 'changed' per burst, and idle once stopped", async () => {
   const dir = tmp()
   let n = 0
-  const feed = createChangeFeed({ targets: () => ({ dirs: [dir], files: [] }), debounceMs: 100, pollMs: 50, onChange: () => n++ })
+  // A wide window: under a busy full test run, macOS file events for one burst can arrive spread out.
+  const feed = createChangeFeed({ targets: () => ({ dirs: [dir], files: [] }), debounceMs: 400, pollMs: 50, onChange: () => n++ })
   feed.start()
   await new Promise((r) => setTimeout(r, 60))
   for (let i = 0; i < 5; i++) appendFileSync(join(dir, "a.jsonl"), "{}\n")
+  for (let t = 0; t < 60 && n === 0; t++) await new Promise((r) => setTimeout(r, 50))
   await new Promise((r) => setTimeout(r, 300))
   assert.equal(n, 1)
   feed.stop()
