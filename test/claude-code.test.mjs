@@ -4,7 +4,7 @@ import { appendFileSync, mkdtempSync, mkdirSync, statSync, symlinkSync, writeFil
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
-import create, { comparableStart } from "../src/sources/claude-code/index.mjs"
+import create, { comparableStart, processStart } from "../src/sources/claude-code/index.mjs"
 import { PRICES, costOf, family, version } from "../src/sources/claude-code/prices.mjs"
 import { parseTranscript } from "../src/sources/claude-code/parse.mjs"
 import { createCache } from "../src/sources/claude-code/cache.mjs"
@@ -228,6 +228,16 @@ test("a live pid that started at another time than its sessions file says is a r
   const startOf = (pid) => (pid === process.pid ? "Tue Nov 3 06:39:58 2026" : "Sat Oct 31 08:00:00 2026")
   const got = Object.fromEntries((await create({ root: r, startOf }).listItems()).map((i) => [i.id, i.open]))
   assert.deepEqual(got, { same: true, reused: false })
+})
+
+test("processStart: ps lstart in UTC, whitespace folded; null when ps fails or is missing; cached per pid", () => {
+  const calls = []
+  const spawn = (cmd, args, opts) => (calls.push([cmd, args.join(" "), opts.env.TZ]), { status: 0, stdout: "Tue Nov  3 06:39:58 2026\n" })
+  assert.equal(processStart(91001, { spawn }), "Tue Nov 3 06:39:58 2026")
+  assert.equal(processStart(91001, { spawn }), "Tue Nov 3 06:39:58 2026")
+  assert.deepEqual(calls, [["ps", "-o lstart= -p 91001", "UTC"]]) // the second answer came from the cache
+  assert.equal(processStart(91002, { spawn: () => ({ status: 1, stdout: "" }) }), null)
+  assert.equal(processStart(91003, { spawn: () => { throw new Error("no ps") } }), null)
 })
 
 test("parseTranscript: half-written last line is skipped", () => {
