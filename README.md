@@ -8,7 +8,7 @@ It reads Claude Code and Codex CLI sessions with no setup, and any other harness
 
 ![Home: needs-you queue, live lanes and recent work](docs/screenshots/home.png)
 
-Zero runtime dependencies. Runtime: Node 20 or newer. Building the page and running the tests need Node 20.19 or newer. Strictly local and read-only.
+Zero runtime dependencies. Runtime: Node 20 or newer. Building the page and running the tests need Node 20.19 or newer. Local-first: no accounts, no cloud. Its only outbound connections are opt-in (`gh pr list`, and an empty notification ping to a paired phone).
 
 ## Quick start
 
@@ -118,7 +118,7 @@ The demo generates invented data into `examples/claude`, `examples/hooks`, `exam
 | `--remote-port <n>` | turn remote answering on for this run, on `127.0.0.1:<n>` (needs `--remote-host`; must differ from `--port`). Overrides `remote.port`; never written to config. See [remote answering](docs/remote-answering.md) |
 | `--remote-host <name>.ts.net` | the tailnet name the phone opens (needs `--remote-port`). Overrides `remote.host` |
 
-Other commands: `hooks install` prints the Claude Code hooks block, `hooks install codex` the Codex one; `hook <Event>` and `hook codex` are what those hooks run. `remote pair` prints a one-time pairing link and QR code, `remote devices` lists paired devices, `remote revoke <id>` removes one, and `remote on`, `remote off` and `remote status` turn remote answering on and off (see [remote answering](docs/remote-answering.md)).
+Other commands: `hooks install` prints the Claude Code hooks block, `hooks install codex` the Codex one; `hook <Event>` and `hook codex` are what those hooks run. `remote setup` takes you from zero to a paired phone in one command (asking before each change) and `remote doctor` shows what is missing, `remote pair` prints a one-time pairing link and QR code, `remote devices` lists paired devices, `remote revoke <id>` removes one, and `remote on`, `remote off` and `remote status` turn remote answering on and off (see [remote answering](docs/remote-answering.md)).
 
 ## Levels: how much you set up
 
@@ -261,7 +261,7 @@ It has exactly one write route, `POST /api/remote/enabled`, behind the Remote an
 **Remote answering, off by default.** When you turn it on (`--remote-port` with `--remote-host`, `mission-control remote on`, or the switch), a second listener opens on `127.0.0.1` only (default port 4330). It is meant to sit behind `tailscale serve --bg --https=443 http://127.0.0.1:4330`, which puts it on your tailnet over HTTPS at `https://<name>.ts.net`. It:
 
 - answers only `Host` `<name>.ts.net` or `<name>.ts.net:443` (else 403), and only `Origin` `https://<name>.ts.net` (a foreign Origin, or a POST without one, gets 403); a non-JSON POST gets 415;
-- serves only the phone page (`/`, `/pair`, the manifest, the service worker, icons and assets) and `/api/remote/{pair,me,prompts,events,answer}`. Everything else is 404, including every dashboard API: no transcripts, calls or usage;
+- serves only the phone page (`/`, `/pair`, the manifest, the service worker, icons and assets), `/api/remote/{pair,me,prompts,events,answer}` and `/api/remote/push/{key,subscribe,unsubscribe}`. Everything else is 404, including every dashboard API: no transcripts, calls or usage;
 - needs a paired device for every route but `pair`.
 
 **Never use `tailscale funnel` for this.** Funnel puts the page on the public internet. It is also never bound to your LAN: plain HTTP over the LAN is not supported.
@@ -272,13 +272,17 @@ It has exactly one write route, `POST /api/remote/enabled`, behind the Remote an
 
 **The hook wait, and fail-open.** The `PermissionRequest` hook (and Claude's `PreToolUse` for AskUserQuestion) holds the request for a phone answer only while the server is running (heartbeat under 6 s), remote answering is on and at least one device is paired. It waits at most `remote.waitSeconds` (default 120). On a timeout, the server stopping, remote being turned off, the prompt being answered in the terminal, or any error, it prints nothing and exits 0, so the terminal prompt handles the request exactly as without Mission Control. It never uses `onFailure: "block"`. The hook and the server talk only through files under `~/.mission-control/remote/` (directory 0700, files 0600); the hook opens no socket.
 
+**Notifications, opt-in per phone.** A phone sends nothing until you tap "Turn on notifications" in the app (on iOS, from the Home Screen app). Then, when a new prompt starts waiting, the server sends that device one Web Push ping with **no payload**, signed with a VAPID key pair kept in `~/.mission-control/remote/vapid.json` (0600). The push service (Apple, Google or Mozilla) learns only that something is waiting. The app then fetches the prompt from this server over your tailnet to show it. Only `https` endpoints of those push services are accepted. A subscription belongs to one device: it goes when you revoke the device, turn notifications off, or the push service says it is gone. This is the only connection Mission Control opens to the internet on its own.
+
+**`remote setup` and your settings.** `mission-control remote setup` merges Mission Control's hooks into `~/.claude/settings.json` (and `~/.codex/hooks.json` when `~/.codex` exists) only after you answer `y` (or with `--yes`). It keeps every other hook, replaces only earlier Mission Control entries, and saves a timestamped backup next to the file first. A file that is not valid JSON is never overwritten. `remote doctor` only reads.
+
 **Codex hooks are a guardrail, not a complete enforcement boundary.** Codex documents its hooks that way. A phone answer is one way to answer a Codex approval, not a control over what Codex may do.
 
 **Audit log.** Every accepted phone answer appends one line to `~/.mission-control/audit.jsonl` (mode 0600, append-only): time, device id, prompt id, `allow`, `deny` or `answer`, the tool, and a SHA-256 of the masked target (or of the question texts). Every actual on/off change appends `{ts, actor, action}`. No command, path, question, option or secret is written there.
 
-The built-in sources are read-only: they never write to a runs directory, a repo, `~/.claude` or `~/.codex`. The only things written are the hook logs under `~/.mission-control/hooks`, a usage cache under `~/.mission-control/cache`, the remote-answering state under `~/.mission-control/remote`, `remote.enabled` in `config.json` when you turn remote answering on or off, and `~/.mission-control/audit.jsonl`.
+The built-in sources are read-only: they never write to a runs directory, a repo, `~/.claude` or `~/.codex`. The only things written are the hook logs under `~/.mission-control/hooks`, a usage cache under `~/.mission-control/cache`, the remote-answering state under `~/.mission-control/remote`, `remote.enabled` and `remote.host` in `config.json` when you turn remote answering on or off or run `remote setup`, `~/.mission-control/audit.jsonl`, and, only when you agree to it in `remote setup`, the hook entries in `~/.claude/settings.json` and `~/.codex/hooks.json`.
 
-The config readers behind "Config vs calls" read names only: MCP server names from `~/.claude.json` (`mcpServers`, and the project entry's `mcpServers` minus `disabledMcpServers`), a project's `.mcp.json`, enabled plugin names from `~/.claude/settings.json` and the project's `.claude/settings.json` / `settings.local.json`, skill folder names under `~/.claude/skills` and the project's `.claude/skills`, and `[mcp_servers.<name>]` table names from `$CODEX_HOME/config.toml`. Commands, arguments, URLs, environment variables, headers and tokens in those files are never returned, stored or logged. The only command the server runs besides read-only `git` is the optional read-only `gh pr list` above; it is the only thing that may reach the network. Session names are confined to their root, so `..` and symlinks out of it are refused. The pages make no network requests outside their own server: they use system fonts and load nothing from elsewhere.
+The config readers behind "Config vs calls" read names only: MCP server names from `~/.claude.json` (`mcpServers`, and the project entry's `mcpServers` minus `disabledMcpServers`), a project's `.mcp.json`, enabled plugin names from `~/.claude/settings.json` and the project's `.claude/settings.json` / `settings.local.json`, skill folder names under `~/.claude/skills` and the project's `.claude/skills`, and `[mcp_servers.<name>]` table names from `$CODEX_HOME/config.toml`. Commands, arguments, URLs, environment variables, headers and tokens in those files are never returned, stored or logged. The only command the server runs besides read-only `git` is the optional read-only `gh pr list` above. It and the opt-in notification ping are the only things that may reach the network. Session names are confined to their root, so `..` and symlinks out of it are refused. The pages make no network requests outside their own server: they use system fonts and load nothing from elsewhere.
 
 ## Develop
 

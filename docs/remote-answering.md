@@ -15,7 +15,33 @@ Everything stays local: no cloud, no account. On any problem the hook prints not
 - [Tailscale](https://tailscale.com) on the laptop and the phone, logged in to the same tailnet, with HTTPS certificates enabled for the tailnet (Tailscale admin console → DNS → HTTPS Certificates).
 - Your laptop's tailnet name, for example `laptop.tail1234.ts.net` (`tailscale status --self` shows it).
 
-## Set it up
+## Set it up: one command
+
+With Tailscale signed in on the laptop (`tailscale up`) and on the phone, with HTTPS certificates enabled for the tailnet:
+
+```bash
+mission-control remote setup
+```
+
+It checks each step and fixes only what is missing, asking first (`y/N`; `--yes` accepts all):
+
+1. Tailscale is signed in, and reads your `*.ts.net` name;
+2. writes `remote.host` to `~/.mission-control/config.json`;
+3. merges the hooks into `~/.claude/settings.json` (and `~/.codex/hooks.json` when `~/.codex` exists), keeping your other hooks and saving a backup first. For Codex, run `/hooks` once and approve them;
+4. runs `tailscale serve --bg --https=443 http://127.0.0.1:4330` (tailnet only);
+5. turns remote answering on, and shows a pairing QR when no device is paired yet.
+
+Run it again any time: a finished step is left alone. To see what is missing without changing anything:
+
+```bash
+mission-control remote doctor
+```
+
+On the phone: scan the QR, then Share → **Add to Home Screen**, open the app from there, and tap **Turn on notifications**.
+
+The steps below are what `remote setup` does, for doing them by hand.
+
+## Set it up by hand
 
 1. Tell Mission Control the name, in `~/.mission-control/config.json`:
 
@@ -50,6 +76,12 @@ mission-control remote pair
 It prints a QR code and a link like `https://laptop.tail1234.ts.net/pair#t=…`. Scan it or open it on the phone. The link works **once** and for **10 minutes**; running `remote pair` again replaces an unused link. The phone gets a long-lived, HttpOnly device cookie and lands on the prompt list. Add it to the home screen to install it as an app.
 
 The token sits after `#`, so it is never sent in a request line and never lands in a log. Only its SHA-256 is stored, in `~/.mission-control/remote/pairing.json`.
+
+## Notifications
+
+Tap **Turn on notifications** in the app. On iPhone this works only in the Home Screen app (iOS 16.4 or later), and the button says so in Safari. From then on, a new prompt sends that phone one notification ("Needs you", with the tool and target) and a tap opens the app on the list.
+
+The ping itself carries nothing: Apple (or Google, or Mozilla) only learns that something is waiting. The app fetches the prompt from your laptop over the tailnet before it shows the notification. Turn it off with the same button, or revoke the device.
 
 ## Devices and revoke
 
@@ -165,6 +197,8 @@ In practice, with these versions:
 
 | Problem | Fix |
 |---|---|
+| Not sure what is missing | `mission-control remote doctor` lists each step with its fix. |
+| No notification arrives | Notifications are per phone: open the Home Screen app and tap **Turn on notifications**; check iOS Settings → Notifications → Mission Control. The laptop needs internet to reach the push service. |
 | `remote on` exits 2 naming `remote.host` | Set `remote.host` to your `<name>.ts.net` in `config.json`. |
 | `remote on` exits 2 naming `remote.port` | The port is in use or equals the dashboard port. Set another `remote.port`. |
 | `remote on` says "server did not respond" | The dashboard is hung or stopping. Nothing changed; restart it. |
