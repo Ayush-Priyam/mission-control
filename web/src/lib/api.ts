@@ -418,7 +418,7 @@ export type Settings = {
   notifyDone?: boolean
   /** Seconds a page notification stays before closing itself; 0 keeps it until dismissed. */
   notifyDismiss?: number
-  autostart?: { supported: boolean; enabled: boolean; managed?: boolean; label?: string }
+  autostart?: { supported: boolean; enabled: boolean; managed?: boolean; label?: string; reason?: string | null }
   /** Claude Code's cleanupPeriodDays for the config this dashboard reads; null without Claude Code. */
   retention?: { configDir: string; days: number | null; isDefault: boolean; error?: string } | null
   restarting?: boolean

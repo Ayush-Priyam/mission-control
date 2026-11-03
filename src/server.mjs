@@ -184,16 +184,22 @@ async function apiV2(ctx, req, res, url, parts) {
       return json(res, { error: "send notify, notifyDone, autostart as booleans; notifyDismiss as 0-600 s; retentionDays as 1-3650" }, 400)
     }
     // Every precondition before any write, so a request is applied whole or not at all.
-    if ("autostart" in body && !autostart?.status().supported) return json(res, { error: "start at login needs macOS" }, 501)
+    if ("autostart" in body && !autostart?.status().supported) return json(res, { error: autostart?.status().reason ?? "start at login is not available here" }, 501)
     if ("retentionDays" in body) {
       if (!retention) return json(res, { error: "no Claude Code config to change" }, 501)
       const r = retention.get()
       if (r.error) return json(res, { error: `${r.error}; not changing it` }, 409)
     }
-    // Start at login first: the one step that can still fail, and nothing else is written when it does.
+    // Start at login first (launchctl can still refuse it, and then nothing else is written); if writing
+    // Claude Code's settings.json then fails, start at login is put back, so the request is whole or nothing.
     let restart = false
     if ("autostart" in body) restart = (await autostart.set(body.autostart)).restart
-    if ("retentionDays" in body) retention.set(body.retentionDays)
+    if ("retentionDays" in body) {
+      try { retention.set(body.retentionDays) } catch (e) {
+        if ("autostart" in body) await autostart.revert(body.autostart).catch(() => {})
+        throw e
+      }
+    }
     if (keys.some((k) => k === "notify" || k === "notifyDone" || k === "notifyDismiss")) settings.set(body)
     json(res, { ...view(), restarting: restart })
     if (restart) setTimeout(() => onRestart?.(), 300)

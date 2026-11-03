@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createRetention } from "../src/retention.mjs"
@@ -33,4 +33,36 @@ test("settings route: a request is applied whole or not at all (retention is not
     assert.equal((await post({ retentionDays: 90 })).status, 200)
     assert.equal(JSON.parse(readFileSync(join(cfg, "settings.json"), "utf8")).cleanupPeriodDays, 90)
   } finally { await srv.close() }
+})
+
+test("retention: a symlinked settings.json is written where it points (the link stays), and no temp file is left", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mc-ret-"))
+  const dots = join(dir, "dotfiles")
+  mkdirSync(dots)
+  writeFileSync(join(dots, "claude-settings.json"), JSON.stringify({ model: "opus" }))
+  const cfg = join(dir, "cfg")
+  mkdirSync(cfg)
+  symlinkSync(join(dots, "claude-settings.json"), join(cfg, "settings.json"))
+  createRetention(cfg).set(60)
+  assert.ok(lstatSync(join(cfg, "settings.json")).isSymbolicLink())
+  assert.equal(JSON.parse(readFileSync(join(dots, "claude-settings.json"), "utf8")).cleanupPeriodDays, 60)
+  assert.deepEqual(readdirSync(dots), ["claude-settings.json"])
+})
+
+test("settings route: start at login is put back when writing Claude Code's settings.json then fails", { skip: process.getuid?.() === 0 }, async () => {
+  const { createServer } = await import("../src/server.mjs")
+  const cfg = mkdtempSync(join(tmpdir(), "mc-ret-"))
+  writeFileSync(join(cfg, "settings.json"), JSON.stringify({ model: "opus" }))
+  const dist = mkdtempSync(join(tmpdir(), "mc-dist-"))
+  writeFileSync(join(dist, "index.html"), "ok")
+  const log = []
+  const autostart = { status: () => ({ supported: true, enabled: false, managed: true, label: "x" }), set: async (on) => (log.push(`set ${on}`), { enabled: on, restart: false }), revert: async (on) => log.push(`revert ${on}`) }
+  const src = { name: "claude-code", harness: "claude-code", describe: () => ({ source: join(cfg, "projects") }), listItems: async () => [], getItem: async () => null, getCalls: async () => [], getSession: async () => null }
+  const srv = await createServer(src, { port: 0, distDir: dist, autostart })
+  chmodSync(cfg, 0o500) // the temp file cannot be created: the write fails after start at login went through
+  try {
+    const r = await fetch(`http://127.0.0.1:${srv.port}/api/settings`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ autostart: true, retentionDays: 90 }) })
+    assert.equal(r.status, 500)
+    assert.deepEqual(log, ["set true", "revert true"])
+  } finally { chmodSync(cfg, 0o700); await srv.close() }
 })

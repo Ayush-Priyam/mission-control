@@ -29,11 +29,13 @@ const PRESETS = [DEFAULT_DAYS, 60, 90]
 /** Keep sessions: type any number of days (Enter or leaving the box saves), or pick a preset. */
 function RetentionRow({ retention, busy, onSet }: { retention: NonNullable<Settings["retention"]>; busy: boolean; onSet: (days: number) => void }) {
   const [draft, setDraft] = useState<string | null>(null)
-  const value = draft ?? String(retention.days ?? "")
+  // This writes Claude Code's own settings.json, so a new value waits for a confirm that names the file.
+  const [pending, setPending] = useState<number | null>(null)
+  const value = draft ?? String(pending ?? retention.days ?? "")
   const save = () => {
     const n = Number(value)
     setDraft(null)
-    if (Number.isInteger(n) && n >= 1 && n <= 3650 && n !== retention.days) onSet(n)
+    if (Number.isInteger(n) && n >= 1 && n <= 3650 && n !== retention.days) setPending(n)
   }
   const title = `How long Claude Code keeps session history (cleanupPeriodDays in ${retention.configDir}/settings.json, default 30). Older sessions are deleted when Claude Code starts. Applies from its next start.`
   if (retention.error) {
@@ -74,13 +76,27 @@ function RetentionRow({ retention, busy, onSet }: { retention: NonNullable<Setti
             type="button"
             disabled={busy}
             aria-pressed={retention.days === d}
-            onClick={() => { setDraft(null); if (d !== retention.days) onSet(d) }}
+            onClick={() => { setDraft(null); setPending(d !== retention.days ? d : null) }}
             className={cn("rounded border border-sidebar-border px-1.5 leading-5 hover:text-muted-foreground", retention.days === d && "border-foreground/40 text-foreground")}
           >
             {d === DEFAULT_DAYS ? `${d} (default)` : d}
           </button>
         ))}
       </div>
+      {pending !== null && (
+        <div role="group" aria-label="Confirm Keep sessions" className="flex flex-col gap-1 pl-[18px] text-[11px] leading-snug">
+          <span>
+            Sets cleanupPeriodDays to {pending} in <span className="break-all text-foreground">{retention.configDir}/settings.json</span>
+            {pending < (retention.days ?? DEFAULT_DAYS) ? ". Claude Code deletes older sessions at its next start." : ". Sessions already deleted don't come back."}
+          </span>
+          <span className="flex gap-2">
+            <button type="button" disabled={busy} className="text-foreground underline underline-offset-2 hover:text-muted-foreground" onClick={() => { onSet(pending); setPending(null) }}>
+              apply
+            </button>
+            <button type="button" className="underline-offset-2 hover:underline" onClick={() => setPending(null)}>cancel</button>
+          </span>
+        </div>
+      )}
     </div>
   )
 }
@@ -194,12 +210,20 @@ export function SettingsToggles() {
           <RetentionRow retention={retention} busy={busy} onSet={(days) => change({ retentionDays: days })} />
         </Section>
       )}
-      {autostart.supported && (
+      {autostart.supported ? (
         <Section title="Startup">
           {toggle(autostart.enabled, "Start at login", `Start this dashboard at login and again if it fails (LaunchAgent ${autostart.label ?? ""})`,
             () => change({ autostart: !autostart.enabled }), <Power />)}
         </Section>
-      )}
+      ) : autostart.reason && !autostart.reason.includes("macOS") ? (
+        <Section title="Startup">
+          <div className={line} title={autostart.reason}>
+            <Power />
+            <span className="flex-1">Start at login</span>
+            <span>needs npm i -g</span>
+          </div>
+        </Section>
+      ) : null}
       {note && <span className="px-1 text-[11px] leading-snug">{note}</span>}
     </div>
   )

@@ -18,7 +18,36 @@ test("autostart: a per-port LaunchAgent re-running the CLI args with --port and 
   await a.set(false)
   assert.equal(existsSync(plist), false)
   await assert.rejects(createAutostart({ port: 1, argv: [], script: "s", home, platform: "linux" }).set(true))
-  // Started by hand: set(true) only writes the agent and asks for the hand-over (no launchctl yet).
-  const byHand = createAutostart({ port: 4360, argv: [], script: "/mc/bin/mission-control.mjs", home, platform: "darwin", env: { PATH: "/bin" } })
+  // Started by hand: set(true) loads the agent while this process still holds the port, then asks for the hand-over.
+  const calls = []
+  const byHand = createAutostart({ port: 4360, argv: [], script: "/mc/bin/mission-control.mjs", home, platform: "darwin", env: { PATH: "/bin" }, run: async (a) => (calls.push(a[0]), true) })
   assert.deepEqual(await byHand.set(true), { enabled: true, restart: true })
+  assert.deepEqual(calls, ["bootout", "bootstrap"])
+})
+
+test("autostart: launchctl refusing the agent (twice) removes it and throws; nothing is handed over", async () => {
+  const home = mkdtempSync(join(tmpdir(), "mc-home-"))
+  const calls = []
+  const a = createAutostart({ port: 4361, argv: [], script: "/mc/bin/mission-control.mjs", home, platform: "darwin", env: { PATH: "/bin" }, retryMs: 0,
+    run: async (args) => (calls.push(args[0]), args[0] !== "bootstrap") })
+  await assert.rejects(a.set(true), (e) => e.status === 500)
+  assert.deepEqual(calls, ["bootout", "bootstrap", "bootstrap"])
+  assert.equal(a.status().enabled, false)
+  assert.equal(existsSync(join(home, "Library", "LaunchAgents", "dev.mission-control.4361.plist")), false)
+})
+
+test("autostart: not offered for an npx copy; carries the env the dashboard reads; --port=N counts as a port", async () => {
+  const home = mkdtempSync(join(tmpdir(), "mc-home-"))
+  const npx = createAutostart({ port: 4362, argv: [], script: "/Users/u/.npm/_npx/abc/node_modules/@aldefy/mission-control/bin/mission-control.mjs", home, platform: "darwin", env: {} })
+  assert.equal(npx.status().supported, false)
+  assert.match(npx.status().reason, /installed copy/)
+  await assert.rejects(npx.set(true), (e) => e.status === 409)
+  const label = "dev.mission-control.4363"
+  const a = createAutostart({ port: 4363, argv: ["--port=4363"], script: "/mc/bin/mission-control.mjs", home, platform: "darwin",
+    env: { XPC_SERVICE_NAME: label, PATH: "/bin", CODEX_HOME: "/x/codex", MISSION_CONTROL_HOOKS_DIR: "/x/hooks", SECRET: "no" } })
+  await a.set(true)
+  const text = readFileSync(join(home, "Library", "LaunchAgents", `${label}.plist`), "utf8")
+  for (const s of ["<key>CODEX_HOME</key><string>/x/codex</string>", "<key>MISSION_CONTROL_HOOKS_DIR</key><string>/x/hooks</string>", "<string>--port=4363</string>"]) assert.ok(text.includes(s), s)
+  assert.ok(!text.includes("SECRET"))
+  assert.equal(text.split("<string>--port</string>").length, 1) // no second --port
 })
