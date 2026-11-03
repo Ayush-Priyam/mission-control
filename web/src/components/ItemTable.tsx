@@ -153,7 +153,11 @@ export function ItemTable({
                       <IconAction label={i.pinned ? "Unpin" : "Pin to the top"} className={i.pinned ? "relative z-10 text-foreground" : HOVER} onClick={() => mark(i, { pinned: !i.pinned })}>
                         {i.pinned ? <PinOff /> : <Pin />}
                       </IconAction>
-                      <IconAction label={i.archived ? "Unarchive" : "Archive (hidden until it is open again)"} className={HOVER} onClick={() => mark(i, { archived: !i.archived })}>
+                      <IconAction
+                        label={i.archived ? (i.open ? "Unarchive (archived; hidden once it closes)" : "Unarchive") : i.open ? "Archive (hidden once it closes)" : "Archive"}
+                        className={i.archived && i.open ? "relative z-10 text-foreground" : HOVER}
+                        onClick={() => mark(i, { archived: !i.archived })}
+                      >
                         {i.archived ? <ArchiveRestore /> : <Archive />}
                       </IconAction>
                     </div>
