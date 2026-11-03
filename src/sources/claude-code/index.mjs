@@ -1,5 +1,5 @@
 import { closeSync, openSync, readSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs"
-import { join, sep } from "node:path"
+import { dirname, join, sep } from "node:path"
 import { UNCONFIRMED_MS, askOf, createWaitingReader, readyOf } from "../../hooks.mjs"
 import { capText, isSessionName } from "../../names.mjs"
 import { createCache } from "./cache.mjs"
@@ -15,6 +15,7 @@ const TAIL_BYTES = 64 * 1024
 const WAIT_EXPIRY_MS = 12 * 3600 * 1000
 const CLEAR_GAP_MS = 2000
 const HEAD_BYTES = 64 * 1024
+const TITLE_TAIL = 256 * 1024 // Claude Code re-appends its /rename line every few turns, so the newest sits near the end
 const HEAD_MAX = 1024 * 1024 // read forward this far for the first line carrying a cwd
 const SESSIONS = 256 // parsed sessions kept, whatever their lane count
 const SESSION_TEXT = 200_000 // getSession returns at most this many bytes
@@ -41,6 +42,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
   const readWaiting = createWaitingReader() // hook logs, cached by size+mtime, tail-read when large
   const lastTurns = createCache(4096) // path|size|mtime -> newest turn time in the tail of a main log
   const peeked = createCache(8192) // path|size|mtime -> peek of the head, so warm lists skip file reads
+  const renamed = createCache(8192) // path|size|mtime -> newest /rename title in the tail (or null)
   const opened = new Map() // id -> { lastMs, summary } of sessions already fully parsed, for list totals
   let liveFiles = [] // main logs of sessions live or waiting at the last listing, for /api/events
   let realRoot = null
@@ -174,6 +176,65 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
       }
       return best
     } catch { return 0 } finally { if (fd !== undefined) closeSync(fd) }
+  }
+
+  /** The newest /rename title (a custom-title line) in the tail of a main log, or null. */
+  function renamedTitle(file, size) {
+    let fd
+    try {
+      fd = openSync(file, "r")
+      const n = Math.min(size, TITLE_TAIL)
+      const buf = Buffer.alloc(n)
+      readSync(fd, buf, 0, n, size - n)
+      const lines = buf.toString("utf8").split("\n")
+      for (let i = lines.length - 1; i >= 0; i--) {
+        if (!lines[i].includes('"custom-title"')) continue
+        try {
+          const j = JSON.parse(lines[i])
+          if (j?.type === "custom-title" && typeof j.customTitle === "string" && j.customTitle.trim()) return j.customTitle.trim()
+        } catch { /* half-written or cut first line */ }
+      }
+      return null
+    } catch { return null } finally { if (fd !== undefined) closeSync(fd) }
+  }
+
+  /**
+   * Running Claude Code processes by session id, from the <config dir>/sessions/<pid>.json files Claude Code
+   * keeps next to projects/ (status "busy" or "idle"). A file whose pid is gone is a closed session. null when
+   * there is no such dir (an older Claude Code, or a projects dir passed on its own): open state is unknown.
+   */
+  function openSessions() {
+    const dir = join(dirname(root), "sessions")
+    let names
+    try { names = readdirSync(dir) } catch { return null }
+    const out = new Map()
+    for (const n of names) {
+      if (!/^\d+\.json$/.test(n)) continue
+      try {
+        const j = JSON.parse(readFileSync(join(dir, n), "utf8"))
+        if (typeof j?.sessionId !== "string" || !Number.isInteger(j.pid) || j.pid <= 0) continue
+        try { process.kill(j.pid, 0) } catch (e) { if (e.code !== "EPERM") continue } // signal 0 only checks the pid exists
+        const since = Number.isFinite(j.statusUpdatedAt) ? new Date(j.statusUpdatedAt).toISOString() : null
+        out.set(j.sessionId, { busy: j.status === "busy", since })
+      } catch { /* half-written or unreadable: skip */ }
+    }
+    return out
+  }
+
+  /**
+   * `x` with `open` and status from the running process, which beats file times: an idle Claude Code still
+   * appends metadata every few minutes. Busy is working (or looping), open and not busy is idle and ready
+   * (unless the hooks say it waits on you), and a closed session is idle, never waiting and never ready.
+   */
+  function withProcess(x, procs) {
+    if (!procs) return x
+    const p = procs.get(x.id)
+    const { ready, readySince, ...rest } = x
+    if (!p) return { ...rest, open: false, live: false, status: "idle", waiting: false } // closed: never ready
+    if (x.status === "waiting") return { ...rest, open: true }
+    if (p.busy) return { ...rest, open: true, live: true, status: x.status === "looping" ? "looping" : "working" }
+    // Open and not busy: ready for your next prompt now, without waiting for the hooks' idle reminder.
+    return { ...rest, open: true, live: false, status: "idle", ready: true, ...(p.since ?? readySince ? { readySince: p.since ?? readySince } : {}) }
   }
 
   /**
@@ -314,6 +375,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
       const items = []
       const watched = []
       const logged = new Set(hooksDir ? dirs(hooksDir).map((d) => d.name) : []) // one readdir instead of a miss per session
+      const procs = openSessions()
       for (const s of sessionFiles()) {
         try {
           const c = confined(s.file)
@@ -323,14 +385,16 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
           for (const f of subs) lastMs = Math.max(lastMs, confined(join(root, s.slug, s.id, "subagents", f.name))?.st.mtimeMs ?? 0)
           const pk = cache.key(c.real, c.st)
           const h = peeked.get(pk) ?? peeked.set(pk, peekFile(c, s.slug))
+          let rt = renamed.get(pk)
+          if (rt === undefined) rt = renamed.set(pk, renamedTitle(c.real, c.st.size))
           const o = opened.get(s.id)
           const done = o && o.lastMs === lastMs ? o.summary : null
           const live = liveAt(lastMs)
           const w = waitingOf(s.id, c, logged)
           if (live || w?.waiting) watched.push(c.real)
-          items.push({
+          items.push(withProcess({
             source: "claude-code", id: s.id, kind: "session",
-            title: h.title ?? s.id, harness: "claude-code",
+            title: rt ?? h.title ?? s.id, harness: "claude-code",
             cwd: h.cwd, branch: h.branch,
             // Looping is known once the session was opened (the overview opens every busy one each poll).
             live: live && !w?.ready, status: w?.waiting ? "waiting" : w?.ready ? "idle" : live ? (o?.summary.status === "looping" ? "looping" : "working") : "idle", waiting: !!w?.waiting,
@@ -341,7 +405,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
             tokens: done?.tokens ?? zero(), cost: done?.cost ?? 0,
             ...readyOf(w),
             ...(done ? {} : { partial: true }), // totals appear once the session is opened
-          })
+          }, procs))
         } catch { /* one unreadable file must not hide the rest */ }
       }
       liveFiles = watched
@@ -354,7 +418,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, pars
     async getItem(id) {
       const s = locate(id)
       const r = s && load(s)
-      return r && { summary: r.summary, lanes: r.lanes, events: r.events }
+      return r && { summary: withProcess(r.summary, openSessions()), lanes: r.lanes, events: r.events }
     },
 
     async getCalls(id, { lane, kind, q } = {}) {

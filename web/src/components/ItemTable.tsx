@@ -20,7 +20,7 @@ const KEYS: Record<SortKey, (i: ItemSummary) => string | number> = {
   title: (i) => (i.title || i.id).toLowerCase(),
   where,
   harness: (i) => i.harness,
-  status: (i) => URGENCY.indexOf(i.status),
+  status: (i) => URGENCY.indexOf(i.status) + (i.open === false ? URGENCY.length : 0),
   lanes: (i) => i.counts.lanes,
   calls: (i) => i.counts.calls,
   cost: (i) => i.cost ?? 0,
@@ -120,7 +120,7 @@ export function ItemTable({
             const folder = i.project ? worktreeLabel({ path: i.project.worktree, branch: null }) : ""
             const branch = i.branch || (showProject && folder === i.project?.name ? "" : folder)
             return (
-              <tr key={`${i.source}/${i.id}`} className="group relative cursor-pointer border-b border-border/60 hover:bg-surface/60">
+              <tr key={`${i.source}/${i.id}`} className={cn("group relative cursor-pointer border-b border-border/60 hover:bg-surface/60", i.open === false && "opacity-60")}>
                 <td className="h-9 px-2">
                   {editing === `${i.source}/${i.id}` ? (
                     <div className="relative z-10">
@@ -152,10 +152,14 @@ export function ItemTable({
                 </td>
                 <td className="truncate px-2 font-mono text-xs text-muted-foreground">{i.harness}</td>
                 <td className="px-2 whitespace-nowrap">
-                  <span className={cn("inline-flex items-center gap-1.5", STATUS_TEXT[i.status])}>
-                    <StatusDot status={i.status} live={i.live} labelled className="size-1.5" />
-                    {STATUS_LABEL[i.status]}
-                  </span>
+                  {i.open === false ? (
+                    <span className="font-mono text-xs text-faint" title="No Claude Code process is running this session">closed</span>
+                  ) : (
+                    <span className={cn("inline-flex items-center gap-1.5", STATUS_TEXT[i.status])}>
+                      <StatusDot status={i.status} live={i.live} labelled className="size-1.5" />
+                      {STATUS_LABEL[i.status]}
+                    </span>
+                  )}
                 </td>
                 <td className="px-2 text-right font-mono tabular-nums text-muted-foreground">{i.counts.lanes}</td>
                 <td className="px-2 text-right font-mono whitespace-nowrap tabular-nums text-muted-foreground">

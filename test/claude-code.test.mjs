@@ -174,6 +174,36 @@ test("robustness: missing root, empty and garbage files never throw", async () =
   assert.deepEqual([item.lanes.length, item.summary.counts.calls], [1, 0])
 })
 
+test("a /rename past the 64 KB head titles the session; the newest rename wins", async () => {
+  const r = mkdtempSync(join(tmpdir(), "mc-cc-"))
+  mkdirSync(join(r, "-p"))
+  const user = (text) => JSON.stringify({ type: "user", cwd: "/work", timestamp: "2026-01-01T00:00:00Z", message: { role: "user", content: text } })
+  const rename = (t) => JSON.stringify({ type: "custom-title", customTitle: t, sessionId: "s" })
+  const filler = Array.from({ length: 100 }, () => user("x".repeat(1000)))
+  writeFileSync(join(r, "-p", "s.jsonl"), [user("a long first prompt"), rename("old"), ...filler, rename("day0paywall"), user("more")].join("\n") + "\n")
+  const s = create({ root: r })
+  assert.equal((await s.listItems())[0].title, "day0paywall")
+  assert.equal((await s.getItem("s")).summary.title, "day0paywall")
+})
+
+test("open state from <config>/sessions/<pid>.json: busy is working, a dead pid or no file is closed", async () => {
+  const cfg = mkdtempSync(join(tmpdir(), "mc-cc-"))
+  const r = join(cfg, "projects")
+  mkdirSync(join(r, "-p"), { recursive: true })
+  mkdirSync(join(cfg, "sessions"))
+  for (const id of ["busy", "idle", "dead", "none"]) writeFileSync(join(r, "-p", `${id}.jsonl`), JSON.stringify({ type: "user", cwd: "/w", message: { role: "user", content: id } }) + "\n")
+  const reg = (pid, sessionId, status) => writeFileSync(join(cfg, "sessions", `${pid}.json`), JSON.stringify({ pid, sessionId, status }))
+  reg(process.pid, "busy", "busy")
+  reg(process.ppid, "idle", "idle")
+  reg(2 ** 22 + 7, "dead", "busy") // above macOS and Linux pid limits: never a running process
+  const s = create({ root: r })
+  const got = Object.fromEntries((await s.listItems()).map((i) => [i.id, [i.open, i.status]]))
+  assert.deepEqual(got, { busy: [true, "working"], idle: [true, "idle"], dead: [false, "idle"], none: [false, "idle"] })
+  assert.deepEqual([(await s.getItem("busy")).summary.open, (await s.getItem("dead")).summary.open], [true, false])
+  const ready = Object.fromEntries((await s.listItems()).map((i) => [i.id, !!i.ready]))
+  assert.deepEqual(ready, { busy: false, idle: true, dead: false, none: false }) // open and not busy is Ready at once
+})
+
 test("parseTranscript: half-written last line is skipped", () => {
   const p = parseTranscript('{"type":"user","timestamp":"2026-11-02T09:00:00Z","message":{"content":"hi"}}\n{"type":"assistant","message":{"id":"x","content":[{"type":"tool_u')
   assert.deepEqual([p.calls.length, p.meta.title], [0, "hi"])
