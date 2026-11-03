@@ -6,11 +6,12 @@ import { resolve, join } from "node:path"
 import { pathToFileURL } from "node:url"
 import createNative from "./native.mjs"
 
-const VALUE_FLAGS = new Set(["--runs", "--speckit", "--adapter", "--adapter-opt", "--port", "--claude-dir", "--codex-dir"])
+const VALUE_FLAGS = new Set(["--runs", "--speckit", "--adapter", "--adapter-opt", "--port", "--claude-dir", "--codex-dir", "--remote-port", "--remote-host"])
 
 /** Parse CLI args: value flags, repeatable --adapter-opt k=v, --no-open, --no-claude, --no-codex, one bare path. */
 export function parseArgs(argv) {
   const out = { opts: {}, noOpen: false, noClaude: false, noCodex: false }
+  // --remote-port / --remote-host land as out["remote-port"] / out["remote-host"]; bin validates them (FR-2).
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === "--no-open") out.noOpen = true

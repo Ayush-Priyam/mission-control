@@ -6,6 +6,7 @@ import ProjectPage from "@/views/ProjectPage"
 import Item from "@/views/Item"
 import { Usage } from "@/views/Usage"
 import Agent from "@/views/Agent"
+import Remote from "@/views/Remote"
 import { useCapabilities } from "@/lib/api"
 import { ProjectsProvider } from "@/lib/projects-context"
 import { parseRoute, toHash, type Route } from "@/lib/route"
@@ -36,6 +37,8 @@ function Page({ route }: { route: Route }) {
       return <Home />
     case "usage":
       return <Usage />
+    case "remote":
+      return <Remote />
     case "project":
       return <ProjectPage key={route.key} projectKey={route.key} />
     case "worktree":

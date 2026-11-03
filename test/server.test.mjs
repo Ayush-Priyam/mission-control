@@ -146,3 +146,89 @@ test("M4: a failed ::1 listener is logged, not fatal", async () => {
     assert.equal((await raw(srv.port, { headers: { host: `localhost:${port}` } })).status, 200)
   } finally { await srv.close() }
 })
+
+// ---- v2.3 remote answering on :4319 (T12, C9, C19, C38, C47) ----
+import { mkdirSync as mkdirV23, readFileSync as readV23, existsSync as existsV23 } from "node:fs"
+import { createPairingToken as pairTokenV23, redeemToken as redeemV23 } from "../src/remote/pairing.mjs"
+
+async function withRemoteServer(fn, { config } = {}) {
+  const home = mkdtempSync(join(tmpdir(), "mc-home-"))
+  const mc = join(home, ".mission-control")
+  mkdirV23(join(mc, "hooks"), { recursive: true })
+  const configPath = join(mc, "config.json")
+  if (config) writeFileSync(configPath, JSON.stringify(config))
+  const distDir = mkdtempSync(join(tmpdir(), "mc-dist-"))
+  writeFileSync(join(distDir, "index.html"), "<h1>ok</h1>")
+  const remoteDir = join(mc, "remote")
+  const srv = await createServer(adapter, { port: 0, distDir, config: configPath, remote: { home, remoteDir, hooksDir: join(mc, "hooks"), log: () => {} } })
+  await srv.remote.start()
+  try { await fn(srv.port, { home, remoteDir, configPath, srv }) } finally { await srv.close() }
+}
+const loop = (port) => ({ host: `127.0.0.1:${port}`, origin: `http://127.0.0.1:${port}`, "content-type": "application/json" })
+
+test("v2.3: fresh home -> remote off, no second listener; status has exactly the C19 keys and no secret material", async () => {
+  await withRemoteServer(async (port, { remoteDir, srv }) => {
+    assert.equal(srv.remote.port(), null, "no second socket")
+    redeemV23({ remoteDir, token: pairTokenV23({ remoteDir, host: "a.ts.net" }).token, ua: "iPhone Safari" })
+    pairTokenV23({ remoteDir, host: "a.ts.net" })
+    const r = await raw(port, { path: "/api/remote/status", headers: { host: `127.0.0.1:${port}` } })
+    assert.equal(r.status, 200)
+    const st = JSON.parse(r.text)
+    assert.deepEqual(Object.keys(st).sort(), ["devices", "enabled", "host", "pairing", "remotePort", "waitSeconds"])
+    assert.deepEqual([st.enabled, st.host, st.remotePort, st.waitSeconds, st.pairing.open], [false, null, 4330, 120, true])
+    assert.deepEqual(Object.keys(st.devices[0]).sort(), ["id", "label", "lastSeenAt", "pairedAt"])
+    assert.ok(!/token|secret|hash/i.test(r.text))
+    assert.equal((await raw(port, { path: "/api/remote/status", headers: { host: `127.0.0.1:${port}`, origin: "http://evil.example" } })).status, 403)
+  })
+})
+
+test("v2.3: :4319 serves no answering or pairing route: each is 404", async () => {
+  await withRemoteServer(async (port) => {
+    const h = loop(port)
+    for (const [method, path] of [["POST", "/api/remote/pair"], ["POST", "/api/remote/answer"], ["GET", "/api/remote/prompts"], ["GET", "/api/remote/events"], ["GET", "/api/remote/me"], ["GET", "/api/remote/enabled"], ["OPTIONS", "/api/remote/enabled"], ["POST", "/api/remote/devices"], ["POST", "/api/remote/revoke"], ["POST", "/api/remote/status"], ["GET", "/api/remote"]]) {
+      const r = await raw(port, { method, path, headers: h, body: method === "POST" ? "{}" : undefined })
+      assert.equal(r.status, 404, `${method} ${path}`)
+    }
+  })
+  // and without a remote control at all (embedders, older tests): status is read-only defaults, enabled 404
+  await withServer(async (base) => {
+    const st = await (await fetch(`${base}/api/remote/status`)).json()
+    assert.equal(st.enabled, false)
+    assert.equal((await fetch(`${base}/api/remote/enabled`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status, 404)
+  })
+})
+
+test("v2.3: POST /api/remote/enabled guards in order: Host 403, Origin missing/foreign 403, non-JSON 415, bad body 400, invalid config 422", async () => {
+  await withRemoteServer(async (port, { home, configPath }) => {
+    const p = "/api/remote/enabled"
+    const body = JSON.stringify({ enabled: true })
+    assert.equal((await raw(port, { method: "POST", path: p, body, headers: { ...loop(port), host: "evil.example" } })).status, 403)
+    assert.equal((await raw(port, { method: "POST", path: p, body, headers: { host: `127.0.0.1:${port}`, "content-type": "application/json" } })).status, 403, "no Origin")
+    assert.equal((await raw(port, { method: "POST", path: p, body, headers: { ...loop(port), origin: "http://evil.example" } })).status, 403)
+    assert.equal((await raw(port, { method: "POST", path: p, body, headers: { ...loop(port), origin: `http://localhost:${port}` } })).status, 403, "Origin must match the request Host")
+    assert.equal((await raw(port, { method: "POST", path: p, body, headers: { ...loop(port), "content-type": "text/plain" } })).status, 415)
+    for (const b of ['{"enabled":"yes"}', '{"enabled":true,"x":1}', "[]", "{bad"]) assert.equal((await raw(port, { method: "POST", path: p, body: b, headers: loop(port) })).status, 400, b)
+    const r = await raw(port, { method: "POST", path: p, body, headers: loop(port) })
+    assert.equal(r.status, 422)
+    assert.equal(JSON.parse(r.text).key, "remote.host")
+    assert.equal(JSON.parse((await raw(port, { path: "/api/remote/status", headers: { host: `127.0.0.1:${port}` } })).text).enabled, false)
+    assert.equal(existsV23(join(home, ".mission-control", "audit.jsonl")), false)
+    assert.equal(existsV23(configPath), false, "nothing persisted")
+    const off = await raw(port, { method: "POST", path: p, body: '{"enabled":false}', headers: loop(port) })
+    assert.deepEqual([off.status, JSON.parse(off.text).enabled], [200, false], "a no-op is 200")
+  })
+})
+
+test("v2.3: POST /api/remote/enabled on and off with a valid config", async () => {
+  const { createServer: netServer } = await import("node:net")
+  const rp = await new Promise((ok) => { const s = netServer(); s.listen(0, "127.0.0.1", () => { const x = s.address().port; s.close(() => ok(x)) }) })
+  await withRemoteServer(async (port, { home, srv }) => {
+    const on = await raw(port, { method: "POST", path: "/api/remote/enabled", body: '{"enabled":true}', headers: loop(port) })
+    assert.equal(on.status, 200, on.text)
+    assert.deepEqual([JSON.parse(on.text).enabled, srv.remote.port()], [true, rp])
+    const off = await raw(port, { method: "POST", path: "/api/remote/enabled", body: '{"enabled":false}', headers: loop(port) })
+    assert.equal(JSON.parse(off.text).enabled, false)
+    const lines = readV23(join(home, ".mission-control", "audit.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l))
+    assert.deepEqual(lines.map((l) => [l.actor, l.action]), [["dashboard", "remote-on"], ["dashboard", "remote-off"]])
+  }, { config: { remote: { host: "laptop.tail1234.ts.net", port: rp } } })
+})

@@ -14,6 +14,7 @@ import { CommandPalette, isPaletteKey } from "@/components/CommandPalette"
 import { Sidebar } from "@/components/Sidebar"
 import { chipCounts, StatusChips } from "@/components/StatusChips"
 import { BudgetChip } from "@/components/Budgets"
+import { RemoteChip } from "@/components/RemoteChip"
 import { useBudgets } from "@/lib/api-v22"
 import { browserTz } from "@/lib/api"
 
@@ -45,6 +46,8 @@ export function crumbs(route: Route, projects: ProjectSummary[], item?: ItemSumm
       return [{ label: "home" }]
     case "usage":
       return [home, { label: "usage" }]
+    case "remote":
+      return [home, { label: "remote" }]
     case "project":
       return [home, { label: project(route.key)?.name ?? route.key }]
     case "worktree": {
@@ -156,6 +159,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
         </a>
         <StatusChips counts={counts} active={filter} onPick={setFilter} />
         <div className="ml-auto flex shrink-0 items-center gap-2">
+          <RemoteChip />
           <BudgetChip budgets={budgets.data?.budgets} />
           <FreshnessBadge />
           <span data-working-line className="hidden items-center gap-1.5 border-l pl-2 font-mono text-xs whitespace-nowrap text-faint xl:flex">

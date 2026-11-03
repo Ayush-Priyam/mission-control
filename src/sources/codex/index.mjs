@@ -159,7 +159,8 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, onPa
     for (const k of keys) {
       if (logged && !logged.has(`${k}.jsonl`)) continue
       const x = readWaiting(codexHooks, k)
-      if (x.waiting || x.ready) { w = x; break }
+      // The session_id the hook log is keyed by: the remote prompts route joins pending prompts on it (v2.3).
+      if (x.waiting || x.ready) { w = { ...x, sessionId: k }; break }
     }
     if (!w) return null
     const since = Date.parse(w.since)
@@ -242,6 +243,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, onPa
     const summary = {
       source: "codex", id: r.id, kind: "session",
       title: titleOf(meta, r.h.title ?? r.id), harness: "codex",
+      ...(w?.sessionId ? { sessionId: w.sessionId } : {}),
       cwd: meta.cwd ?? r.h.meta?.cwd ?? null, branch: meta.branch ?? r.h.meta?.branch ?? null,
       live: running && !w?.ready, status: w?.waiting ? "waiting" : w?.ready ? "idle" : running ? (lp.loop ? "looping" : "working") : "idle", waiting: !!w?.waiting,
       startedAt: meta.startedAt ?? mp.firstTs, updatedAt: iso(lastMs),
@@ -298,6 +300,7 @@ export function create({ root, now = () => Date.now(), hooksDir, cachePath, onPa
           items.push({
             source: "codex", id: r.id, kind: "session",
             title: r.h.title ?? r.id, harness: "codex",
+            ...(w?.sessionId ? { sessionId: w.sessionId } : {}),
             cwd: m?.cwd ?? null, branch: m?.branch ?? null,
             live: live && !w?.ready, status: w?.waiting ? "waiting" : w?.ready ? "idle" : live ? (o?.summary.status === "looping" ? "looping" : "working") : "idle", waiting: !!w?.waiting,
             startedAt: m?.startedAt ?? r.h.startedAt, updatedAt: iso(lastMs),

@@ -1,11 +1,20 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs"
+import { readFileSync, writeSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 
 const argv = process.argv.slice(2)
 
-// Hook entry points load only src/hooks.mjs: they run inside Claude Code and must stay fast and silent.
+// Hook entry points load only the hook modules: they run inside Claude Code / Codex and must stay fast,
+// silent and harmless. Every path exits 0. Output is printed only for an accepted phone answer (v2.3).
 if (argv[0] === "hook") {
+  let output = ""
+  let pending = null
+  let remoteDir = null
+  const cleanup = async () => {
+    try { if (pending && remoteDir) (await import("../src/remote/prompts.mjs")).removePending(remoteDir, pending) } catch { /* best effort */ }
+  }
+  // Killed by the harness (timeout, or the prompt answered in the terminal): remove the pending prompt, print nothing.
+  for (const sig of ["SIGTERM", "SIGINT", "SIGHUP"]) process.on(sig, () => { cleanup().finally(() => process.exit(0)) })
   try {
     const { recordHook, recordCodexHook, defaultHooksDir } = await import("../src/hooks.mjs")
     let raw = ""
@@ -16,16 +25,48 @@ if (argv[0] === "hook") {
       }
     }
     const hooksDir = process.env.MISSION_CONTROL_HOOKS_DIR || defaultHooksDir()
-    if (argv[1] === "codex") recordCodexHook({ raw, hooksDir }) // Codex names the event in its JSON
+    const codex = argv[1] === "codex"
+    // 1. record, as before v2.3
+    if (codex) recordCodexHook({ raw, hooksDir }) // Codex names the event in its JSON
     else recordHook({ raw, event: argv[1], hooksDir })
+    // 2–7. only the three answerable hook events may hold the request for a paired phone
+    let input = null
+    try { input = JSON.parse(raw) } catch { /* not JSON: nothing to wait for */ }
+    const ev = input && typeof input === "object" ? (typeof input.hook_event_name === "string" ? input.hook_event_name : codex ? "" : argv[1]) : ""
+    if (ev === "PermissionRequest" || (ev === "PreToolUse" && input.tool_name === "AskUserQuestion")) {
+      const { remoteDirFromEnv } = await import("../src/remote/state.mjs")
+      const { holdForAnswer } = await import("../src/remote/hook-wait.mjs")
+      remoteDir = remoteDirFromEnv()
+      output = await holdForAnswer({ harness: codex ? "codex" : "claude-code", input: { ...input, hook_event_name: ev }, hooksDir, remoteDir, onPending: (id) => { pending = id } })
+    }
   } catch { /* never disturb the session */ }
+  await cleanup()
+  if (output) { try { writeSync(1, output) } catch { /* nothing to do */ } }
   process.exit(0)
 }
 if (argv[0] === "hooks" && argv[1] === "install") {
   const { settingsBlock, codexHooksBlock } = await import("../src/hooks.mjs")
-  const block = argv[2] === "codex" ? codexHooksBlock : settingsBlock // `hooks install codex`: the ~/.codex/hooks.json block
-  console.log(JSON.stringify(block({ script: fileURLToPath(import.meta.url) }), null, 2))
+  const { readWaitSeconds } = await import("../src/remote/state.mjs")
+  const { homedir } = await import("node:os")
+  const { join } = await import("node:path")
+  const home = process.env.MISSION_CONTROL_HOME || homedir()
+  const waitSeconds = readWaitSeconds(join(home, ".mission-control", "config.json"))
+  const forCodex = argv[2] === "codex"
+  const block = forCodex ? codexHooksBlock : settingsBlock // `hooks install codex`: the ~/.codex/hooks.json block
+  console.log(JSON.stringify(block({ script: fileURLToPath(import.meta.url), waitSeconds }), null, 2))
+  console.error(`mission control: v2.3 raised the ${forCodex ? "PermissionRequest" : "PermissionRequest and PreToolUse"} timeout to ${waitSeconds + 15}s (remote.waitSeconds ${waitSeconds} + 15) so a paired phone can answer. If you merged an older block, merge this one again.`)
+  if (forCodex) console.error("mission control: Codex asks you to re-trust changed hooks: run /hooks in Codex and approve them.")
   process.exit(0)
+}
+if (argv[0] === "remote") {
+  const { runRemote } = await import("../src/remote/cli.mjs")
+  const { remoteDirFromEnv } = await import("../src/remote/state.mjs")
+  const { defaultConfigPath } = await import("../src/hidden.mjs")
+  const { homedir } = await import("node:os")
+  const { join, resolve } = await import("node:path")
+  const altHome = process.env.MISSION_CONTROL_HOME ? resolve(process.env.MISSION_CONTROL_HOME) : null
+  const code = await runRemote({ args: argv.slice(1), remoteDir: remoteDirFromEnv(), home: altHome ?? homedir(), configPath: altHome ? join(altHome, ".mission-control", "config.json") : defaultConfigPath() })
+  process.exit(code)
 }
 
 const { spawn } = await import("node:child_process")
@@ -69,7 +110,25 @@ const { createPrReader } = await import("../src/prs.mjs")
 const demoPrs = process.env.MISSION_CONTROL_DEMO_PRS
 const prs = demoPrs ? createPrReader({ exec: async () => { try { return readFileSync(demoPrs, "utf8") } catch { return null } } }) : createPrReader()
 const config = altHome ? joinPath(altHome, ".mission-control", "config.json") : defaultConfigPath()
-try { srv = await createServer(adapters, { port, config, claudeHome: home, codexHome, prs }) } catch { process.exit(1) }
+// v2.3 remote answering: flags turn it on for this run (FR-2); otherwise config remote.enabled decides (C36).
+const { checkRemoteFlags } = await import("../src/remote/cli.mjs")
+const flagError = checkRemoteFlags({ remotePort: args["remote-port"], remoteHost: args["remote-host"], port })
+if (flagError) {
+  console.error(`mission control: ${flagError}`)
+  process.exit(2)
+}
+const { remoteDirFromEnv } = await import("../src/remote/state.mjs")
+const { defaultHooksDir } = await import("../src/hooks.mjs")
+const remoteFlags = args["remote-port"] !== undefined ? { port: Number(args["remote-port"]), host: String(args["remote-host"]).toLowerCase() } : null
+const remote = { home, remoteDir: remoteDirFromEnv(), hooksDir: process.env.MISSION_CONTROL_HOOKS_DIR || defaultHooksDir(home), flags: remoteFlags }
+try { srv = await createServer(adapters, { port, config, claudeHome: home, codexHome, prs, remote }) } catch { process.exit(1) }
+const started = await srv.remote.start()
+if (!started.ok) {
+  console.error(`mission control: remote answering stays off: ${started.error}`)
+  if (remoteFlags) { await srv.close(); process.exit(2) }
+}
+// Clean shutdown: close the remote listener (waiting hooks fall back to the terminal) and remove server.json.
+for (const sig of ["SIGINT", "SIGTERM"]) process.once(sig, () => { srv.remote.closeSync(); process.exit(0) })
 
 if (!args.noOpen && process.platform === "darwin") {
   spawn("open", [`http://localhost:${srv.port}`], { stdio: "ignore", detached: true }).on("error", () => {}).unref()

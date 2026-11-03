@@ -86,6 +86,7 @@ test("registry lists several sources and reports an overview", async () => {
     ["native", "20261101-0930-stopped", "add a farewell page", "qa", "needs a human decision on the farewell copy"],
     ["second", "20261101-0930-stopped", "add a farewell page", "qa", "needs a human decision on the farewell copy"],
   ])
+  assert.ok(ov.needsYou.every((n) => !("sessionId" in n)), "v2.3: run-format entries have no hook session, so never answerable")
   assert.equal((await reg.usage({})).length, 4) // two runs with session events in each of the two sources
   assert.equal(reg.usageComplete(), true)
 })

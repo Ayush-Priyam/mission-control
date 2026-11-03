@@ -342,3 +342,14 @@ test("Codex approval message never carries tool_input.description, only the mask
   assert.ok(!text.includes("SECRET-DESC") && !text.includes("tok123"))
   assert.equal(JSON.parse(text).message, "Codex needs your approval to use Bash: curl -H 'Authorization: Bearer ***' x")
 })
+
+test("v2.3: a waiting Codex needsYou entry carries the hook session_id and the call id (remote prompts join on them)", async () => {
+  const hooksDir = mkdtempSync(join(tmpdir(), "mc-hooks-"))
+  const base = Math.max(lastMs, Date.parse("2026-11-01T09:01:00Z"))
+  recordCodexHook({ raw: JSON.stringify({ session_id: C1, hook_event_name: "PermissionRequest", tool_name: "Bash", tool_use_id: "call_a", tool_input: { command: "npm i" } }), hooksDir, now: () => new Date(base + 1_000) })
+  const s = src(base + 30_000, { hooksDir })
+  const item = (await s.listItems()).find((i) => i.id === C1)
+  assert.equal(item.sessionId, C1)
+  const ov = await createRegistry([s]).overview()
+  assert.deepEqual(ov.needsYou.map((n) => [n.harness, n.id, n.sessionId, n.callId, n.tool, n.target]), [["codex", C1, C1, "call_a", "Bash", "npm i"]])
+})

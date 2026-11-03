@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { BarChart3, ChevronRight, Eye, EyeOff, House, Search } from "lucide-react"
+import { BarChart3, ChevronRight, Eye, EyeOff, House, Search, Smartphone } from "lucide-react"
 import type { Placed, ProjectSummary, WorktreeSummary } from "@/lib/api"
 import { toHash, type Route } from "@/lib/route"
 import { filterTree, rollupCounts, worktreeLabel, type ChipFilter } from "@/lib/tree"
@@ -165,6 +165,9 @@ export function Sidebar({
         </NavLink>
         <NavLink href={toHash({ view: "usage" })} active={route.view === "usage"} icon={<BarChart3 />}>
           Usage
+        </NavLink>
+        <NavLink href={toHash({ view: "remote" })} active={route.view === "remote"} icon={<Smartphone />}>
+          Remote
         </NavLink>
       </nav>
       <div className="px-2 pt-2">

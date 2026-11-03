@@ -94,7 +94,8 @@ Without hooks the dashboard cannot know that Claude Code is waiting for you. Wit
            "hooks": [
              {
                "type": "command",
-               "command": "'/usr/local/bin/node' '/work/mission-control/bin/mission-control.mjs' hook PermissionRequest"
+               "command": "'/usr/local/bin/node' '/work/mission-control/bin/mission-control.mjs' hook PermissionRequest",
+               "timeout": 135
              }
            ]
          }
@@ -134,7 +135,8 @@ Without hooks the dashboard cannot know that Claude Code is waiting for you. Wit
            "hooks": [
              {
                "type": "command",
-               "command": "'/usr/local/bin/node' '/work/mission-control/bin/mission-control.mjs' hook PreToolUse"
+               "command": "'/usr/local/bin/node' '/work/mission-control/bin/mission-control.mjs' hook PreToolUse",
+               "timeout": 135
              }
            ]
          }
@@ -181,6 +183,8 @@ Without hooks the dashboard cannot know that Claude Code is waiting for you. Wit
 
 If you merged an older block (five events), merge the new one: it adds `PermissionRequest` (fires the moment the permission dialog opens; the `Notification` for a permission prompt only comes after about six seconds without typing, and stays as the fallback) and `PostToolUse`, `PostToolUseFailure`, `PermissionDenied` (the prompt was answered, also when you answer in the terminal while the dashboard is down).
 
+Since v2.3, `PermissionRequest` and `PreToolUse` carry `"timeout": 135`: `remote.waitSeconds` (default 120) plus 15 s, so the hook can hold a request while a [paired phone](remote-answering.md) answers it. **If you merged a block from before v2.3, run `hooks install` again and merge it again** (the command says so on stderr). Old entries without the timeout keep working: they never wait for a phone, and the terminal prompt handles everything as before. No entry uses `onFailure`, so a failed or timed-out hook always falls through to the terminal prompt.
+
 The paths in the block are absolute: your `node` binary and this checkout's `bin/mission-control.mjs`. **Run `hooks install` again and merge again after you move the checkout or upgrade Node**, or the hooks point at files that no longer exist (Claude Code then shows a hook error at each event).
 
 ### What the hooks do
@@ -193,7 +197,16 @@ Each event runs `mission-control hook <Event>`. It reads Claude Code's JSON from
 {"event":"PostToolUse","sessionId":"sess-1","ts":"2026-11-02T10:00:31.000Z","tool":"Bash"}
 ```
 
-It keeps the event name, session id, time, a `Notification` message cut to 500 characters and its type, the tool name, and for `PreToolUse` and `PermissionRequest` a short target: the first 120 characters of the command or the file path, on one line, with obvious secrets in a command masked (`Bearer …`, `token=`, `key=`, `password=` values, `-p<password>`, AWS and GitHub-style keys become `***`). For a subagent's event it also keeps the subagent id (`agentId`). Nothing else from the payload is stored (no file contents, edit strings, descriptions or prompts). It never prints, never blocks, and always exits 0, so it cannot break a session. The directory is mode 0700 and the files 0600. Set `MISSION_CONTROL_HOOKS_DIR` to keep the logs elsewhere (set it for both Claude Code and the dashboard).
+It keeps the event name, session id, time, a `Notification` message cut to 500 characters and its type, the tool name, and for `PreToolUse` and `PermissionRequest` a short target: the first 120 characters of the command or the file path, on one line, with obvious secrets in a command masked (`Bearer …`, `token=`, `key=`, `password=` values, `-p<password>`, AWS and GitHub-style keys become `***`). For a subagent's event it also keeps the subagent id (`agentId`). Nothing else from the payload is stored (no file contents, edit strings, descriptions or prompts). It always exits 0 and never blocks a session; it prints only when a paired phone answered (see below), and otherwise nothing. The directory is mode 0700 and the files 0600. Set `MISSION_CONTROL_HOOKS_DIR` to keep the logs elsewhere (set it for both Claude Code and the dashboard).
+
+### Answering from a phone (v2.3)
+
+With [remote answering](remote-answering.md) on and a phone paired, two hooks may hold the request for an answer from the phone, at most `remote.waitSeconds` (default 120):
+
+- `PermissionRequest` from the main agent. The phone can **Allow** (once) or **Deny** ("Denied from Mission Control"). A subagent's request (it carries `agent_id`) never waits, so its timing is unchanged. Plan approval (`ExitPlanMode`) never waits.
+- `PreToolUse` for `AskUserQuestion`, when every question is single-select with listed options. The hook first records a `Notification` (kind `ask_user_question`), so the desktop Needs you card shows the question too. The phone's pick goes back to Claude Code as `updatedInput.answers`. A question with `multiSelect` or no options is shown read-only and never waits.
+
+In every other case (no server, remote off, no paired device, timeout, the prompt answered in the terminal) the hook prints nothing and exits 0, and the terminal prompt works as before. An accepted phone answer adds a `RemoteAnswered` line to the session's hook log, which clears the desktop card. The question texts are kept only in the pending file under `~/.mission-control/remote/pending/` (0600, deleted when the hook exits), never in the hook log.
 
 ## Needs you vs ready
 

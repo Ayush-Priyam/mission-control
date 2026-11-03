@@ -16,6 +16,7 @@ import { createChangeFeed } from "./events.mjs"
 import { apiV22 } from "./api-v22.mjs"
 import { createBudgets } from "./budgets.mjs"
 import { createWindowConfig } from "./forecast.mjs"
+import { createRemoteControl, staticStatus } from "./remote/server.mjs"
 
 const DEFAULT_DIST = join(dirname(fileURLToPath(import.meta.url)), "..", "dist")
 
@@ -37,7 +38,7 @@ const TYPES = {
  * body, so a poll of an unchanged tree costs a hash, not a transfer. Still no-store: the page sends
  * If-None-Match itself and keeps its own copy.
  */
-function json(res, body, status = 200) {
+export function json(res, body, status = 200) {
   const text = JSON.stringify(body)
   const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }
   const req = res.req
@@ -79,7 +80,7 @@ async function serveStatic(res, distDir, pathname) {
 const notFound = (res) => json(res, { error: "not found" }, 404)
 const MAX_BODY = 64 * 1024
 
-async function readBody(req) {
+export async function readBody(req) {
   const chunks = []
   let size = 0
   for await (const c of req) {
@@ -292,7 +293,7 @@ const LOOPBACK = ["localhost", "127.0.0.1", "[::1]"]
  * `input` is one v1 adapter, one source, or an array of either. Every entry becomes a source;
  * the v1 routes (/api/runs, /api/run/..., /api/crew, /api/x/...) stay as aliases for the first adapter.
  */
-export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, config = null, now = () => Date.now(), loops = null, heartbeatMs = 15_000, eventsPollMs = 1000, claudeHome = null, codexHome = null, prs = null } = {}) {
+export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, config = null, now = () => Date.now(), loops = null, heartbeatMs = 15_000, eventsPollMs = 1000, claudeHome = null, codexHome = null, prs = null, remote = null } = {}) {
   const entries = Array.isArray(input) ? input : [input]
   // Loop thresholds from config.json {"loops": {...}} (re-read when the file changes); `loops` injects them.
   const loopCfg = typeof loops === "function" ? loops : loops ? () => loops : createLoopConfig(config)
@@ -303,6 +304,16 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
   // `claudeHome` / `codexHome`: where the config readers look (names only); null reads nothing. The CLI passes the real ones.
   // `prs`: a createPrReader() for the per-PR usage view (null: none, so tests never run gh); budgets come from `config`.
   const ctx = { adapter, registry, git, hide: createHide(config), now, claudeHome, codexHome, configPath: config, prs, budgets: createBudgets(config), windowConfig: createWindowConfig(config) }
+  // v2.3 remote answering: `remote` = { home, remoteDir, hooksDir, flags?, ... } turns on the runtime
+  // control (status, POST /api/remote/enabled, the second listener). Without it, status is read-only defaults.
+  let actualPort = port
+  const needsYou = async () => {
+    const items = await place(await registry.list(), git, ctx.hide.list())
+    return (await registry.overview(items.filter((i) => !i.hidden))).needsYou
+  }
+  const remoteControl = remote
+    ? createRemoteControl({ configPath: config, distDir, needsYou, watchDirs: () => registry.watchTargets().dirs, dashboardPort: () => actualPort, ...remote })
+    : null
   if (!existsSync(join(distDir, "index.html"))) {
     console.error(`mission control: no built page at ${join(distDir, "index.html")} — run npm run build`)
   }
@@ -339,6 +350,7 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
     if (!hosts.has(req.headers.host)) return json(res, { error: "host not allowed" }, 403)
     try {
       const url = new URL(req.url, "http://localhost")
+      if (url.pathname === "/api/remote" || url.pathname.startsWith("/api/remote/")) return await remoteRoutes(req, res, url)
       if (req.method === "POST") {
         // A cross-site form can only send simple content types; requiring JSON stops it.
         const type = String(req.headers["content-type"] ?? "").split(";")[0].trim().toLowerCase()
@@ -370,6 +382,31 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
     }
   }
 
+  /**
+   * The only remote routes on this listener (C9): GET /api/remote/status (read-only) and POST
+   * /api/remote/enabled, the one write route (C38). Every other /api/remote/* path or method is 404.
+   */
+  async function remoteRoutes(req, res, url) {
+    if (url.pathname === "/api/remote/status" && (req.method === "GET" || req.method === "HEAD")) {
+      const o = req.headers.origin
+      if (o !== undefined && !origins.has(o)) return json(res, { error: "cross-origin request refused" }, 403)
+      return json(res, remoteControl ? remoteControl.status() : staticStatus({ configPath: config, now: now() }))
+    }
+    if (url.pathname !== "/api/remote/enabled" || req.method !== "POST" || !remoteControl) return json(res, { error: "not found" }, 404)
+    // Guards in contract order: Host (checked above), then a required same-origin Origin, then JSON.
+    const origin = req.headers.origin
+    if (origin === undefined || origin !== `http://${req.headers.host}`) return json(res, { error: "same-origin Origin header required" }, 403)
+    const type = String(req.headers["content-type"] ?? "").split(";")[0].trim().toLowerCase()
+    if (type !== "application/json") return json(res, { error: "content-type must be application/json" }, 415)
+    let body
+    try { body = await readBody(req) } catch (e) { return json(res, { error: e?.message ?? "bad body" }, Number.isInteger(e?.status) ? e.status : 400) }
+    if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).length !== 1 || typeof body.enabled !== "boolean") {
+      return json(res, { error: "body must be exactly {\"enabled\": true|false}" }, 400)
+    }
+    const r = await remoteControl.setEnabled(body.enabled, "dashboard")
+    return json(res, r.body, r.status)
+  }
+
   // Loopback only, on both IPv4 and IPv6: browsers often resolve "localhost" to ::1 first.
   return new Promise((resolveStart, reject) => {
     const v4 = createHttpServer(handler)
@@ -381,6 +418,7 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
     })
     v4.listen(port, "127.0.0.1", () => {
       const actual = v4.address().port
+      actualPort = actual
       hosts = new Set(LOOPBACK.map((h) => `${h}:${actual}`))
       origins = new Set(LOOPBACK.map((h) => `http://${h}:${actual}`))
       const v6 = createHttpServer(handler)
@@ -392,8 +430,10 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
       for (const s of registry.sources()) Promise.resolve().then(() => s.warm?.()).catch(() => {})
       resolveStart({
         port: actual,
-        close: () =>
-          new Promise((done) => {
+        remote: remoteControl,
+        close: async () => {
+          await remoteControl?.close().catch(() => {})
+          return new Promise((done) => {
             clearInterval(beat)
             feed.stop()
             for (const r of clients) r.end()
@@ -401,7 +441,8 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
             v6.close(() => v4.close(() => done()))
             v4.closeAllConnections?.()
             v6.closeAllConnections?.()
-          }),
+          })
+        },
       })
     })
   })

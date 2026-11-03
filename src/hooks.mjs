@@ -10,10 +10,14 @@ import { join } from "node:path"
  */
 export const EVENTS = ["Notification", "PermissionRequest", "Stop", "SubagentStop", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied"]
 const SAFE_ID = /^[\w-][\w.-]*$/
-const CLEARS = new Set(["PreToolUse", "UserPromptSubmit", "Stop", "PostToolUse", "PostToolUseFailure", "PermissionDenied"])
-const OPENS = new Set(["Notification", "PermissionRequest"])
+/**
+ * Events that end a wait. RemoteAnswered is written by a hook that applied a decision from a paired
+ * phone (v2.3), so the desktop card clears the same way a terminal answer clears it.
+ */
+export const CLEARS = new Set(["PreToolUse", "UserPromptSubmit", "Stop", "PostToolUse", "PostToolUseFailure", "PermissionDenied", "RemoteAnswered"])
+export const OPENS = new Set(["Notification", "PermissionRequest"])
 // Tool events that end only the wait for their own call id (when they carry one).
-const KEYED_CLEARS = new Set(["PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied"])
+export const KEYED_CLEARS = new Set(["PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied", "RemoteAnswered"])
 const MAX_MESSAGE = 500
 const MAX_TARGET = 120
 
@@ -200,11 +204,25 @@ export function createWaitingReader({ tailBytes = HOOK_TAIL, onRead } = {}) {
   }
 }
 
-/** The settings.json block to merge by hand; `node` and the script are absolute. */
-export function settingsBlock({ node = process.execPath, script }) {
+/** Hook events that may hold the request for a remote answer (v2.3): they get a longer timeout. */
+const WAITING_CLAUDE = new Set(["PermissionRequest", "PreToolUse"])
+const DEFAULT_WAIT = 120
+const waitTimeout = (waitSeconds) => (Number.isInteger(waitSeconds) && waitSeconds > 0 ? waitSeconds : DEFAULT_WAIT) + 15
+
+/**
+ * The settings.json block to merge by hand; `node` and the script are absolute. PermissionRequest and
+ * PreToolUse (AskUserQuestion) may wait for a paired phone, so their timeout is `waitSeconds + 15`; the
+ * hook itself gives up after `waitSeconds` and prints nothing, so the terminal prompt takes over. No
+ * `onFailure` is ever set: a failed or timed-out hook must fall through to the terminal, never deny.
+ */
+export function settingsBlock({ node = process.execPath, script, waitSeconds = DEFAULT_WAIT }) {
   const q = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`
   const hooks = {}
-  for (const e of EVENTS) hooks[e] = [{ hooks: [{ type: "command", command: `${q(node)} ${q(script)} hook ${e}` }] }]
+  for (const e of EVENTS) {
+    const h = { type: "command", command: `${q(node)} ${q(script)} hook ${e}` }
+    if (WAITING_CLAUDE.has(e)) h.timeout = waitTimeout(waitSeconds)
+    hooks[e] = [{ hooks: [h] }]
+  }
   return { hooks }
 }
 
@@ -256,18 +274,62 @@ export function recordCodexHook({ raw, hooksDir = defaultHooksDir(), now = () =>
   } catch { return false }
 }
 
-/** The hooks.json block for Codex (merge into ~/.codex/hooks.json by hand); `node` and the script are absolute. */
-export function codexHooksBlock({ node = process.execPath, script }) {
+/**
+ * The hooks.json block for Codex (merge into ~/.codex/hooks.json by hand); `node` and the script are
+ * absolute. PermissionRequest may wait for a paired phone (`waitSeconds + 15`); the rest stay at 10 s.
+ */
+export function codexHooksBlock({ node = process.execPath, script, waitSeconds = DEFAULT_WAIT }) {
   const q = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`
   const hooks = {}
-  for (const e of Object.keys(CODEX_EVENTS)) hooks[e] = [{ hooks: [{ type: "command", command: `${q(node)} ${q(script)} hook codex`, timeout: 10 }] }]
+  for (const e of Object.keys(CODEX_EVENTS)) {
+    const timeout = e === "PermissionRequest" ? waitTimeout(waitSeconds) : 10
+    hooks[e] = [{ hooks: [{ type: "command", command: `${q(node)} ${q(script)} hook codex`, timeout }] }]
+  }
   return { hooks }
 }
 
-/** The open prompt as a lane shows it: { since?, tool?, target? } (only the keys that are known). */
+/** Where a session's hook log lives: <hooksDir>/<id>.jsonl (Claude Code) or <hooksDir>/codex/<id>.jsonl. */
+export function hookLogPath(hooksDir, harness, sessionId) {
+  if (typeof sessionId !== "string" || !SAFE_ID.test(sessionId)) return null
+  return harness === "codex" ? join(hooksDir, "codex", `${sessionId}.jsonl`) : join(hooksDir, `${sessionId}.jsonl`)
+}
+
+function appendLine(hooksDir, harness, line) {
+  const path = hookLogPath(hooksDir, harness, line.sessionId)
+  if (!path) return false
+  mkdirSync(harness === "codex" ? join(hooksDir, "codex") : hooksDir, { recursive: true, mode: 0o700 })
+  appendFileSync(path, JSON.stringify(line) + "\n", { mode: 0o600 })
+  return true
+}
+
+/**
+ * A prompt was answered from a paired phone: one clearing line, keyed by `callId` when the prompt had
+ * one (so a parallel Codex call keeps its own wait). Never throws; true when written.
+ */
+export function recordRemoteAnswered({ hooksDir = defaultHooksDir(), harness, sessionId, callId, now = () => new Date() }) {
+  try {
+    const line = { event: "RemoteAnswered", sessionId, ts: now().toISOString() }
+    if (harness === "codex") line.codexEvent = "RemoteAnswered"
+    if (typeof callId === "string" && SAFE_ID.test(callId) && callId.length <= 128) line.callId = callId
+    return appendLine(hooksDir, harness, line)
+  } catch { return false }
+}
+
+/**
+ * An AskUserQuestion the hook holds for a phone answer: an opening Notification (kind ask_user_question,
+ * tool AskUserQuestion), so the desktop Needs you card shows the same prompt the phone shows. The
+ * question text is model-written and never goes in the log. Never throws; true when written.
+ */
+export function recordAskOpen({ hooksDir = defaultHooksDir(), sessionId, now = () => new Date() }) {
+  try {
+    return appendLine(hooksDir, "claude-code", { event: "Notification", sessionId, ts: now().toISOString(), message: "Claude has a question for you", tool: "AskUserQuestion", kind: "ask_user_question" })
+  } catch { return false }
+}
+
+/** The open prompt as a lane shows it: { since?, tool?, target?, callId? } (only the keys that are known). */
 export function askOf(w) {
   const out = {}
-  for (const k of ["since", "tool", "target"]) if (typeof w?.[k] === "string") out[k] = w[k]
+  for (const k of ["since", "tool", "target", "callId"]) if (typeof w?.[k] === "string") out[k] = w[k]
   return out
 }
 

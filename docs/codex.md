@@ -95,7 +95,7 @@ Codex CLI runs hooks configured in `~/.codex/hooks.json` (or `[hooks]` tables in
              {
                "type": "command",
                "command": "'/usr/local/bin/node' '/work/mission-control/bin/mission-control.mjs' hook codex",
-               "timeout": 10
+               "timeout": 135
              }
            ]
          }
@@ -176,6 +176,8 @@ Codex CLI runs hooks configured in `~/.codex/hooks.json` (or `[hooks]` tables in
 
 4. Check it: ask Codex to do something that needs approval under your approval policy (for example a command outside the sandbox). The session shows under **Needs you** with "Codex needs your approval to use <tool>: <command>" (the command or path, cut to 120 characters, secrets masked). Approve or deny it in Codex and it leaves the queue.
 
+Since v2.3 the `PermissionRequest` entry has `"timeout": 135` (`remote.waitSeconds`, default 120, plus 15 s; it was 10) so a [paired phone](remote-answering.md) can answer the approval. Every other entry stays at 10. **If you merged an older block, run `hooks install codex` again, merge it, and re-trust the changed hook with `/hooks` in Codex.** With the old `timeout: 10`, Codex stops the hook after 10 s and you answer in Codex, which is safe.
+
 The paths in the block are absolute. **Run `hooks install codex` again and merge again after you move the checkout or upgrade Node.**
 
 ### What the hook records
@@ -191,7 +193,7 @@ Every entry runs `mission-control hook codex`. It reads Codex's JSON, maps the e
 | `Interrupt` | `Stop` | clears a wait (you interrupted it); not ready |
 | `SubagentStop` | `SubagentStop` | recorded, no effect on waiting |
 
-Other events (`SessionStart`, `SessionEnd`, compaction) are ignored. Only the event, session id, time, tool name, the tool call id (when the payload has `tool_use_id` or `call_id`), the approval message and, for `PermissionRequest` and `PreToolUse`, a short target (the first 120 characters of the command or file path, secrets masked) are kept; the model's free-text `description` and other tool inputs and outputs are not stored. The hook never prints and always exits 0.
+Other events (`SessionStart`, `SessionEnd`, compaction) are ignored. Only the event, session id, time, tool name, the tool call id (when the payload has `tool_use_id` or `call_id`), the approval message and, for `PermissionRequest` and `PreToolUse`, a short target (the first 120 characters of the command or file path, secrets masked) are kept; the model's free-text `description` and other tool inputs and outputs are not stored. The hook always exits 0 and prints only an allow or deny a paired phone gave (see [remote answering](remote-answering.md)); otherwise nothing.
 
 ```jsonl
 {"event":"Notification","codexEvent":"PermissionRequest","sessionId":"0199a1b2-...","ts":"2026-11-02T10:01:00.000Z","tool":"Bash","callId":"call_a1","target":"npm install","message":"Codex needs your approval to use Bash: npm install"}
@@ -206,7 +208,10 @@ Waits are kept per tool call: with parallel tools, a sibling call starting or fi
 - Codex has no idle reminder, so **Ready** comes from the `Stop` hook: a session whose last turn ended less than 30 minutes ago (and has not moved on since) counts in the **Ready (N)** chip; after that it is plain idle. Without hooks Codex sessions are never ready.
 - **Looping** works for Codex too: the same `exec_command` failing again and again, or `apply_patch` → test → same failure, shows as looping on the lane card.
 - The older `notify` setting in `config.toml` only fires when a turn completes, so it is not used for Needs you.
-- Mission Control cannot approve for you: approvals happen in Codex.
+- From a [paired phone](remote-answering.md) you can **allow or deny** a Codex approval, nothing else: no option prompts (no Codex hook for them has been found), no changes to the approval policy. Each parallel tool call gets its own prompt, keyed by its call id. Codex hooks are a guardrail, not a complete enforcement boundary.
+- Without remote answering on and a paired device, approvals happen in Codex as before.
+- With remote answering on and a device paired, **Codex hides its approval dialog while the hook waits** (observed with codex-cli 0.159.3). The dialog appears after `remote.waitSeconds` (default 120) unless the phone answers first. At the desk, lower `remote.waitSeconds` or run `mission-control remote off`.
+- Codex's `PermissionRequest` payload has no call id, so a phone answer is matched to the session's open approval, not to one tool call.
 
 ## Privacy
 

@@ -43,3 +43,24 @@ Ideas and fixes, roughly in the order they'll land. Many came from people trying
 ## Known small issues
 
 None open right now.
+
+## Verified by ronin, 2026-11-03 (specs/001-mission-control-v2-3-answer)
+
+- **Date:** 2026-11-03.
+- **Device:** none. This was a code and documentation review only. No phone, emulator or live Claude Code or Codex session was used.
+- **Cases tried:**
+  - README and docs statements against the hook code.
+  - The `sw.js` `/api/` bypass: expected no caching, observed network-only.
+  - The hook timeout (`waitSeconds + 15`): observed.
+  - `onFailure` in `src/`: only a comment mentions it.
+  - Hex and rgb literals in the remote UI files: none found.
+  - The spike outcome in the docs: Claude Code B (2.1.317), Codex C (0.159.3).
+- **Not verified:**
+  - T21: no per-class test results were provided, so that task is open.
+  - T22: the temp-home test setup was not inspected.
+  - T24–T26: no device or tailnet, no pairing, no live prompts, no installability or offline checks, and `audit.jsonl` was not read.
+  - iOS Safari and the Android install flow.
+- **T27:** open. `ROADMAP.md` is unchanged. It still lists "Answer prompts from the browser" (line 33) and "Approve and steer from a phone" (line 35) under Later, and has no "Done in v2.3". Ronin needs to add "Done in v2.3" with the remote answering items. It should remove both Later lines, with a note that steering is still not done.
+- **T23:** the docs name the outcomes and versions. `test/remote-spike-outcome.test.mjs` exists and is described as covering them. I did not see it pass.
+
+Done: none

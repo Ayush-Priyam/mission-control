@@ -8,3 +8,5 @@ examples/runs/2026110[2]-*/
 brag-output*/
 examples/demo-home/
 examples/demo-prs.json
+.DS_Store
+.harness/

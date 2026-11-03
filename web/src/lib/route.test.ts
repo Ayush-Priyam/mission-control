@@ -53,3 +53,11 @@ describe("route (v2)", () => {
     for (const h of hashes) expect(toHash(parseRoute(h))).toBe(h)
   })
 })
+
+describe("route (remote)", () => {
+  it("parses and builds #/remote", async () => {
+    const { parseRoute, toHash } = await import("./route")
+    expect(parseRoute("#/remote")).toEqual({ view: "remote" })
+    expect(toHash({ view: "remote" })).toBe("#/remote")
+  })
+})

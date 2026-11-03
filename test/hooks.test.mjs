@@ -5,15 +5,16 @@ import { appendFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readd
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { createWaitingReader, recordHook, targetOf, waitingFromHooks } from "../src/hooks.mjs"
+import { codexHooksBlock, createWaitingReader, recordAskOpen, recordCodexHook, recordHook, recordRemoteAnswered, settingsBlock, targetOf, waitingFromHooks } from "../src/hooks.mjs"
 import { createServer } from "../src/server.mjs"
 import create from "../src/sources/claude-code/index.mjs"
 import { createRegistry } from "../src/sources/registry.mjs"
 
 const bin = fileURLToPath(new URL("../bin/mission-control.mjs", import.meta.url))
 const tmp = () => mkdtempSync(join(tmpdir(), "mc-hooks-"))
+// A temp home too, so a waiting hook (v2.3) never looks at the real ~/.mission-control/remote.
 const run = (args, input, hooksDir) =>
-  spawnSync(process.execPath, [bin, ...args], { input, encoding: "utf8", env: { ...process.env, MISSION_CONTROL_HOOKS_DIR: hooksDir } })
+  spawnSync(process.execPath, [bin, ...args], { input, encoding: "utf8", env: { ...process.env, MISSION_CONTROL_HOOKS_DIR: hooksDir, MISSION_CONTROL_HOME: mkdtempSync(join(tmpdir(), "mc-home-")) } })
 const note = { session_id: "sess1", hook_event_name: "Notification", message: "Claude needs your permission to use Bash" }
 
 test("hook: a Notification on stdin writes one line, no stdout, exit 0", () => {
@@ -250,6 +251,7 @@ test("stale prompt: permission prompt -> dashboard down -> answered in the termi
   utimesSync(log, T / 1000, T / 1000)
   const up = await overviewFrom(root, hooksDir, T + 5000)
   assert.deepEqual(up.needsYou.map((n) => [n.id, n.tool, n.target, n.since]), [["sess1", "Bash", "rm -rf build", new Date(T + 500).toISOString()]])
+  assert.deepEqual(up.needsYou.map((n) => [n.harness, n.sessionId]), [["claude-code", "sess1"]], "v2.3: Claude entries join on the item id")
   // Dashboard is down (no server). The person answers in the terminal: the tool runs, Claude carries on.
   appendFileSync(log, JSON.stringify({ type: "user", timestamp: new Date(T + 30_000).toISOString(), message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu1", content: "ok" }] } }) + "\n")
   hook({ event: "PostToolUse", ts: new Date(T + 30_000).toISOString(), tool: "Bash" })
@@ -319,4 +321,51 @@ test("source: a subagent's PermissionRequest with no Notification within 10 s is
   assert.equal((await create({ root, hooksDir, now: () => T + 15_000 }).listItems())[0].waiting, false)
   const shown = fixture([req, { event: "Notification", sessionId: "sess1", kind: "permission_prompt", ts: new Date(T + 6000).toISOString(), message: "Claude needs your permission to use Bash" }], { logMtime: T - 5000 })
   assert.equal((await create({ root: shown.root, hooksDir: shown.hooksDir, now: () => T + 60_000 }).listItems())[0].waiting, true)
+})
+
+// ---- v2.3 remote answering (T6) ----
+
+test("v2.3: RemoteAnswered clears an unkeyed Claude wait and only its own keyed Codex wait", () => {
+  const dir = tmp()
+  recordHook({ raw: JSON.stringify({ session_id: "s1", hook_event_name: "PermissionRequest", tool_name: "Bash", tool_input: { command: "ls" } }), hooksDir: dir, now: () => new Date(1000) })
+  assert.equal(waitingFromHooks(readFileSync(join(dir, "s1.jsonl"), "utf8")).waiting, true)
+  assert.equal(recordRemoteAnswered({ hooksDir: dir, harness: "claude-code", sessionId: "s1", now: () => new Date(2000) }), true)
+  const lines = readFileSync(join(dir, "s1.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l))
+  assert.deepEqual(lines.at(-1), { event: "RemoteAnswered", sessionId: "s1", ts: new Date(2000).toISOString() })
+  assert.equal(waitingFromHooks(lines).waiting, false)
+
+  const raw = (o) => JSON.stringify({ session_id: "c1", hook_event_name: "PermissionRequest", tool_name: "Bash", ...o })
+  recordCodexHook({ raw: raw({ tool_use_id: "call_a" }), hooksDir: dir, now: () => new Date(1000) })
+  recordCodexHook({ raw: raw({ tool_use_id: "call_b" }), hooksDir: dir, now: () => new Date(1100) })
+  recordRemoteAnswered({ hooksDir: dir, harness: "codex", sessionId: "c1", callId: "call_a", now: () => new Date(2000) })
+  const cl = readFileSync(join(dir, "codex", "c1.jsonl"), "utf8")
+  assert.deepEqual(JSON.parse(cl.trim().split("\n").at(-1)), { event: "RemoteAnswered", sessionId: "c1", ts: new Date(2000).toISOString(), codexEvent: "RemoteAnswered", callId: "call_a" })
+  const w = waitingFromHooks(cl)
+  assert.deepEqual([w.waiting, w.callId], [true, "call_b"], "the sibling call keeps its wait")
+  assert.equal(recordRemoteAnswered({ hooksDir: dir, harness: "claude-code", sessionId: "../x" }), false)
+})
+
+test("v2.3: recordAskOpen opens an AskUserQuestion wait after its PreToolUse; no question text in the log", () => {
+  const dir = tmp()
+  recordHook({ raw: JSON.stringify({ session_id: "s1", hook_event_name: "PreToolUse", tool_name: "AskUserQuestion", tool_input: { questions: [{ question: "Which db SECRET?", options: [{ label: "pg" }] }] } }), hooksDir: dir, now: () => new Date(1000) })
+  assert.equal(recordAskOpen({ hooksDir: dir, sessionId: "s1", now: () => new Date(1001) }), true)
+  const text = readFileSync(join(dir, "s1.jsonl"), "utf8")
+  assert.ok(!text.includes("SECRET") && !text.includes("Which db"))
+  const last = JSON.parse(text.trim().split("\n").at(-1))
+  assert.deepEqual([last.event, last.kind, last.tool], ["Notification", "ask_user_question", "AskUserQuestion"])
+  const w = waitingFromHooks(text)
+  assert.deepEqual([w.waiting, w.tool, w.since], [true, "AskUserQuestion", new Date(1001).toISOString()])
+  assert.equal(statSync(join(dir, "s1.jsonl")).mode & 0o777, 0o600)
+})
+
+test("v2.3: install blocks set waitSeconds + 15 on the waiting hooks, 10 on other Codex hooks, never onFailure", () => {
+  const c = settingsBlock({ node: "/n", script: "/s", waitSeconds: 60 })
+  for (const [e, [{ hooks: [h] }]] of Object.entries(c.hooks)) {
+    assert.equal(h.timeout, e === "PermissionRequest" || e === "PreToolUse" ? 75 : undefined, e)
+    assert.ok(!("onFailure" in h))
+  }
+  assert.equal(settingsBlock({ node: "/n", script: "/s" }).hooks.PermissionRequest[0].hooks[0].timeout, 135, "default 120 + 15")
+  const x = codexHooksBlock({ node: "/n", script: "/s", waitSeconds: 300 })
+  for (const [e, [{ hooks: [h] }]] of Object.entries(x.hooks)) assert.equal(h.timeout, e === "PermissionRequest" ? 315 : 10, e)
+  assert.ok(!JSON.stringify(c).includes("onFailure") && !JSON.stringify(x).includes("onFailure"))
 })

@@ -81,6 +81,10 @@ export function createRegistry(sources) {
           source: i.source, id: i.id, ...where(i), lane: lane?.id ?? "", detail: lane?.reason ?? "",
           // The prompt's identity: when it was asked, and the tool and target it is about (when known).
           since: ask.since ?? null, tool: ask.tool ?? null, target: ask.target ?? null,
+          // v2.3: the hook session a pending remote prompt is joined on (Claude: the item id; Codex: the
+          // session_id its hook log is keyed by), and the tool call it is about when the hooks know it.
+          ...(i.harness === "claude-code" || i.harness === "codex" ? { sessionId: d?.summary.sessionId ?? i.sessionId ?? i.id } : {}),
+          ...(typeof ask.callId === "string" ? { callId: ask.callId } : {}),
         })
       }
       // The listing may lag the detail by a poll: the detail (just parsed) decides working vs looping.
