@@ -21,6 +21,7 @@ import { createTitles } from "./titles.mjs"
 import { createMarks } from "./marks.mjs"
 import { createSettings } from "./settings.mjs"
 import { createDispatcher, macNotify, startNotifier } from "./notify.mjs"
+import { createRetention } from "./retention.mjs"
 
 const DEFAULT_DIST = join(dirname(fileURLToPath(import.meta.url)), "..", "dist")
 
@@ -139,7 +140,7 @@ async function placeFirst(items, git, hideList, keep, limit = Infinity) {
 }
 
 async function apiV2(ctx, req, res, url, parts) {
-  const { registry, git, hide, titles, marks, settings, testNotify, noteLog, now } = ctx
+  const { registry, git, hide, titles, marks, settings, autostart, onRestart, testNotify, noteLog, now } = ctx
   const get = req.method === "GET" || req.method === "HEAD"
   const q = url.searchParams
   const all = q.get("all") === "1"
@@ -163,13 +164,36 @@ async function apiV2(ctx, req, res, url, parts) {
     return json(res, { via })
   }
   if (parts[0] === "settings" && parts.length === 1) {
-    if (get) return json(res, settings.get())
+    // Retention is Claude Code's own cleanupPeriodDays, in the config dir of the projects this dashboard reads.
+    const cc = registry.sources().find((s) => s.harness === "claude-code")
+    const retention = cc?.describe?.().source ? createRetention(dirname(cc.describe().source)) : null
+    const view = () => ({ ...settings.get(), autostart: autostart?.status() ?? { supported: false, enabled: false }, retention: retention?.get() ?? null })
+    if (get) return json(res, view())
     if (req.method !== "POST") return false
     const body = await readBody(req)
     const keys = Object.keys(body ?? {})
-    const ok = (k) => (k === "notifyDismiss" ? Number.isInteger(body[k]) && body[k] >= 0 && body[k] <= 600 : (k === "notify" || k === "notifyDone") && typeof body[k] === "boolean")
-    if (!keys.length || !keys.every(ok)) return json(res, { error: "send notify, notifyDone as booleans, notifyDismiss as 0-600 seconds" }, 400)
-    return json(res, settings.set(body))
+    const ok = (k) =>
+      k === "retentionDays" ? Number.isInteger(body[k]) && body[k] >= 1 && body[k] <= 3650
+      : k === "notifyDismiss" ? Number.isInteger(body[k]) && body[k] >= 0 && body[k] <= 600
+      : ["notify", "notifyDone", "autostart"].includes(k) && typeof body[k] === "boolean"
+    if (!keys.length || !keys.every(ok)) {
+      return json(res, { error: "send notify, notifyDone, autostart as booleans; notifyDismiss as 0-600 s; retentionDays as 1-3650" }, 400)
+    }
+    // Every precondition before any write, so a request is applied whole or not at all.
+    if ("autostart" in body && !autostart?.status().supported) return json(res, { error: "start at login needs macOS" }, 501)
+    if ("retentionDays" in body) {
+      if (!retention) return json(res, { error: "no Claude Code config to change" }, 501)
+      const r = retention.get()
+      if (r.error) return json(res, { error: `${r.error}; not changing it` }, 409)
+    }
+    // Start at login first: the one step that can still fail, and nothing else is written when it does.
+    let restart = false
+    if ("autostart" in body) restart = (await autostart.set(body.autostart)).restart
+    if ("retentionDays" in body) retention.set(body.retentionDays)
+    if (keys.some((k) => k === "notify" || k === "notifyDone" || k === "notifyDismiss")) settings.set(body)
+    json(res, { ...view(), restarting: restart })
+    if (restart) setTimeout(() => onRestart?.(), 300)
+    return
   }
   if (get && parts[0] === "sources" && parts.length === 1) {
     await registry.list() // refresh per-source errors
@@ -333,7 +357,7 @@ const LOOPBACK = ["localhost", "127.0.0.1", "[::1]"]
  * `input` is one v1 adapter, one source, or an array of either. Every entry becomes a source;
  * the v1 routes (/api/runs, /api/run/..., /api/crew, /api/x/...) stay as aliases for the first adapter.
  */
-export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, config = null, titlesPath = null, marksPath = null, settingsPath = null, notifyLogPath = null, notifier = null, now = () => Date.now(), loops = null, heartbeatMs = 15_000, eventsPollMs = 1000, claudeHome = null, codexHome = null, prs = null, remote = null } = {}) {
+export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, config = null, titlesPath = null, marksPath = null, settingsPath = null, notifyLogPath = null, notifier = null, autostart = null, onRestart = null, now = () => Date.now(), loops = null, heartbeatMs = 15_000, eventsPollMs = 1000, claudeHome = null, codexHome = null, prs = null, remote = null } = {}) {
   const entries = Array.isArray(input) ? input : [input]
   // Loop thresholds from config.json {"loops": {...}} (re-read when the file changes); `loops` injects them.
   const loopCfg = typeof loops === "function" ? loops : loops ? () => loops : createLoopConfig(config)
@@ -357,7 +381,7 @@ export function createServer(input, { port = 4319, distDir = DEFAULT_DIST, git, 
     if (notifyLogPath) try { mkdirSync(dirname(notifyLogPath), { recursive: true, mode: 0o700 }); appendFileSync(notifyLogPath, line + "\n", { mode: 0o600 }) } catch { /* logging must not break notifying */ }
   }
   let notifyVia = (m) => (noteLog(`notify ${m.title}: ${m.subtitle ?? ""} via none (server starting)`), "none") // set once listening
-  const ctx = { adapter, registry, git, hide: createHide(config), now, claudeHome, codexHome, configPath: config, prs, budgets: createBudgets(config), windowConfig: createWindowConfig(config), titles, marks, listed, settings, noteLog, testNotify: (m) => notifyVia(m) }
+  const ctx = { adapter, registry, git, hide: createHide(config), now, claudeHome, codexHome, configPath: config, prs, budgets: createBudgets(config), windowConfig: createWindowConfig(config), titles, marks, listed, settings, noteLog, testNotify: (m) => notifyVia(m), autostart, onRestart }
   // v2.3 remote answering: `remote` = { home, remoteDir, hooksDir, flags?, ... } turns on the runtime
   // control (status, POST /api/remote/enabled, the second listener). Without it, status is read-only defaults.
   let actualPort = port
