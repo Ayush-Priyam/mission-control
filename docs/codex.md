@@ -174,7 +174,7 @@ Codex CLI runs hooks configured in `~/.codex/hooks.json` (or `[hooks]` tables in
 
 3. Start Codex and run `/hooks`. Codex lists hooks it has not seen before as untrusted and does not run them until you review and trust them there.
 
-4. Check it: ask Codex to do something that needs approval under your approval policy (for example a command outside the sandbox). The session shows under **Needs you** with "Codex needs your approval to use <tool>" and the reason Codex gives. Approve or deny it in Codex and it leaves the queue.
+4. Check it: ask Codex to do something that needs approval under your approval policy (for example a command outside the sandbox). The session shows under **Needs you** with "Codex needs your approval to use <tool>: <command>" (the command or path, cut to 120 characters, secrets masked). Approve or deny it in Codex and it leaves the queue.
 
 The paths in the block are absolute. **Run `hooks install codex` again and merge again after you move the checkout or upgrade Node.**
 
@@ -184,17 +184,17 @@ Every entry runs `mission-control hook codex`. It reads Codex's JSON, maps the e
 
 | Codex event | recorded as | effect |
 |---|---|---|
-| `PermissionRequest` | `Notification`, with a message naming the tool and its description | the session is waiting on you |
+| `PermissionRequest` | `Notification`, with a message naming the tool and its masked target | the session is waiting on you |
 | `PreToolUse`, `PostToolUse` | `PreToolUse` | clears the wait for the same tool call (the tool was approved and runs) |
 | `UserPromptSubmit` | `UserPromptSubmit` | clears a wait |
 | `Stop` | `Stop` | clears a wait; the turn ended, so the session is **Ready** for 30 minutes |
 | `Interrupt` | `Stop` | clears a wait (you interrupted it); not ready |
 | `SubagentStop` | `SubagentStop` | recorded, no effect on waiting |
 
-Other events (`SessionStart`, `SessionEnd`, compaction) are ignored. Only the event, session id, time, tool name, the tool call id (when the payload has `tool_use_id` or `call_id`), the approval message and, for `PermissionRequest` and `PreToolUse`, a short target (the first 120 characters of the command or file path) are kept; other tool inputs and outputs are not stored. The hook never prints and always exits 0.
+Other events (`SessionStart`, `SessionEnd`, compaction) are ignored. Only the event, session id, time, tool name, the tool call id (when the payload has `tool_use_id` or `call_id`), the approval message and, for `PermissionRequest` and `PreToolUse`, a short target (the first 120 characters of the command or file path, secrets masked) are kept; the model's free-text `description` and other tool inputs and outputs are not stored. The hook never prints and always exits 0.
 
 ```jsonl
-{"event":"Notification","codexEvent":"PermissionRequest","sessionId":"0199a1b2-...","ts":"2026-11-02T10:01:00.000Z","tool":"Bash","callId":"call_a1","message":"Codex needs your approval to use Bash: install dependencies"}
+{"event":"Notification","codexEvent":"PermissionRequest","sessionId":"0199a1b2-...","ts":"2026-11-02T10:01:00.000Z","tool":"Bash","callId":"call_a1","target":"npm install","message":"Codex needs your approval to use Bash: npm install"}
 {"event":"PreToolUse","codexEvent":"PostToolUse","sessionId":"0199a1b2-...","ts":"2026-11-02T10:01:05.000Z","tool":"Read","callId":"call_b2"}
 {"event":"PreToolUse","codexEvent":"PreToolUse","sessionId":"0199a1b2-...","ts":"2026-11-02T10:01:20.000Z","tool":"Bash","callId":"call_a1"}
 ```

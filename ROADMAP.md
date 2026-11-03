@@ -7,21 +7,8 @@ Ideas and fixes, roughly in the order they'll land. Many came from people trying
 - **Stale prompt safety.** Answering a permission prompt in the terminal while the dashboard is down must clear "Needs you" when it reconnects, and a new prompt replacing an old one must look new: each card shows the tool, the command or target, and when it was asked, and briefly flags "new prompt". A test covers prompt → dashboard down → answered in terminal → reconnect.
 - **Ready vs needs you.** "Done, waiting for your next prompt" stays out of the Needs you queue but gets its own calm "Ready (N)" chip, so idle sessions are findable without looking urgent.
 - **Looping detection.** A session silently retrying a failing test is the expensive kind of stuck. New "Looping" state when the same tool and command fails N times in a row, or an edit → test → fail cycle repeats on the same failure, or tokens keep burning with no new passing check. The card says how long, how many failures and the estimated cost since it started, with a link to the first failing call. Thresholds are configurable.
-- **Tokens since last file change** (from replies). Per lane and per item: tokens used and time passed since the last successful file edit, reset by every Edit / Write / apply_patch (a failed edit does not count). Shown on lane cards ("412k tok since last change · 18m") and as a sortable column in the Home and project tables, and used by the looping rule for burning tokens (300k tokens and 10 minutes with no file change and no passing check, configurable).
+- **Tokens since last file change** (from replies). Per lane and per item: new tokens (input, output, cache write) and time passed since the last successful file edit, reset by every Edit / Write / apply_patch (a failed edit does not count); cache reads are shown apart and never counted. Shown on lane cards ("41k tok (+3.1M cached) since last change · 18m") and as a sortable column in the Home and project tables, and used by the looping rule for burning tokens (300k new tokens, or an optional est. cost, and 10 minutes with no file change, no passing check, and 3 failures or a failed check; configurable).
 - **Faster "Needs you".** Claude Code's PermissionRequest hook (fires when the permission dialog opens, not ~6 s later like the permission Notification, which stays as the fallback), and `GET /api/events` pushes "changed" to the page as soon as a hook line lands or a live session file grows; polling stays as the fallback.
-
-## Later
-
-- Answer prompts from the browser (allow / deny / pick an option) through the hooks, not by reading the terminal screen.
-- Cost per task (spec-kit task, Ronin stage).
-- Approve and steer from a phone (local-first PWA).
-- Rewind or fork a session from its log.
-- More readers: opencode, Pi.
-- A terminal UI over the same data.
-
-## Known small issues
-
-None open right now.
 
 ## Done in v2.2
 
@@ -36,3 +23,20 @@ None open right now.
 - Turns view: each assistant turn's input, cache read, cache write and output tokens with an estimated cost, sortable by cost, with markers where the context dropped sharply (compaction) and a short "why expensive" hint. Claude Code and Codex.
 - Cost per pull request (branches mapped to PRs through `gh`, cached, optional) and budgets per project, worktree or branch in `~/.mission-control/config.json`, with bars on the Usage page and a top-bar chip at 80% and 100%.
 - Usage-window estimate (Claude Code): the current rolling window from local logs, with "at this rate you hit the limit in ~1h 40m" when you set your own limit in `config.json` (`usageWindow`), or "no limit set". Always labelled an estimate; it never claims Anthropic's actual limits.
+- Hook targets mask obvious secrets; the Codex approval message shows the masked command, never the model's description.
+- A subagent's permission request that Claude Code auto-denies (background, no prompt possible) leaves Needs you after 10 s unless the permission notification confirms it.
+- Checks are recognised by the program at the head of a command (or the npm/pnpm/yarn/bun script name), not by a word anywhere in it.
+- Same-file warnings ignore a resumed or forked session replaying its parent's edits; PR lookups run in parallel per project.
+
+## Later
+
+- Answer prompts from the browser (allow / deny / pick an option) through the hooks, not by reading the terminal screen.
+- Cost per task (spec-kit task, Ronin stage).
+- Approve and steer from a phone (local-first PWA).
+- Rewind or fork a session from its log.
+- More readers: opencode, Pi.
+- A terminal UI over the same data.
+
+## Known small issues
+
+None open right now.
